@@ -94,20 +94,20 @@ class ProgressiveDAG:
         
         title = f"Exploração Progressiva do DAG (Nó atual: {current_node})"
         self.ax.set_title(title)
-        
-        plt.pause(1)  # Pausa por 2 segundos
+
+        plt.pause(0.5)  # Pausa por 0.5 segundos
         self.fig.canvas.draw()
 
 # --- Simulação com visualização em tempo real --- #
 plt.ion()  # Modo interativo
-dag = ProgressiveDAG(max_layers=10, bifurcation_prob=0.6, seed=random.randint(1, 100))
+dag = ProgressiveDAG(max_layers=25, bifurcation_prob=0.6, seed=random.randint(1, 100))
 
 # Visualização inicial
 dag.visualize(current_node=0)
 
 # Simulação do agente explorando
-path = [0]  # Começa na raiz
-for _ in range(12):  # Faz até 12 movimentos
+path = [0]  # Raiz
+for _ in range(12):  # Faz 12 movimentos
     current = path[-1]
     neighbors = dag.agent_move(current)
     
@@ -128,4 +128,4 @@ print("Caminho do agente:", path)
 print("Nós visitados:", sorted(dag.visited))
 print("Fronteira final:", list(dag.frontier))
 print("Total de nós gerados:", dag.next_node)
-plt.show()  # Mantém a janela aberta
+plt.show() 
