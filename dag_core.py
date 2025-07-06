@@ -4,20 +4,24 @@ import random
 from collections import deque
 
 class ProgressiveDAG:
-    def __init__(self, max_layers=6, bifurcation_prob=0.7, seed=None):
+    def __init__(self, max_layers=6, bifurcation_prob=0.7, seed=None, visualize=True):
         self.G = nx.DiGraph()
         self.layers = {0: 0}  # {node: layer}
         self.max_layers = max_layers
         self.bifurcation_prob = bifurcation_prob
         self.next_node = 1
         self.visited = set()
-        self.frontier = deque([0])
+        self.frontier = deque([0])  
+        self.frontier_expansion_count = 0  # Contador de expansões da fronteira      
+        self.visualize_enabled = visualize  # Flag para visualização
         random.seed(seed)
         
         # Adiciona o nó inicial
         self.G.add_node(0, layer=0, visited=False)
-        self.fig, self.ax = plt.subplots(figsize=(10, 6))
-        self.pos = {0: (0, 0)}  # Inicializa com posição do nó 0
+        
+        if self.visualize_enabled:
+            self.fig, self.ax = plt.subplots(figsize=(10, 6))
+            self.pos = {0: (0, 0)}  # Inicializa com posição do nó 0
     
     def expand_node(self, node):
         """Expande um nó (gera seus filhos) se estiver na fronteira"""
@@ -34,21 +38,23 @@ class ProgressiveDAG:
             
         # Decide se terá 1 ou 2 filhos
         children = 2 if (random.random() < self.bifurcation_prob and 
-                        current_layer < self.max_layers - 2) else 1
+                        current_layer < self.max_layers - 2) else 1                    
         
         for _ in range(children):
             child = self.next_node
             self.G.add_edge(node, child)
             self.layers[child] = current_layer + 1
             self.G.add_node(child, layer=current_layer + 1, visited=False)
-            self.frontier.append(child)
+            self.frontier.append(child)            
             
-            # Calcula posição para o novo nó
-            x_pos = current_layer + 1
-            y_offset = 0.5 if children == 2 else 0
-            y_pos = self.pos[node][1] + (y_offset if _ == 0 else -y_offset)
-            self.pos[child] = (x_pos, y_pos)
-            
+            if self.visualize_enabled:
+                # Calcula posição para o novo nó
+                x_pos = current_layer + 1
+                y_offset = 0.5 if children == 2 else 0
+                y_pos = self.pos[node][1] + (y_offset if _ == 0 else -y_offset)
+                self.pos[child] = (x_pos, y_pos)
+                self.frontier_expansion_count = len(self.frontier) - 1  # Atualiza contador de expansões da fronteira
+
             self.next_node += 1
     
     def agent_move(self, node):
@@ -61,6 +67,9 @@ class ProgressiveDAG:
     
     def visualize(self, current_node=None):
         """Visualiza o DAG com atualização em tempo real"""
+        if not self.visualize_enabled:
+            return
+            
         self.ax.clear()
         
         node_colors = []
@@ -99,8 +108,13 @@ class ProgressiveDAG:
         self.fig.canvas.draw()
 
 # --- Simulação com visualização em tempo real --- #
-plt.ion()  # Modo interativo
-dag = ProgressiveDAG(max_layers=25, bifurcation_prob=0.6, seed=random.randint(1, 100))
+VISUALIZE = True  # Altere para False para desativar a visualização
+
+if VISUALIZE:
+    plt.ion()  # Modo interativo
+
+dag = ProgressiveDAG(max_layers=10, bifurcation_prob=0.6, 
+                    seed=random.randint(1, 100), visualize=VISUALIZE)
 
 # Visualização inicial
 dag.visualize(current_node=0)
@@ -120,12 +134,16 @@ for _ in range(12):  # Faz 12 movimentos
         print("O agente chegou a um nó sem saída!")
         break
 
-plt.ioff()  # Desativa o modo interativo
-dag.visualize()  # Mostra o resultado final
+if VISUALIZE:
+    plt.ioff()  # Desativa o modo interativo
+    dag.visualize()  # Mostra o resultado final
 
 print("\nResumo da exploração:")
 print("Caminho do agente:", path)
 print("Nós visitados:", sorted(dag.visited))
 print("Fronteira final:", list(dag.frontier))
 print("Total de nós gerados:", dag.next_node)
-plt.show() 
+print("Expansões da fronteira:", dag.frontier_expansion_count)
+
+if VISUALIZE:
+    plt.show()  # Mantém a janela aberta
