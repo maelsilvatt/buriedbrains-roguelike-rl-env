@@ -29,6 +29,7 @@ class ProgressiveDAG:
             return
             
         self.frontier.remove(node)
+        self.frontier_expansion_count += 1
         self.visited.add(node)
         self.G.nodes[node]['visited'] = True
         
@@ -45,7 +46,7 @@ class ProgressiveDAG:
             self.G.add_edge(node, child)
             self.layers[child] = current_layer + 1
             self.G.add_node(child, layer=current_layer + 1, visited=False)
-            self.frontier.append(child)            
+            self.frontier.append(child)                        
             
             if self.visualize_enabled:
                 # Calcula posição para o novo nó
@@ -53,7 +54,7 @@ class ProgressiveDAG:
                 y_offset = 0.5 if children == 2 else 0
                 y_pos = self.pos[node][1] + (y_offset if _ == 0 else -y_offset)
                 self.pos[child] = (x_pos, y_pos)
-                self.frontier_expansion_count = len(self.frontier) - 1  # Atualiza contador de expansões da fronteira
+                  # Atualiza contador de expansões da fronteira
 
             self.next_node += 1
     
@@ -108,12 +109,12 @@ class ProgressiveDAG:
         self.fig.canvas.draw()
 
 # --- Simulação com visualização em tempo real --- #
-VISUALIZE = True  # Altere para False para desativar a visualização
+VISUALIZE = False
 
 if VISUALIZE:
     plt.ion()  # Modo interativo
 
-dag = ProgressiveDAG(max_layers=10, bifurcation_prob=0.6, 
+dag = ProgressiveDAG(max_layers=50000, bifurcation_prob=0.6, 
                     seed=random.randint(1, 100), visualize=VISUALIZE)
 
 # Visualização inicial
@@ -121,7 +122,7 @@ dag.visualize(current_node=0)
 
 # Simulação do agente explorando
 path = [0]  # Raiz
-for _ in range(12):  # Faz 12 movimentos
+for _ in range(50000):  # Faz 50000 movimentos
     current = path[-1]
     neighbors = dag.agent_move(current)
     
@@ -139,9 +140,9 @@ if VISUALIZE:
     dag.visualize()  # Mostra o resultado final
 
 print("\nResumo da exploração:")
-print("Caminho do agente:", path)
-print("Nós visitados:", sorted(dag.visited))
-print("Fronteira final:", list(dag.frontier))
+# print("Caminho do agente:", path)
+# print("Nós visitados:", sorted(dag.visited))
+# print("Fronteira final:", list(dag.frontier))
 print("Total de nós gerados:", dag.next_node)
 print("Expansões da fronteira:", dag.frontier_expansion_count)
 
