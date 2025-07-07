@@ -1,0 +1,227 @@
+\documentclass[a4paper, 11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[portuguese]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{geometry}
+\usepackage{tikz}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{float}
+
+\geometry{a4paper, margin=1in}
+\usetikzlibrary{arrows.meta, decorations.markings, calc, patterns, shapes.geometric}
+
+\hypersetup{
+colorlinks=true,
+linkcolor=blue,
+filecolor=magenta,
+urlcolor=cyan,
+pdftitle={Modelagem Hiperbólica do Karma},
+pdfpagemode=FullScreen,
+}
+
+\title{\textbf{Uma Proposta de Modelagem Hiperbólica do Karma como Fibrado sobre o Disco de Poincaré}}
+\author{Ismael S. Silva}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent Este trabalho introduz um modelo geométrico para o conceito de \textit{karma}, utilizando a estrutura de um fibrado sobre o Disco de Poincaré. O objetivo é capturar nuances complexas das interações e reputações humanas que são difíceis de representar em modelos tradicionais. Argumentamos que a geometria hiperbólica oferece uma representação robusta para a sensibilidade contextual da reputação, a interconexão de extremos morais e a dependência da trajetória histórica. O karma de um agente é definido por um ponto no Disco de Poincaré (magnitude e natureza) e por uma fibra associada (contexto). A dinâmica é descrita por um fluxo estocástico, e a métrica hiperbólica intrinsecamente modela como pequenas transgressões podem ter consequências drásticas para reputações elevadas. Esta abordagem oferece um arcabouço matemático elegante e expressivo para a análise formal de sistemas de reputação.
+\end{abstract}
+
+\section{Introdução}
+A avaliação da reputação e do caráter moral, frequentemente encapsulada no termo \textit{karma}, é um pilar fundamental das interações sociais. Modelos existentes, muitas vezes baseados em métricas escalares ou grafos simples, falham em capturar certas dinâmicas observadas no comportamento humano. Este trabalho busca endereçar essa lacuna, motivado pelas seguintes observações empíricas:
+
+\begin{itemize}
+\item \textbf{Sensibilidade à Reputação (Vulnerabilidade do Eminente):} Faltas morais cometidas por indivíduos de alta reputação tendem a gerar um impacto desproporcionalmente maior do que as mesmas faltas cometidas por aqueles já vistos de forma negativa.
+\item \textbf{Confiança Paradoxal (Atração dos Opostos):} Indivíduos com um histórico notavelmente altruísta por vezes demonstram uma confiança inesperada ou uma afinidade por agentes com reputação extremamente baixa.
+\item \textbf{Dependência de Contexto (Incomensurabilidade de Reputações):} Agentes com níveis de reputação quantitativamente similares, mas construídos em domínios distintos (p. ex., profissional vs. pessoal), podem não ter uma base comum de confiança, levando à mútua desconfiança.
+\end{itemize}
+
+Para capturar tais fenômenos, propomos um modelo onde o karma não é um simples escalar, mas um elemento de um espaço com rica estrutura geométrica e topológica. Especificamente, sugerimos modelá-lo como uma seção de um \textbf{fibrado vetorial} cuja base é o \textbf{Disco de Poincaré}. Esta abordagem permite não apenas quantificar a "magnitude" da reputação, mas também sua "natureza" e "contexto".
+
+\section{O Modelo Geométrico do Karma}
+
+\subsection{O Espaço de Estados: O Disco de Poincaré}
+O estado fundamental do karma de um agente é representado por um ponto $K$ no Disco de Poincaré, $\mathbb{D}$, que é o disco unitário aberto no plano complexo:
+$$
+K \in \mathbb{D} = \{ z \in \mathbb{C} : |z| < 1 \}
+$$
+Nesta representação:
+\begin{itemize}
+\item A \textbf{origem ($z=0$)} representa um estado de neutralidade moral ou reputação indefinida.
+\item A \textbf{magnitude $|z|$} quantifica a força da reputação. Valores de $|z|\to1$ indicam uma reputação extremamente consolidada (positiva ou negativa).
+\item O \textbf{argumento $\arg(z)$} qualifica a natureza ou o "sabor" do karma. Agentes em diferentes direções angulares, mesmo com a mesma magnitude, possuem reputações de naturezas distintas.
+\end{itemize}
+
+A interação entre estados é medida pela métrica hiperbólica, que para dois pontos $z_1, z_2 \in \mathbb{D}$ é dada por:
+$$
+d_H(z_1, z_2) = \operatorname{arcosh} \left( 1 + \frac{2|z_1 - z_2|^2}{(1 - |z_1|^2)(1 - |z_2|^2)} \right)
+$$
+A propriedade fundamental desta métrica é sua não-uniformidade. A distância hiperbólica entre dois pontos com uma separação euclidiana fixa $\Delta z$ aumenta drasticamente à medida que os pontos se aproximam da fronteira $|z|=1$. Esta característica modela de forma natural a "sensibilidade moral": uma pequena perturbação no karma de um agente com reputação elevada ($|z|\approx1$) resulta numa mudança de estado muito maior do que a mesma perturbação para um agente próximo da neutralidade (Figura 1).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=3.5, font=\small]
+% Disco de Poincaré
+\def\radius{1}
+\draw[thick, gray] (0,0) circle (\radius);
+\node[below left] at (0,0) {$z=0$};
+\fill (0,0) circle (0.4pt);
+
+    % Par de pontos perto do centro
+    \coordinate (A1) at (0.1, 0.1);
+    \coordinate (A2) at (0.3, 0.1);
+    \fill[blue] (A1) circle (0.5pt) node[above] {$z_1$};
+    \fill[blue] (A2) circle (0.5pt) node[above] {$z_2$};
+    \draw[<->, blue, thick] (A1) -- (A2) node[midway, below] {$d_E(z_1,z_2)$};
+    \node[blue, align=center] at (0,-1.3) {Distância Hiperbólica $d_H(z_1,z_2)$ \\ é relativamente pequena};
+
+    % Par de pontos perto da borda
+    \coordinate (B1) at (0.7, 0.5);
+    \coordinate (B2) at (0.9, 0.5);
+    \fill[red] (B1) circle (0.5pt) node[above] {$z_3$};
+    \fill[red] (B2) circle (0.5pt) node[above] {$z_4$};
+    \draw[<->, red, thick] (B1) -- (B2) node[midway, below] {$d_E(z_3,z_4) = d_E(z_1,z_2)$};
+    
+    % Geodésica para o par da borda
+    \begin{scope}
+        \clip (0,0) circle (\radius);
+        \draw[red, thick, dashed] (0.783,1.33) circle (0.833);
+    \end{scope}
+    
+    \node[red, align=center] at (0, -1.6) {Distância Hiperbólica $d_H(z_3,z_4)$ \\ é significativamente maior};
+    
+    \node at (0,1.1) {\textbf{Distorção da Métrica Hiperbólica}};
+\end{tikzpicture}
+\caption{Ilustração da sensibilidade da métrica hiperbólica. Dois pares de pontos com a mesma distância euclidiana. O par mais próximo da fronteira ($|z|=1$) possui uma distância hiperbólica (arco tracejado) muito maior, modelando a alta vulnerabilidade de reputações consolidadas.}
+\label{fig:metric}
+\end{figure}
+
+\subsection{Estrutura do Fibrado: Incorporando o Contexto}
+Para modelar a dependência de contexto, elevamos o nosso espaço de estados de um simples disco para um \textbf{fibrado} $E$ sobre o disco $\mathbb{D}$. A estrutura formal é $E \xrightarrow{\pi} \mathbb{D}$, onde:
+\begin{itemize}
+\item A \textbf{base} é o Disco de Poincaré $\mathbb{D}$, representando o estado de karma (magnitude e natureza).
+\item A \textbf{fibra} $F_z$ em cada ponto $z \in \mathbb{D}$ é um espaço que representa os diferentes contextos nos quais o karma se manifesta. A fibra pode ser um conjunto discreto, e.g., $F=\{\text{Profissional, Pessoal, Online}\}$, ou um espaço contínuo.
+\end{itemize}
+O estado completo de um agente é, portanto, uma seção deste fibrado, i.e., um par $(z,v)$ onde $z \in \mathbb{D}$ e $v \in F_z$. Dois agentes, $A_1$ e $A_2$, podem ter o mesmo karma base $z_1 = z_2$, mas se seus contextos $v_1 \neq v_2$ forem diferentes, eles ocuparão pontos distintos no espaço total $E$. Isso formaliza a noção de que uma "boa reputação" no trabalho não é diretamente transferível para um contexto pessoal (Figura 2).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=3.5, font=\small]
+% Base: Disco de Poincaré
+\draw[thick, pattern=north west lines, pattern color=gray!30] (0,0) circle (1);
+\node at (0,-1.2) {Base $\mathbb{D}$ (Espaço de Karma)};
+
+    % Ponto z1
+    \coordinate (z1) at (0.6, 0.5);
+    \fill[blue] (z1) circle (0.8pt) node[below left] {$z_1$};
+    
+    % Fibra em z1
+    \draw[->, thick, blue!80!black] (z1) -- ++(0.1, 0.4) node[right, black] {Fibra $F_{z_1}$ (Contexto)};
+    \begin{scope}[shift={(z1)}, xshift=15, yshift=40]
+        \draw[blue!60, fill=blue!10] (0,0) ellipse (0.2 and 0.4);
+        \node at (0.4, 0.3) {Pessoal};
+        \node at (0.4, 0) {Prof.};
+        \node at (0.4, -0.3) {Online};
+    \end{scope}
+
+    % Ponto z2
+    \coordinate (z2) at (-0.7, -0.2);
+    \fill[red] (z2) circle (0.8pt) node[above right] {$z_2$};
+    
+    % Fibra em z2
+    \draw[->, thick, red!80!black] (z2) -- ++(0.1, 0.4) node[right, black] {Fibra $F_{z_2}$};
+    \begin{scope}[shift={(z2)}, xshift=15, yshift=40]
+        \draw[red!60, fill=red!10] (0,0) ellipse (0.2 and 0.4);
+    \end{scope}
+
+    \node at (0,1.1) {\textbf{Estrutura do Fibrado de Karma}};
+\end{tikzpicture}
+\caption{O estado do karma é um ponto na base $\mathbb{D}$, e a ele está associada uma fibra $F_z$ que descreve o contexto. Dois agentes podem ter karmas de natureza distinta ($z_1 \neq z_2$) e cada um possui seu próprio conjunto de contextos.}
+\label{fig:bundle}
+\end{figure}
+
+\section{Dinâmica e Topologia do Karma}
+
+\subsection{Evolução do Estado}
+A evolução do karma ao longo do tempo pode ser modelada como um fluxo no disco de Poincaré, sujeito a perturbações. Propomos uma equação diferencial estocástica do tipo Langevin:
+$$
+\frac{dz}{dt} = -\nabla_H \Phi(z, v) + \rho \cdot \xi(t)
+$$
+onde:
+\begin{itemize}
+\item $\Phi(z,v)$ é um \textbf{potencial de reputação}, dependente do estado $z$ e do contexto $v \in F_z$. Seus mínimos locais representam estados de karma estáveis ou "atratores".
+\item $\nabla_H$ é o gradiente hiperbólico, que garante que o fluxo respeite a geometria do espaço.
+\item $\rho \cdot \xi(t)$ é um termo de ruído estocástico (p. ex., ruído branco complexo) que modela eventos imprevisíveis (ações, boatos) que afetam a reputação. A intensidade do ruído é $\rho$.
+\end{itemize}
+
+\subsection{A Fronteira e a Conexão entre Extremos}
+A fronteira do disco, $\partial\mathbb{D}=\{z \in \mathbb{C} : |z|=1\}$, conhecida como \textit{círculo no infinito}, não pertence ao espaço de estados, mas desempenha um papel conceitual crucial. Pontos na fronteira estão a uma distância hiperbólica infinita de qualquer ponto interior.
+
+Neste modelo, a fronteira representa os "ideais" morais absolutos. Por exemplo, $z=1$ pode ser o "altruísmo puro" e $z=-1$ o "antagonismo puro". Embora metricamente infinitamente distantes, eles pertencem à mesma fronteira topológica. As geodésicas (as "linhas retas" da geometria hiperbólica, que são arcos de círculo ortogonais à fronteira) conectam pontos na fronteira. Isto ilustra como dois extremos morais, aparentemente opostos, podem ser vistos como partes de um mesmo contínuo conceitual. A "proximidade" paradoxal entre um agente altruísta ($|z_A|\approx1$) e um antagonista ($|z_B|\approx1$) pode ser interpretada como ambos sendo fortemente definidos por um eixo moral comum (Figura 3).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=3, font=\small]
+% Disco e Fronteira
+\def\radius{1}
+\draw[thick] (0,0) circle (\radius);
+\node[above] at (0, \radius) {\small Benevolência};
+\node[below] at (0, -\radius) {\small Malevolência};
+\node[left] at (-\radius, 0) {\small Caos};
+\node[right] at (\radius, 0) {\small Ordem};
+
+    % Agentes
+    \coordinate (A) at (0.9, 0);
+    \coordinate (B) at (-0.85, 0.1);
+    \fill[blue] (A) circle (0.8pt) node[below] {$K_{altruista}$};
+    \fill[red] (B) circle (0.8pt) node[below] {$K_{antagonista}$};
+
+    % Geodésica conectando os extremos
+    \begin{scope}
+        \clip (0,0) circle (\radius);
+        \draw[thick, purple, dashed] (0.04, -1.9) circle (1.9);
+    \end{scope}
+    
+    \node[purple] at (0, 0.5) {Eixo moral comum};
+    
+    % Trajetória de um agente
+    \coordinate (p1) at (0.2, 0.2);
+    \coordinate (p2) at (0.8, -0.3);
+    \fill (p1) circle (0.6pt) node[left]{$t_0$};
+    \fill (p2) circle (0.6pt) node[right]{$t_1$};
+    
+    \begin{scope}
+        \clip (0,0) circle (\radius);
+        \draw[-{Stealth[length=2mm, width=1.5mm]}, green!50!black] (p1) .. controls (0.4, -0.1) and (0.6, 0.0) .. (p2);
+    \end{scope}
+    
+    \node[green!50!black] at (0.3,-0.6) {Trajetória de $\Delta K$};
+    
+    \node at (0, -1.3) {\textbf{Geodésicas e Trajetórias no Espaço de Karma}};
+\end{tikzpicture}
+\caption{A fronteira $\partial\mathbb{D}$ representa ideais morais. Uma geodésica (linha tracejada roxa) ilustra o contínuo que conecta extremos opostos. Uma trajetória de karma (seta verde) descreve a evolução da reputação de um agente ao longo do tempo.}
+\label{fig:geodesics}
+\end{figure}
+
+\section{Interpretação e Vantagens do Modelo}
+
+A modelagem proposta oferece um arcabouço conceitual que traduz as observações iniciais em propriedades geométricas:
+
+\begin{itemize}
+\item \textbf{Direcionalidade e Contexto:} Dois agentes com idêntica magnitude de karma, $|K_1| = |K_2|$, mas com direções ($\arg(K_1) \neq \arg(K_2)$) ou contextos ($v_1 \neq v_2$) distintos, são representados por pontos fundamentalmente diferentes. Isso captura como a "origem" e o "domínio" de uma reputação influenciam a percepção social.
+
+\item \textbf{Proximidade Contraintuitiva:} A noção de que agentes em extremos do espectro moral estão, de certa forma, "próximos" é representada pela sua partilha de uma fronteira topológica comum. A atração de um altruísta por um antagonista pode ser modelada como uma dinâmica sobre geodésicas que conectam essas regiões da fronteira.
+
+\item \textbf{Sensibilidade Moral Intrínseca:} A distorção da métrica perto da fronteira $|z|=1$ é uma característica intrínseca do modelo. Ela implica que reputações "quase perfeitas" são inerentemente instáveis e frágeis, sem a necessidade de parâmetros ad hoc. Uma pequena transgressão acarreta uma grande "distância" percorrida no espaço de estados.
+\end{itemize}
+
+Enquanto modelos alternativos, como os probabilísticos bayesianos, demandariam vastos conjuntos de dados para inferir tais sutilezas, a abordagem via geometria hiperbólica permite codificar estas dinâmicas complexas na própria estrutura matemática do espaço de estados. Este formalismo se mostra particularmente poderoso ao ser estendido para a estrutura de fibrado, abrindo avenidas para investigações futuras sobre a interação entre diferentes domínios da reputação e a topologia das trajetórias morais.
+
+\end{document}
