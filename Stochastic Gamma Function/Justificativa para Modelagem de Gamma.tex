@@ -17,59 +17,71 @@
 \maketitle
 
 \begin{abstract}
-Este documento apresenta a justificativa e a arquitetura formal da função de geração procedural de conteúdo, denominada Gamma ($\Gamma$), para o ambiente de simulação multiagente \textit{BuriedBrains}. Argumentamos que, para testar rigorosamente hipóteses sobre comportamentos emergentes e sensibilidade ao risco, uma geração puramente aleatória é insuficiente, pois introduz ruído estocástico que obscurece os padrões de aprendizado. Em contrapartida, um modelo excessivamente determinístico falha em promover a generalização. Propomos uma arquitetura condicional que equilibra variabilidade e controle. A função $\Gamma$ utiliza um sistema de orçamento de dificuldade, sensível ao estado do jogo ($k$) e à topologia do grafo ($T$), para modular uma série de decisões probabilísticas. O resultado é a criação de uma "paisagem de risco e oportunidade" que é ao mesmo tempo dinâmica, coerente e rica em contexto, constituindo um componente fundamental do design experimental do ambiente.
+Este documento apresenta a justificativa e a arquitetura formal da função de geração procedural de conteúdo, denominada Gamma ($\Gamma$), para o ambiente de simulação multiagente \textit{BuriedBrains}. Argumentamos que, para testar rigorosamente hipóteses sobre comportamentos emergentes e sensibilidade ao risco, uma geração puramente aleatória é insuficiente, pois introduz ruído estocástico que obscurece os padrões de aprendizado. Em contrapartida, um modelo excessivamente determinístico falha em promover a generalização de políticas. Propomos uma arquitetura de geração sequencial e condicional que modela as interdependências entre os elementos do ambiente. A função $\Gamma$ utiliza um sistema de orçamento de complexidade, sensível ao contexto externo (trajetória do agente $k$ e topologia $T$), para guiar uma cadeia de decisões probabilísticas que possuem coerência interna. O resultado é a criação de uma paisagem de risco e oportunidade que é ao mesmo tempo dinâmica, sistêmica e rica em contexto, constituindo um componente fundamental do design experimental deste benchmark.
 \end{abstract}
 
 \section{Introdução e Motivação}
 
-O ambiente \textit{BuriedBrains} foi concebido como um laboratório computacional para o estudo de comportamentos sociais complexos em agentes de inteligência artificial. Um pilar central deste ambiente é a sua natureza procedural, que visa testar a capacidade de generalização e planejamento de longo prazo dos agentes. Para que este objetivo seja alcançado, a função de geração de conteúdo, $\Gamma$, não pode ser um mero mecanismo de aleatorização. Ela deve ser um componente integrante do design experimental.
+O ambiente \textit{BuriedBrains} foi concebido como um laboratório computacional para o estudo de comportamentos complexos em agentes de inteligência artificial com memória. Um pilar central deste ambiente é a sua natureza procedural, que visa testar a capacidade de generalização e planejamento de longo prazo dos agentes. Para que este objetivo seja alcançado, a função de geração de conteúdo, $\Gamma$, não pode ser um mero mecanismo de aleatorização. Ela deve ser um componente integrante do design experimental.
 
-A motivação para uma modelagem mais sofisticada surge da insuficiência de abordagens mais simples:
+A motivação para uma modelagem mais sofisticada surge da insuficiência de abordagens mais simples para a criação de um benchmark robusto:
 \begin{itemize}
-    \item \textbf{Geração Puramente Aleatória:} Um modelo que seleciona conteúdo de forma arbitrária, mesmo que a partir de distribuições ponderadas, falha em criar uma curva de dificuldade coerente. O risco se torna uniforme e imprevisível, tornando impossível testar hipóteses sobre estratégias sensíveis ao risco (H2), pois o agente não tem um gradiente de risco para aprender.
-    \item \textbf{Geração Estruturada Rígida:} Um modelo que sempre segue templates fixos, embora controlado, torna-se previsível e repetitivo. Isso compromete a necessidade de generalização (H4), pois o agente pode simplesmente memorizar os padrões, em vez de aprender as mecânicas subjacentes.
+    \item \textbf{Geração Puramente Aleatória:} Um modelo que seleciona conteúdo de forma arbitrária falha em criar um gradiente de complexidade coerente. O risco se torna uniforme e imprevisível, tornando impossível testar hipóteses sobre estratégias sensíveis ao risco (H2), pois o agente não tem uma estrutura de risco para aprender.
+    \item \textbf{Geração Estruturada Rígida:} Um modelo que segue templates fixos, embora controlado, torna-se previsível. Isso compromete a necessidade de generalização (H4), pois o agente pode simplesmente memorizar sequências de estados ótimos, em vez de aprender as mecânicas subjacentes do ambiente.
 \end{itemize}
-
-Diante disso, a função $\Gamma$ foi projetada para atuar como um "Mestre de Jogo" (Dungeon Master) algorítmico, que cria desafios contextuais em vez de obstáculos aleatórios.
+Diante disso, a função $\Gamma$ foi projetada para atuar como um mecanismo de orquestração procedural, que instancia desafios contextuais e sistemicamente coerentes, em vez de obstáculos aleatórios.
 
 \section{Arquitetura da Função Gamma}
 
-A arquitetura escolhida para $\Gamma$ é sequencial, condicional e baseada em um sistema de economia interna (custo e orçamento). Ela decompõe a complexa tarefa de gerar uma sala em uma série de decisões probabilísticas menores e bem definidas.
+A arquitetura escolhida para $\Gamma$ é sequencial, condicional e baseada em um sistema de economia interna (custo e orçamento). Ela decompõe a complexa tarefa de instanciar o conteúdo de um vértice em uma cadeia de decisões probabilísticas interdependentes, que garantem coerência lógica e estratégica ao desafio gerado.
 
 \subsection{Estrutura Baseada em Slots e Categorias}
 
-Para garantir controle estrutural, o vetor de atributos da sala, $\alpha(v)$, é definido como uma tupla de três elementos, onde cada elemento (ou "slot") corresponde a uma categoria de conteúdo:
+Para garantir controle estrutural, o vetor de atributos de um vértice, $\alpha(v)$, é definido como uma tupla de três elementos, onde cada elemento ("slot") corresponde a uma categoria de conteúdo:
 $$\alpha(v) = (c_i, c_e, c_f)$$
-Onde $c_i \in \text{Pool}_{\text{inimigos}} \cup \{\emptyset\}$, $c_e \in \text{Pool}_{\text{eventos}} \cup \{\emptyset\}$, e $c_f \in \text{Pool}_{\text{efeitos}} \cup \{\emptyset\}$. Esta estrutura impõe um limite máximo de um item por categoria, evitando a geração de salas caóticas e não balanceadas, e tornando o espaço de configurações de sala mais tratável.
+Onde $c_{i} \in \text{Pool}_{\text{inimigos}} \cup \{\emptyset\}$, $c_{e} \in \text{Pool}_{\text{eventos}} \cup \{\emptyset\}$, e $c_{f} \in \text{Pool}_{\text{efeitos}} \cup \{\emptyset\}$. Esta estrutura impõe um limite máximo de um item por categoria, evitando a geração de configurações caóticas e não balanceadas.
 
 \subsection{O Sistema de Orçamento e Custo}
 
-O núcleo do mecanismo de controle é um sistema de economia de dificuldade.
+O núcleo do mecanismo de controle é um sistema de economia de complexidade.
 \begin{itemize}
-    \item \textbf{Custo:} A cada entidade de conteúdo $j$ é associado um $\text{Custo}(j) \in \mathbb{R}$, que quantifica seu impacto na dificuldade (positivo para desafios, negativo para recompensas).
-    \item \textbf{Orçamento:} A cada sala $v$ é alocado um $\text{Orçamento}(v) \in \mathbb{R}^+$, que representa sua capacidade total de desafio.
+    \item \textbf{Custo:} A cada entidade de conteúdo $j$ é associado um $\text{Custo}(j) \in \mathbb{R}$, que quantifica seu impacto na complexidade do desafio.
+    \item \textbf{Orçamento:} A cada vértice $v$ é alocado um $\text{Orçamento}(v) \in \mathbb{R}^+$, que representa sua capacidade total de desafio.
 \end{itemize}
-Este sistema garante que desafios de alto custo (e.g., `Inimigo de Elite`) só possam aparecer em salas com um orçamento correspondentemente alto, estabelecendo uma relação fundamental entre a capacidade de uma sala e o conteúdo que ela pode abrigar.
+Este sistema garante que desafios de alto custo (e.g., `Inimigo de Elite`) só possam ser instanciados em vértices com um orçamento correspondentemente alto.
 
-\subsection{Condicionamento pela Topologia e Estado do Jogo}
+\subsection{Modelo de Geração Condicional e Sequencial}
 
-A principal inovação do modelo é que tanto o orçamento quanto a probabilidade de preenchimento de cada slot são condicionados pelo estado do jogo e pela topologia do grafo. Seja $k$ o andar atual e $T = (\text{progresso}, \text{eh\_corredor})$ o vetor de informação topológica.
+A principal inovação do modelo é que a geração de conteúdo não ocorre de forma paralela, mas como uma cadeia de eventos condicionais. A geração é guiada por um contexto \textbf{externo} (topologia e progresso) e um contexto \textbf{interno} (as entidades já alocadas nos slots do próprio vértice).
 
-O orçamento inicial, $B_0$, é uma função determinística $B_0(k, T)$. Isso garante que salas em finais de andar (alto `progresso`) ou em posições estratégicas (não-corredores) recebam um orçamento maior, e vice-versa.
-
-Adicionalmente, a probabilidade $p_{cat}$ de um slot de categoria ser preenchido também é uma função da topologia, $p_{cat}(T)$. Por exemplo, a probabilidade de um evento complexo ocorrer em um corredor é drasticamente reduzida, enquanto a chance de encontrar um inimigo em uma sala final é aumentada. Este condicionamento transforma a função $\Gamma$ em um gerador sensível ao contexto.
+Primeiramente, o orçamento inicial, $B_0$, é determinado pelo contexto externo. Seja $k$ a profundidade do agente na trajetória e $T$ o vetor de informação topológica, temos:
+$$B_0 = B(k, T)$$
+Isso garante que vértices em estágios avançados ou em posições estratégicas recebam um orçamento maior. A partir daí, a geração segue uma sequência que modela a distribuição de probabilidade conjunta dos atributos como:
+$$P(c_i, c_e, c_f \mid B_0) = P(c_i \mid B_0) \cdot P(c_e \mid c_i, B_0) \cdot P(c_f \mid c_i, c_e, B_0)$$
+Na prática, o processo utiliza um orçamento residual para restringir as escolhas subsequentes:
+\begin{enumerate}
+    \item \textbf{Geração do Inimigo ($c_i$):} O primeiro slot é preenchido com base no orçamento inicial.
+    $$c_i \sim P(\cdot \mid B_0)$$
+    \item \textbf{Geração do Evento ($c_e$):} O orçamento é atualizado, e o evento é escolhido com base no inimigo já presente e no orçamento restante.
+    $$B_{\text{res}_1} = B_0 - \text{Custo}(c_i)$$
+    $$c_e \sim P(\cdot \mid c_i, B_{\text{res}_1})$$
+    \item \textbf{Geração do Efeito ($c_f$):} O processo se repete, condicionando a escolha final aos elementos já definidos e ao orçamento final.
+    $$B_{\text{res}_2} = B_{\text{res}_1} - \text{Custo}(c_e)$$
+    $$c_f \sim P(\cdot \mid c_i, c_e, B_{\text{res}_2})$$
+\end{enumerate}
+Este modelo sequencial garante que a configuração final do vértice seja sistemicamente coerente. Por exemplo, a presença de um `Inimigo Forte` pode aumentar a probabilidade de um `Terreno Lento`, criando um desafio sinérgico e logicamente consistente.
 
 \section{Vantagens e Implicações para a Pesquisa}
 
-A adoção desta arquitetura para a função $\Gamma$ oferece vantagens cruciais para os objetivos do \textit{BuriedBrains}.
+A adoção desta arquitetura para a função $\Gamma$ oferece vantagens cruciais para os objetivos do \textit{BuriedBrains} como plataforma de benchmark.
 
 \begin{itemize}
-    \item \textbf{Criação de Paisagens de Risco Estruturadas:} Ao modular a dificuldade com base no progresso e na função da sala, o ambiente apresenta ao agente um gradiente de risco claro e aprendível. Isso é essencial para investigar se o agente desenvolve políticas prudentes e sensíveis ao risco.
-    \item \textbf{Promoção de Generalização Sofisticada:} O ambiente exibe padrões contextuais consistentes (e.g., "corredores são mais seguros que salas finais"). Para ter sucesso, o agente deve aprender a reconhecer esses contextos e adaptar sua estratégia, em vez de apenas reagir a entidades individuais. Isso cria um teste robusto para a generalização de políticas.
-    \item \textbf{Controle e Reprodutibilidade:} A natureza parametrizada do sistema (custos, pesos, fórmulas de orçamento) permite um balanceamento fino e a condução de experimentos controlados e reprodutíveis, que são a base de qualquer investigação científica rigorosa.
+    \item \textbf{Criação de Paisagens de Risco Sinergéticas:} Ao modelar as interdependências entre os desafios, o ambiente apresenta ao agente paisagens de risco com coerência interna. O perigo não é apenas a soma das partes, mas o resultado de suas sinergias. Isso é essencial para investigar se o agente desenvolve políticas prudentes (H2), capazes de avaliar riscos multifacetados e contextuais.
+    \item \textbf{Promoção de Generalização Profunda:} O ambiente exibe padrões contextuais consistentes e sistêmicos. Para obter um desempenho ótimo, o agente é forçado a aprender um modelo implícito do mundo, inferindo as "regras ocultas" que governam as correlações entre as entidades (e.g., $P(c_f|c_i)$). Isso cria um teste muito mais robusto para a generalização de políticas (H4), indo além do reconhecimento de padrões superficiais.
+    \item \textbf{Controle e Reprodutibilidade:} A natureza parametrizada do sistema (custos, pesos, probabilidades condicionais) permite um balanceamento fino e a condução de experimentos controlados e reprodutíveis, que são a base de qualquer investigação científica rigorosa.
 \end{itemize}
 
 \section{Conclusão}
-A modelagem da função $\Gamma$ como um processo condicional, estruturado e sensível ao contexto é uma decisão de design deliberada para alinhar o ambiente \textit{BuriedBrains} aos seus objetivos de pesquisa. Ela substitui o ruído de uma aleatoriedade pura pela complexidade rica de um sistema com coerência interna. Ao fazê-lo, transforma o ambiente em uma plataforma robusta, não apenas para jogar, mas para medir e analisar a emergência de estratégias inteligentes em face de um mundo dinâmico e cheio de nuances.
+A modelagem da função $\Gamma$ como um processo de geração sequencial e condicional é uma decisão de design deliberada para alinhar o ambiente \textit{BuriedBrains} aos seus objetivos de pesquisa. Esta abordagem substitui o ruído de uma aleatoriedade pura pela complexidade rica de um sistema com coerência interna e sinergias estratégicas. Ao fazê-lo, $\Gamma$ transforma o ambiente em uma plataforma de benchmark rigorosa, projetada especificamente para medir e analisar a emergência de estratégias inteligentes que devem compreender e explorar as regras subjacentes de um mundo dinâmico e parcialmente observável.
 
 \end{document}

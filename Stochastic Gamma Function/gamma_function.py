@@ -10,7 +10,7 @@ ANDAR_ATUAL_K = 4
 # Estes parâmetros seriam fornecidos pelo seu ambiente de simulação em tempo real
 NUM_SALAS_VISITADAS = 8   # O agente já visitou 8 salas
 TOTAL_SALAS_ANDAR = 10  # O andar atual tem 10 salas no total
-corredor = False       # Esta sala NÃO é um corredor (mude para True para testar)
+bool_corredor = False       # Esta sala NÃO é um corredor (mude para True para testar)
 # ---------------------------------------------
 
 
@@ -64,7 +64,7 @@ def display_generation_status(params, budget, alpha_v, message=""):
     """Exibe o estado atual da geração da sala, incluindo a topologia."""
     clear_screen()
     print("--- GERADOR DE CONTEÚDO GAMMA | BuriedBrains ---")
-    print(f"Andar: {params['k']} | Progresso: {params['visitadas']}/{params['total']} | Corredor: {params['corredor']}")
+    print(f"Andar: {params['k']} | Progresso: {params['visitadas']}/{params['total']} | bool_corredor: {params['bool_corredor']}")
     print("-" * 60)
     print(f"ORÇAMENTO DE DIFICULDADE ATUAL: {budget:.2f}")
     print("-" * 60)
@@ -83,7 +83,7 @@ def display_generation_status(params, budget, alpha_v, message=""):
 
 # --- FUNÇÃO GAMMA (Versão Final com Topologia) ---
 
-def gamma(floor_k, num_salas_visitadas, total_salas_andar, corredor):
+def gamma(floor_k, num_salas_visitadas, total_salas_andar, bool_corredor):
     """
     Função Gamma: Gera o conteúdo de uma sala (alpha_v) de forma procedural,
     influenciada pela topologia do grafo.
@@ -94,15 +94,15 @@ def gamma(floor_k, num_salas_visitadas, total_salas_andar, corredor):
     progresso = num_salas_visitadas / total_salas_andar if total_salas_andar > 0 else 0
     bonus_progressao = 0.25 * progresso # Bônus de até 25% no final do andar
     
-    fator_corredor = 0.6 if corredor else 1.0 # Penalidade de 40% para corredores
+    fator_bool_corredor = 0.6 if bool_corredor else 1.0 # Penalidade de 40% para bool_corredores
     
-    final_budget = (base_budget * (1 + bonus_progressao)) * fator_corredor
+    final_budget = (base_budget * (1 + bonus_progressao)) * fator_bool_corredor
     
     # 2. Ajustar Probabilidades de Categoria com base na Topologia
     adj_category_chance = BASE_CATEGORY_ADD_CHANCE.copy() # Copia as chances base
     
-    if corredor:
-        adj_category_chance['EVENTOS'] = 0.10 # Chance muito baixa de eventos em corredores
+    if bool_corredor:
+        adj_category_chance['EVENTOS'] = 0.10 # Chance muito baixa de eventos em bool_corredores
         adj_category_chance['EFEITOS_SALA'] = 0.15
         
     if progresso > 0.8: # Se estiver nos últimos 20% do andar
@@ -110,7 +110,7 @@ def gamma(floor_k, num_salas_visitadas, total_salas_andar, corredor):
         adj_category_chance['EVENTOS'] = 0.75  # Chance alta de um evento final (tesouro/armadilha)
 
     # Coleta de parâmetros para visualização
-    params = {'k': floor_k, 'visitadas': num_salas_visitadas, 'total': total_salas_andar, 'corredor': corredor}
+    params = {'k': floor_k, 'visitadas': num_salas_visitadas, 'total': total_salas_andar, 'bool_corredor': bool_corredor}
     alpha_v = {'INIMIGOS': [], 'EVENTOS': [], 'EFEITOS_SALA': []}
     display_generation_status(params, final_budget, alpha_v, "Iniciando geração com topologia...")
 
@@ -150,11 +150,11 @@ def gamma(floor_k, num_salas_visitadas, total_salas_andar, corredor):
 if __name__ == "__main__":
     
     # Chama a função Gamma com os parâmetros ajustáveis
-    final_alpha_v = gamma(ANDAR_ATUAL_K, NUM_SALAS_VISITADAS, TOTAL_SALAS_ANDAR, corredor)
+    final_alpha_v = gamma(ANDAR_ATUAL_K, NUM_SALAS_VISITADAS, TOTAL_SALAS_ANDAR, bool_corredor)
 
     # Exibe um sumário final e limpo
     print("\n--- RESULTADO FINAL ---")
-    print(f"Config: Andar {ANDAR_ATUAL_K}, Progresso {NUM_SALAS_VISITADAS}/{TOTAL_SALAS_ANDAR}, Corredor: {corredor}")
+    print(f"Config: Andar {ANDAR_ATUAL_K}, Progresso {NUM_SALAS_VISITADAS}/{TOTAL_SALAS_ANDAR}, bool_corredor: {bool_corredor}")
     print("Conteúdo final (alpha_v) gerado:")
     if not any(final_alpha_v.values()):
         print("  A sala foi gerada vazia.")
