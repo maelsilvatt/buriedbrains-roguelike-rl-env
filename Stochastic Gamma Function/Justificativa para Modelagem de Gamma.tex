@@ -52,7 +52,7 @@ Este sistema garante que desafios de alto custo (e.g., `Inimigo de Elite`) só p
 
 \subsection{Modelo de Geração Condicional e Sequencial}
 
-A principal inovação do modelo é que a geração de conteúdo não ocorre de forma paralela, mas como uma cadeia de eventos condicionais. A geração é guiada por um contexto \textbf{externo} (topologia e progresso) e um contexto \textbf{interno} (as entidades já alocadas nos slots do próprio vértice).
+A principal característica do modelo é que a geração de conteúdo não ocorre de forma paralela, mas como uma cadeia de eventos condicionais. A geração é guiada por um contexto \textbf{externo} (topologia e progresso) e um contexto \textbf{interno} (as entidades já alocadas nos slots do próprio vértice).
 
 Primeiramente, o orçamento inicial, $B_0$, é determinado pelo contexto externo. Seja $k$ a profundidade do agente na trajetória e $T$ o vetor de informação topológica, temos:
 $$B_0 = B(k, T)$$
