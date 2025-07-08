@@ -109,7 +109,7 @@ class ProgressiveDAG:
         self.fig.canvas.draw()
 
 # --- Simulação com visualização em tempo real --- #
-VISUALIZE = False
+VISUALIZE = True
 
 if VISUALIZE:
     plt.ion()  # Modo interativo
