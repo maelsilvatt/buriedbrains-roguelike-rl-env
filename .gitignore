@@ -18,3 +18,4 @@
 *.synctex.gz
 *.toc
 \coretest
+\karma_val_venv
