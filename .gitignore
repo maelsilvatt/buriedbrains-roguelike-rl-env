@@ -13,7 +13,6 @@
 *.lof
 *.lot
 *.out
-*.pdf
 *.run.xml
 *.synctex.gz
 *.toc
