@@ -1,0 +1,338 @@
+# Pools and conditional rules for the "before" state
+pools:
+  enemies:
+    # Common Enemies (basic, low-cost, low-weight)
+    Zombie:
+      cost: 10
+      weight: 100
+      tags: [Common, Undead, Physical]
+    Skeleton Archer:
+      cost: 12
+      weight: 70
+      tags: [Common, Undead, Physical, Ranged]
+    Cave Spider:
+      cost: 11
+      weight: 75
+      tags: [Common, Beast, Poison, Debuff_Speed]
+    Bandit:
+      cost: 13
+      weight: 65
+      tags: [Common, Human, Physical]
+    Forest Wisp:
+      cost: 10
+      weight: 70
+      tags: [Common, Magical, Illusion]
+    Poisonous Mushroom:
+      cost: 8
+      weight: 80
+      tags: [Common, Beast, Poison, Debuff_Healing]
+    Goblin:
+      cost: 9
+      weight: 90
+      tags: [Common, Beast, Aggressive]
+    Shadow Assassin:
+      cost: 15
+      weight: 50
+      tags: [Common, Stealth, Debuff_Accuracy]
+    Cursed Spirit:
+      cost: 14
+      weight: 55
+      tags: [Common, Undead, Cursed, Debuff_Morale]
+    Poisoned Rat:
+      cost: 7
+      weight: 85
+      tags: [Common, Beast, Poison, Debuff_Speed]
+    Giant Bat:
+      cost: 10
+      weight: 75
+      tags: [Common, Beast, Aggressive]
+    Cursed Zombie:
+      cost: 12
+      weight: 60
+      tags: [Common, Undead, Cursed, Debuff_Morale]
+    Dark Cultist:
+      cost: 16
+      weight: 40
+      tags: [Common, Human, Magical, Debuff_Speed]
+    Poisoned Scorpion:
+      cost: 9
+      weight: 80
+      tags: [Common, Beast, Poison, Debuff_Speed]
+    Cursed Knight:
+      cost: 18
+      weight: 30
+      tags: [Common, Undead, Cursed, Physical, Tank]
+    Shadow Lurker:
+      cost: 14
+      weight: 60
+      tags: [Common, Stealth, Debuff_Accuracy]
+    Wild Boar:
+      cost: 9
+      weight: 80
+      tags: [Common, Beast, Physical, Aggressive]
+
+    # Bosses (heavy, high-cost, high-weight)
+    Lava Golem:
+      cost: 25
+      weight: 15
+      tags: [Elite, Thermal, Area_Damage]
+    Krul:
+      cost: 20
+      weight: 10
+      tags: [Elite, Physical, Heavy]
+    Laezarus:
+      cost: 22
+      weight: 5
+      tags: [Elite, Tank, Defensive]
+    'A Thousand Cursed':
+      cost: 23
+      weight: 3
+      tags: [Elite, Magical, Debuff_Speed]
+    'Queen Arachna':
+      cost: 48
+      weight: 6
+      tags: [Boss, Beast, Poison, Summoner]
+    'Ashen Monarch':
+      cost: 52
+      weight: 4
+      tags: [Boss, Thermal, Heat, Heavy]
+    'The Forgotten One':
+      cost: 55
+      weight: 3
+      tags: [Boss, Undead, Magical, Cursed, Control]
+
+    # Elite Enemies (more challenging, with unique abilities)
+    'Hopeless Agent':
+      cost: 40
+      weight: 5
+      tags: [Boss, Undead, Summoner]
+    'Bedrose Gardener':
+      cost: 30
+      weight: 10
+      tags: [Boss, Undead, Physical, Tank]
+    Lich:
+      cost: 50
+      weight: 20
+      tags: [Boss, Undead, Magical, Summoner]
+    'The Dark Knight':
+      cost: 45
+      weight: 15
+      tags: [Boss, Undead, Physical, Tank]
+    Kalisto:
+      cost: 35
+      weight: 5
+      tags: [Boss, Beast, Aggressive, Heavy]
+    'Berserker Spirit':
+      cost: 28
+      weight: 12
+      tags: [Elite, Undead, Aggressive, Physical]
+    'Flesh Abomination':
+      cost: 32
+      weight: 8
+      tags: [Elite, Undead, Cursed, Heavy]
+    'Twilight Stalker':
+      cost: 27
+      weight: 10
+      tags: [Elite, Stealth, Control_Fear]
+
+    # None
+    None:
+      cost: 0
+      weight: 40
+      tags: []
+
+  events:
+    # Common treasures (low cost, low weight)
+    Treasure:
+      cost: -5
+      weight: 50
+      tags: [Reward, Common]
+
+    # Morbid Treasure: (high cost, high weight, atracts undead)
+    'Morbid Treasure':
+      cost: -15
+      weight: 20
+      tags: [Reward, Morbid]
+
+    # Traps (hazards, high cost, high weight)
+    Trap:
+      cost: 8
+      weight: 40
+      tags: [Hazard, Physical]
+
+    # Cursed Altar: (high cost, high weight, cursed)
+    'Cursed Altar':
+      cost: 5
+      weight: 25
+      tags: [Hazard, Cursed, Morbid]
+
+    # Healing Fountain: (low cost, low weight, healing)
+    'Fountain of Life':
+      cost: -10
+      weight: 25
+      tags: [Reward, Healing, Sanctuary]
+
+    # Ambush: (surprise attack, high cost, high weight)
+    Ambush:
+      cost: 15
+      weight: 15
+      tags: [Hazard, Surprise_Attack]
+
+    # Dark Pact: (high risk, high reward)
+    'Dark Pact':
+      cost: 0
+      weight: 10
+      tags: [Risk_Reward, Morbid]
+
+    # None
+    None:
+      cost: 0
+      weight: 80
+      tags: []
+
+  effects:
+    'Slow Terrain':
+      cost: 5
+      weight: 30
+      tags: [Terrain, Debuff]
+    Heat:
+      cost: 7
+      weight: 15
+      tags: [Terrain, Thermal, Damage_Over_Time]
+    'Evasion Zone':
+      cost: -4
+      weight: 25
+      tags: [Buff, Defensive]
+    'Dense Fog':
+      cost: 4
+      weight: 20
+      tags: [Debuff, Visibility]
+    'Amplifying Field':
+      cost: -6
+      weight: 15
+      tags: [Buff, Magical]
+    'Consecrated Ground':
+      cost: -8
+      weight: 10
+      tags: [Buff, Sanctuary, Healing]
+
+    # None
+    None:
+      cost: 0
+      weight: 100
+      tags: []
+
+# Defining the content pools and conditional rules for the "before" state
+conditional_rules:
+  # Elites shape the environment around them.
+  - if_tag: Elite
+    then_tag: Terrain
+    multiplier: 2.5
+
+  # Bosses guard macabre treasures.
+  - if_tag: Boss
+    then_tag: Morbid
+    multiplier: 3.0
+
+  # A small bonus for simpler encounters.
+  - if_tag: Common
+    then_tag: Buff
+    multiplier: 1.5
+
+  # Strong thematic synergy.
+  - if_tag: Thermal
+    then_tag: Heat
+    multiplier: 10.0
+
+  # Undead and curses go hand in hand.
+  - if_tag: Undead
+    then_tag: Cursed
+    multiplier: 4.0
+
+  # Wild beasts can ambush prey.
+  - if_tag: Beast
+    then_tag: Surprise_Attack
+    multiplier: 3.0
+
+  # Sacred places often provide healing.
+  - if_tag: Sanctuary
+    then_tag: Healing
+    multiplier: 5.0
+
+  # Hazards are rare in sacred places.
+  - if_tag: Sanctuary
+    then_tag: Hazard
+    multiplier: 0.1
+
+  # Undead avoid holy ground.
+  - if_tag: Sanctuary
+    then_tag: Undead
+    multiplier: 0.05
+
+  # Archers are less effective in fog.
+  - if_tag: Ranged
+    then_tag: Visibility
+    multiplier: 0.2
+
+  # Healing and hazards rarely coexist.
+  - if_tag: Healing
+    then_tag: Hazard
+    multiplier: 0.3
+
+  # Poison enemies thrive in fog and hinder healing.
+  - if_tag: Poison
+    then_tag: Healing
+    multiplier: 0.2
+  - if_tag: Poison
+    then_tag: Visibility
+    multiplier: 2.0
+
+  # Control abilities synergize with Debuffs.
+  - if_tag: Control
+    then_tag: Debuff
+    multiplier: 3.0
+
+  # Stealth-based units favor low visibility.
+  - if_tag: Stealth
+    then_tag: Visibility
+    multiplier: 1.8
+
+  # Aggressive enemies are more common in wild terrains.
+  - if_tag: Aggressive
+    then_tag: Terrain
+    multiplier: 1.5
+
+  # Cursed creatures thrive in morbid settings.
+  - if_tag: Cursed
+    then_tag: Morbid
+    multiplier: 3.5
+
+  # Magical buffs intensify magical creatures.
+  - if_tag: Magical
+    then_tag: Magical
+    multiplier: 2.0
+
+  # Physical enemies are hindered by terrain effects.
+  - if_tag: Physical
+    then_tag: Terrain
+    multiplier: 0.6
+
+  # Humans are vulnerable to surprise attacks.
+  - if_tag: Human
+    then_tag: Surprise_Attack
+    multiplier: 2.2
+
+  # Illusions distort visibility and debuff perception.
+  - if_tag: Illusion
+    then_tag: Visibility
+    multiplier: 2.5
+
+  # Burn effects intensify in thermal environments.
+  - if_tag: Heat
+    then_tag: Thermal
+    multiplier: 4.0
+
+  # Summoners benefit from magical buffs.
+  - if_tag: Summoner
+    then_tag: Buff
+    multiplier: 1.8

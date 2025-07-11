@@ -1,0 +1,388 @@
+equipment_catalog:
+  Shortsword:
+    type: Weapon
+    rarity: Common
+    passive_effects:
+      flat_damage_bonus: 2
+
+  Rusty Dagger:
+    type: Weapon
+    rarity: Common
+    passive_effects:
+      flat_damage_bonus: 1
+
+  Wooden Club:
+    type: Weapon
+    rarity: Common
+    passive_effects:
+      damage_modifier: 0.05
+
+  Hunting Spear:
+    type: Weapon
+    rarity: Common
+    passive_effects:
+      flat_damage_bonus: 3
+
+  Iron Sword:
+    type: Weapon
+    rarity: Common
+    passive_effects:
+      damage_modifier: 0.08
+
+  Battle Axe:
+    type: Weapon
+    rarity: Rare
+    passive_effects:
+      damage_modifier: 0.15
+
+  Warhammer:
+    type: Weapon
+    rarity: Rare
+    passive_effects:
+      flat_damage_bonus: 4
+
+  Twin Daggers:
+    type: Weapon
+    rarity: Rare
+    passive_effects:
+      damage_modifier: 0.10
+      flat_damage_bonus: 1
+
+  Elven Bow:
+    type: Weapon
+    rarity: Rare
+    passive_effects:
+      damage_modifier: 0.12
+
+  Serrated Blade:
+    type: Weapon
+    rarity: Rare
+    on_hit_effect:
+      chance: 0.20
+      effect_tag: Bleed
+
+  Mace of Stunning:
+    type: Weapon
+    rarity: Epic
+    passive_effects:
+      damage_modifier: 0.10
+    on_hit_effect:
+      chance: 0.15
+      effect_tag: Stun
+
+  Dragonfang Blade:
+    type: Weapon
+    rarity: Epic
+    passive_effects:
+      damage_modifier: 0.18
+
+  Arcane Pike:
+    type: Weapon
+    rarity: Epic
+    on_hit_effect:
+      chance: 0.20
+      effect_tag: Magic Burn
+
+  Flamebrand:
+    type: Weapon
+    rarity: Epic
+    passive_effects:
+      flat_damage_bonus: 5
+    on_hit_effect:
+      chance: 0.25
+      effect_tag: Burn
+
+  Stormcaller Blade:
+    type: Weapon
+    rarity: Epic
+    on_hit_effect:
+      chance: 0.30
+      effect_tag: Shock
+
+  Blade of the Martyr:
+    type: Weapon
+    rarity: Legendary
+    passive_effects:
+      damage_modifier: 0.25
+      flat_damage_bonus: 5
+
+  Sword of the Forgotten King:
+    type: Weapon
+    rarity: Legendary
+    passive_effects:
+      damage_modifier: 0.30
+
+  Shadowfang:
+    type: Weapon
+    rarity: Legendary
+    on_hit_effect:
+      chance: 0.40
+      effect_tag: Poison
+
+  Ragnar’s Wrath:
+    type: Weapon
+    rarity: Legendary
+    passive_effects:
+      flat_damage_bonus: 8
+
+  Celestial Blade:
+    type: Weapon
+    rarity: Legendary
+    passive_effects:
+      damage_modifier: 0.20
+      flat_damage_bonus: 4
+
+  Leather Tunic:
+    type: Armor
+    rarity: Common
+    passive_effects:
+      flat_hp_bonus: 15
+
+  Padded Vest:
+    type: Armor
+    rarity: Common
+    passive_effects:
+      flat_hp_bonus: 10
+
+  Worn Cloak:
+    type: Armor
+    rarity: Common
+    passive_effects:
+      damage_reduction: 0.05
+
+  Chain Shirt:
+    type: Armor
+    rarity: Common
+    passive_effects:
+      flat_hp_bonus: 20
+
+  Traveler’s Coat:
+    type: Armor
+    rarity: Common
+    passive_effects:
+      damage_reduction: 0.04
+
+  Steel Plate:
+    type: Armor
+    rarity: Rare
+    passive_effects:
+      flat_hp_bonus: 25
+      damage_reduction: 0.10
+
+  Knight’s Mail:
+    type: Armor
+    rarity: Rare
+    passive_effects:
+      flat_hp_bonus: 30
+
+  Scaled Vest:
+    type: Armor
+    rarity: Rare
+    passive_effects:
+      damage_reduction: 0.12
+
+  Hunter’s Mantle:
+    type: Armor
+    rarity: Rare
+    passive_effects:
+      flat_hp_bonus: 18
+      damage_reduction: 0.08
+
+  Blessed Robes:
+    type: Armor
+    rarity: Rare
+    passive_effects:
+      flat_hp_bonus: 22
+
+  Thornmail:
+    type: Armor
+    rarity: Epic
+    passive_effects:
+      damage_reduction: 0.20
+      flat_hp_bonus: 30
+
+  Guardian Shell:
+    type: Armor
+    rarity: Epic
+    passive_effects:
+      damage_reduction: 0.18
+      flat_hp_bonus: 35
+
+  Mirrorplate:
+    type: Armor
+    rarity: Epic
+    on_hit_effect:
+      chance: 0.25
+      effect_tag: Reflect
+
+  Mantle of the Phoenix:
+    type: Armor
+    rarity: Epic
+    passive_effects:
+      flat_hp_bonus: 40
+
+  Stoneshield Armor:
+    type: Armor
+    rarity: Epic
+    passive_effects:
+      damage_reduction: 0.22
+
+  Bulwark of the Saint:
+    type: Armor
+    rarity: Legendary
+    passive_effects:
+      damage_reduction: 0.25
+      flat_hp_bonus: 50
+
+  Armor of Eternity:
+    type: Armor
+    rarity: Legendary
+    passive_effects:
+      damage_reduction: 0.30
+
+  Celestial Plate:
+    type: Armor
+    rarity: Legendary
+    passive_effects:
+      flat_hp_bonus: 60
+
+  Mantle of the Void:
+    type: Armor
+    rarity: Legendary
+    on_being_hit_effect:
+      chance: 0.20
+      effect_tag: Fear
+
+  Dragonhide Armor:
+    type: Armor
+    rarity: Legendary
+    passive_effects:
+      damage_reduction: 0.28
+      flat_hp_bonus: 45
+
+  Amulet of Vigor:
+    type: Artifact
+    rarity: Common
+    passive_effects:
+      flat_hp_bonus: 10
+
+  Ring of Focus:
+    type: Artifact
+    rarity: Common
+    passive_effects:
+      damage_modifier: 0.03
+
+  Old Charm:
+    type: Artifact
+    rarity: Common
+    passive_effects:
+      flat_hp_bonus: 8
+
+  Traveler’s Trinket:
+    type: Artifact
+    rarity: Common
+    passive_effects:
+      flat_damage_bonus: 1
+
+  Wooden Idol:
+    type: Artifact
+    rarity: Common
+    passive_effects:
+      damage_modifier: 0.02
+
+  Tome of Haste:
+    type: Artifact
+    rarity: Rare
+    passive_effects:
+      damage_modifier: 0.05
+
+  Pendant of Will:
+    type: Artifact
+    rarity: Rare
+    passive_effects:
+      flat_hp_bonus: 20
+
+  Obsidian Eye:
+    type: Artifact
+    rarity: Rare
+    passive_effects:
+      damage_modifier: 0.08
+
+  Sigil of Flame:
+    type: Artifact
+    rarity: Rare
+    on_hit_effect:
+      chance: 0.15
+      effect_tag: Burn
+
+  Cursed Locket:
+    type: Artifact
+    rarity: Rare
+    passive_effects:
+      flat_damage_bonus: 2
+
+  Poisoner's Talisman:
+    type: Artifact
+    rarity: Epic
+    on_hit_effect:
+      chance: 0.25
+      effect_tag: DoT
+
+  Orb of Decay:
+    type: Artifact
+    rarity: Epic
+    passive_effects:
+      damage_modifier: 0.12
+
+  Eye of the Storm:
+    type: Artifact
+    rarity: Epic
+    on_hit_effect:
+      chance: 0.20
+      effect_tag: Shock
+
+  Relic of Blood:
+    type: Artifact
+    rarity: Epic
+    passive_effects:
+      flat_damage_bonus: 4
+
+  Moonstone Prism:
+    type: Artifact
+    rarity: Epic
+    passive_effects:
+      damage_modifier: 0.10
+      flat_hp_bonus: 15
+
+  Chronomancer's Hourglass:
+    type: Artifact
+    rarity: Legendary
+    passive_effects:
+      damage_modifier: 0.15
+      flat_damage_bonus: 3
+
+  Crown of Omens:
+    type: Artifact
+    rarity: Legendary
+    passive_effects:
+      flat_damage_bonus: 6
+
+  Phoenix Feather:
+    type: Artifact
+    rarity: Legendary
+    on_being_hit_effect:
+      chance: 0.10
+      effect_tag: Revive
+
+  Void Crystal:
+    type: Artifact
+    rarity: Legendary
+    passive_effects:
+      damage_modifier: 0.25
+
+  Starforge Medallion:
+    type: Artifact
+    rarity: Legendary
+    passive_effects:
+      damage_modifier: 0.18
+      flat_hp_bonus: 20
