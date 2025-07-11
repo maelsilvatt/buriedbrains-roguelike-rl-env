@@ -1,0 +1,246 @@
+\documentclass[a4paper, 11pt]{article}
+
+% --- PACOTES ESSENCIAIS ---
+\usepackage[utf8]{inputenc} % Codificação de entrada (padrão em distros modernas)
+\usepackage[brazil]{babel}  % Suporte para o português do Brasil
+\usepackage[T1]{fontenc}    % Codificação da fonte para melhor hifenização
+
+% --- PACOTES DE LAYOUT E ESTILO ---
+\usepackage{geometry}       % Para controle de margens
+\geometry{
+    a4paper,
+    top=2.5cm,
+    bottom=2.5cm,
+    left=2.5cm,
+    right=2.5cm
+}
+\usepackage{graphicx}       % Para inclusão de imagens (carregado pelo TikZ, mas é boa prática incluir)
+\usepackage{subcaption}     % Para criar subfiguras (ex: a, b) dentro de um ambiente figure
+
+% --- PACOTES DE GRÁFICOS E DIAGRAMAS ---
+\usepackage{tikz}
+\usetikzlibrary{
+    arrows.meta,    % Para setas avançadas
+    positioning,    % Para posicionamento relativo de nós (ex: right=of)
+    backgrounds,    % Para desenhar no fundo (ex: caixas de ajuste)
+    fit,            % Para criar nós que se ajustam a outros nós
+    calc            % Para cálculos de coordenadas
+}
+
+% --- DEFINIÇÕES GLOBAIS DO TIKZ ---
+% Esta seção centraliza todos os estilos para facilitar a manutenção e garantir consistência.
+\tikzset{
+    % Distância padrão entre os nós
+    node distance=1.5cm and 1.2cm,
+    % Estilo base para todos os nós (salas)
+    base_sala/.style={
+        rectangle,
+        draw,
+        thick,
+        minimum width=2.6cm,
+        minimum height=0.9cm,
+        font=\sffamily\bfseries, % Fonte sem serifa e em negrito
+        align=center
+    },
+    % Estilo para salas comuns
+    sala/.style={
+        base_sala,
+        fill=gray!10,
+    },
+    % Estilo para nós que representam bifurcações (out-degree > 1)
+    bifurcacao/.style={
+        base_sala,
+        fill=blue!15,
+    },
+    % Estilo para nós que representam afunilamentos (out-degree = 1)
+    afunilamento/.style={
+        base_sala,
+        fill=orange!20,
+    },
+    % Estilo padrão para as arestas (caminhos)
+    edge_style/.style={
+        draw,
+        -Stealth, % Tipo de seta mais moderno
+        thick,
+        shorten >=1pt, % Encurta a linha para não tocar no nó
+        shorten <=1pt
+    },
+    % Estilo para anotações ou caixas de destaque
+    anotacao/.style={
+        draw,
+        red,
+        dashed,
+        thick,
+        font=\small\sffamily,
+        inner sep=4pt
+    }
+}
+
+
+% --- METADADOS DO DOCUMENTO ---
+\title{\textbf{Controle de Variabilidade Estrutural em Grafos para Ambientes de Aprendizado por Reforço}}
+\author{Ismael S.}
+\date{\today}
+
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent
+Este documento detalha o desafio de gerar ambientes procedurais baseados em grafos para agentes de Aprendizado por Reforço (RL) com memória. O objetivo central é desenvolver um gerador de mapas que possua \emph{variabilidade estrutural controlada}, evitando que os agentes explorem padrões previsíveis no design do ambiente, em vez de desenvolverem estratégias de aprendizado generalizáveis. Apresentamos a definição do problema, exemplos de cenários indesejados e o estado final almejado, que consiste em um sistema de geração de grafos com parâmetros ajustáveis para a frequência e distribuição de pontos de decisão (bifurcações) e corredores (afunilamentos).
+\end{abstract}
+
+\section{Contexto do Projeto}
+
+O projeto consiste no desenvolvimento de um \textbf{ambiente de simulação} destinado a servir como \emph{benchmark} para agentes de Inteligência Artificial treinados via \textbf{Aprendizado por Reforço (RL)}, com foco em agentes dotados de memória.
+
+\begin{itemize}
+    \item Agentes de RL aprendem por meio de tentativa e erro, otimizando seu comportamento com base em um sinal de recompensa.
+    \item Um \emph{benchmark} robusto deve avaliar a capacidade \textbf{genuína} de aprendizado e adaptação do agente, e não sua habilidade de explorar falhas ou padrões previsíveis no design do ambiente.
+\end{itemize}
+
+\section{O Ambiente: Mapas como Grafos Direcionados}
+
+O ambiente é constituído por \textbf{mapas de salas} gerados proceduralmente a cada nova sessão de treinamento. Essa geração procedural garante que o agente não possa simplesmente memorizar um mapa estático. A estrutura do mapa é formalmente um \textbf{Grafo Acíclico Dirigido (DAG)}.
+
+\begin{itemize}
+    \item Cada \textbf{sala} é um \textbf{vértice} (nó) do grafo.
+    \item Os \textbf{caminhos} entre as salas são as \textbf{arestas} (conexões) direcionadas.
+    \item A progressão do agente é sempre unidirecional (sem ciclos), caracterizando uma estrutura \emph{top-down}.
+\end{itemize}
+
+Com base na estrutura de saídas de cada nó, definimos dois tipos de vértices cruciais para a topologia do grafo:
+
+\begin{itemize}
+    \item \textbf{Bifurcação:} Vértice com grau de saída (out-degree) maior que 1. Representa um ponto de decisão para o agente.
+    \item \textbf{Afunilamento:} Vértice com grau de saída igual a 1. Representa um caminho único, sem escolha de rota.
+\end{itemize}
+
+\begin{figure}[h!]
+    \centering
+    \begin{tikzpicture}
+        % Nós
+        \node[sala] (s1) {Sala 1};
+        \node[bifurcacao, right=of s1] (s2) {Sala 2};
+        \node[afunilamento, below left=of s2] (s3a) {Sala 3A};
+        \node[bifurcacao, below right=of s2] (s3b) {Sala 3B};
+        \node[sala, below left=of s3b] (s4c) {Sala 4C};
+        \node[afunilamento, below right=of s3b] (s4d) {Sala 4D};
+        \node[sala, below=of s4d] (s5) {Sala 5};
+
+        % Arestas
+        \path[edge_style]
+            (s1) edge (s2)
+            (s2) edge (s3a)
+            (s2) edge (s3b)
+            (s3b) edge (s4c)
+            (s3b) edge (s4d)
+            (s4d) edge (s5);
+    \end{tikzpicture}
+    \caption{Exemplo da estrutura de um mapa, ilustrando \textbf{bifurcações} (nós azuis) e \textbf{afunilamentos} (nós laranjas).}
+    \label{fig:exemplo_estrutura}
+\end{figure}
+
+\section{O Problema: Previsibilidade Estrutural}
+
+Agentes de RL são proficientes em encontrar e explorar padrões. Se a geração procedural dos mapas resultar em grafos com uma \textbf{estrutura topológica previsível}, o agente pode desenvolver "atalhos" estatísticos, em vez de aprender uma política de decisão robusta.
+
+Isso compromete a validade do \emph{benchmark}, pois o agente estaria explorando uma falha no gerador do ambiente, e não demonstrando inteligência generalizável.
+
+\subsection{Cenário Problemático: Padrões Fixos}
+Considere um gerador que, embora produza grafos diferentes, sempre posiciona os afunilamentos em níveis de profundidade específicos. O agente poderia aprender a explorar essa regularidade, por exemplo, antecipando a ausência de escolhas em determinados pontos da jornada.
+
+\begin{figure}[h!]
+    \centering
+    \begin{tikzpicture}
+        % Nós
+        \node[bifurcacao] (s1) {S1};
+        \node[sala, right=of s1] (s2) {S2};
+        \node[afunilamento, below left=of s2] (s3a) {S3A};
+        \node[sala, below right=of s2] (s3b) {S3B};
+        \node[afunilamento, below=of s3b] (s4b) {S4B};
+        \node[sala, below=of s3a] (s4a) {S4A};
+        \node[afunilamento, below left=of s4a] (s5a) {S5A};
+        \node[sala, below right=of s4a] (s5b) {S5B};
+
+        % Arestas
+        \path[edge_style]
+            (s1) edge (s2)
+            (s2) edge (s3a) (s2) edge (s3b)
+            (s3a) edge (s4a)
+            (s3b) edge (s4b)
+            (s4a) edge (s5a) (s4a) edge (s5b);
+
+        % Anotação do padrão previsível
+        \node[anotacao, fit=(s3a)(s4b)(s5a), label={[red]below:Padrão de afunilamentos fixo/previsível}] {};
+    \end{tikzpicture}
+    \caption{Cenário indesejado onde a localização dos afunilamentos segue um padrão previsível, permitindo a exploração pelo agente.}
+    \label{fig:cenario_problema}
+\end{figure}
+
+\section{Objetivo: Variabilidade Estrutural Controlada}
+
+O objetivo é projetar um gerador de grafos que permita um \textbf{controle preciso sobre a variabilidade estrutural} do ambiente. A meta não é a aleatoriedade total, que poderia resultar em mapas insolúveis ou triviais, mas sim uma \textbf{imprevisibilidade gerenciável}.
+
+Busca-se um sistema onde seja possível parametrizar a geração do grafo, ajustando, por exemplo:
+\begin{itemize}
+    \item A \textbf{probabilidade} de um novo nó ser uma bifurcação ou um afunilamento.
+    \item A \textbf{distribuição} desses tipos de nós ao longo do grafo (ex: mais bifurcações no início e mais afunilamentos no final).
+    \item A \textbf{dependência contextual}, onde a probabilidade de criar um afunilamento pode depender do tipo do nó anterior.
+\end{itemize}
+
+\subsection{Cenário Desejado: Gerações Diversificadas}
+O gerador ideal deve ser capaz de produzir, a partir do mesmo conjunto de parâmetros probabilísticos, uma ampla gama de topologias de mapa. Isso força o agente a desenvolver estratégias que se adaptem à estrutura específica de cada mapa gerado, em vez de memorizar um padrão global.
+
+\begin{figure}[h!]
+    \centering
+    % Subfigura (a)
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \begin{tikzpicture}
+            \node[bifurcacao] (s1) {S1};
+            \node[sala, right=1cm of s1] (s2) {S2};
+            \node[afunilamento, below left=1cm and 0.2cm of s2] (s3a) {S3A};
+            \node[bifurcacao, below right=1cm and 0.2cm of s2] (s3b) {S3B};
+            \node[sala, below left=1cm and 0.2cm of s3b] (s4c) {S4C};
+            \node[afunilamento, below=1.5cm of s3a] (s4a) {S4A};
+            \path[edge_style] (s1) edge (s2) (s2) edge (s3a) (s2) edge (s3b)
+                              (s3a) edge (s4a) (s3b) edge (s4c);
+        \end{tikzpicture}
+        \caption{Geração 1: Menos bifurcações.}
+        \label{fig:geracao1}
+    \end{subfigure}
+    \hfill % Espaço horizontal entre as subfiguras
+    % Subfigura (b)
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \begin{tikzpicture}
+            \node[bifurcacao] (s1) {S1};
+            \node[sala, right=1cm of s1] (s2) {S2};
+            \node[bifurcacao, below left=1cm and 0.2cm of s2] (s3a) {S3A};
+            \node[bifurcacao, below right=1cm and 0.2cm of s2] (s3b) {S3B};
+            \node[afunilamento, below=1.5cm of s3a] (s4a) {S4A};
+            \node[sala, below=1.5cm of s3b] (s4b) {S4B};
+            \path[edge_style] (s1) edge (s2) (s2) edge (s3a) (s2) edge (s3b)
+                              (s3a) edge (s4a) (s3b) edge (s4b);
+        \end{tikzpicture}
+        \caption{Geração 2: Mais bifurcações.}
+        \label{fig:geracao2}
+    \end{subfigure}
+    \caption{Cenário desejado: O gerador produz mapas com topologias distintas, forçando o agente a se adaptar em vez de memorizar.}
+    \label{fig:cenario_desejado}
+\end{figure}
+
+\section{Conclusão}
+
+A questão central de pesquisa é, portanto, a formulação de um algoritmo de geração procedural de grafos que equilibre ordem e caos. O sistema deve prover um nível de \textbf{imprevisibilidade estrutural} suficiente para impedir a exploração de padrões, mas com \textbf{controle paramétrico} para garantir que os ambientes gerados permaneçam solucionáveis e propícios ao aprendizado. Acredito que uma abordagem baseada em probabilidades condicionais e distribuições ajustáveis seja um caminho promissor para alcançar este objetivo.
+
+\vspace{1cm} % Espaço antes da assinatura
+
+\noindent Atenciosamente,
+
+\noindent Ismael S.
+
+\end{document}
