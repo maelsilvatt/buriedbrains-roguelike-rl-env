@@ -6,140 +6,333 @@ pools:
       cost: 10
       weight: 100
       tags: [Common, Undead, Physical]
+      hp: 65
+      skills: ['Quick Strike', 'Wait']
+      equipment: []
+      exp_yield: 10
+      # Design: O inimigo mais básico. Lento, previsível, mas presente em grande número.
+
     Skeleton Archer:
       cost: 12
       weight: 70
       tags: [Common, Undead, Physical, Ranged]
+      hp: 50
+      skills: ['Quick Strike', 'Wait'] # O dano dele seria inerentemente 'Ranged'
+      equipment: ['Rusty Dagger'] # Apenas um pequeno bônus simbólico
+      exp_yield: 12
+      # Design: Frágil, mas uma fonte constante de dano à distância.
+
     Cave Spider:
       cost: 11
       weight: 75
       tags: [Common, Beast, Poison, Debuff_Speed]
+      hp: 60
+      skills: ['Quick Strike', 'Poison Shot', 'Wait']
+      equipment: []
+      exp_yield: 15
+      # Design: Introduz o jogador aos efeitos de Dano Contínuo (DoT).
+
     Bandit:
       cost: 13
       weight: 65
       tags: [Common, Human, Physical]
+      hp: 75
+      skills: ['Quick Strike', 'Heavy Blow', 'Wait']
+      equipment: ['Shortsword', 'Leather Tunic']
+      exp_yield: 20
+      # Design: Um oponente mais tático, uma versão fraca do agente.
+
     Forest Wisp:
       cost: 10
       weight: 70
       tags: [Common, Magical, Illusion]
+      hp: 40
+      skills: ['Blinding Light', 'Wait']
+      equipment: []
+      exp_yield: 18
+      # Design: Não causa muito dano, mas atrapalha com debuffs.
+
     Poisonous Mushroom:
       cost: 8
       weight: 80
       tags: [Common, Beast, Poison, Debuff_Healing]
+      hp: 50
+      skills: ['Poison Shot', 'Wait'] # O 'Debuff_Healing' seria uma propriedade do seu veneno
+      equipment: []
+      exp_yield: 10
+      # Design: Estacionário e frágil, mas pune agentes que dependem de cura.
+
     Goblin:
       cost: 9
       weight: 90
       tags: [Common, Beast, Aggressive]
+      hp: 55
+      skills: ['Quick Strike', 'War Cry', 'Wait']
+      equipment: ['Wooden Club']
+      exp_yield: 12
+      # Design: Fraco, mas agressivo. Aparece em grupos.
+
     Shadow Assassin:
       cost: 15
       weight: 50
       tags: [Common, Stealth, Debuff_Accuracy]
+      hp: 65
+      skills: ['Shadow Strike', 'Blinding Light', 'Wait']
+      equipment: ['Twin Daggers']
+      exp_yield: 30
+      # Design: Alto potencial de dano inicial. Ensina a importância de defesa no primeiro turno.
+
     Cursed Spirit:
       cost: 14
       weight: 55
       tags: [Common, Undead, Cursed, Debuff_Morale]
+      hp: 70
+      skills: ['Soul Drain', 'War Cry', 'Wait']
+      equipment: []
+      exp_yield: 25
+      # Design: Foco em enfraquecer o agente com debuffs e se curar.
+
     Poisoned Rat:
       cost: 7
       weight: 85
       tags: [Common, Beast, Poison, Debuff_Speed]
+      hp: 40
+      skills: ['Quick Strike', 'Poison Shot', 'Wait']
+      equipment: []
+      exp_yield: 8
+      # Design: O inimigo mais fraco, mas que pode ser irritante em grupos.
+
     Giant Bat:
       cost: 10
       weight: 75
       tags: [Common, Beast, Aggressive]
+      hp: 50
+      skills: ['Quick Strike', 'Wind Slash', 'Wait']
+      equipment: []
+      exp_yield: 11
+      # Design: Rápido e evasivo.
+
     Cursed Zombie:
       cost: 12
       weight: 60
       tags: [Common, Undead, Cursed, Debuff_Morale]
+      hp: 80
+      skills: ['Heavy Blow', 'War Cry', 'Wait']
+      equipment: []
+      exp_yield: 18
+      # Design: Uma versão mais lenta e resistente do Zombie, com foco em debuffs.
+
     Dark Cultist:
       cost: 16
       weight: 40
       tags: [Common, Human, Magical, Debuff_Speed]
+      hp: 65
+      skills: ['Frostbite', 'Blade of Chaos', 'Wait'] # Usa a vulnerabilidade para seus feitiços
+      equipment: ['Worn Cloak', 'Old Charm']
+      exp_yield: 35
+      # Design: Um "glass cannon". Perigoso se não for focado rapidamente.
+
     Poisoned Scorpion:
       cost: 9
       weight: 80
       tags: [Common, Beast, Poison, Debuff_Speed]
+      hp: 50
+      skills: ['Poison Shot', 'Wait']
+      equipment: []
+      exp_yield: 14
+      # Design: Outra variante de inimigo com DoT.
+
     Cursed Knight:
       cost: 18
       weight: 30
       tags: [Common, Undead, Cursed, Physical, Tank]
+      hp: 130
+      skills: ['Heavy Blow', 'Stone Shield', 'Wait']
+      equipment: ['Iron Sword', 'Chain Shirt', 'Amulet of Vigor']
+      exp_yield: 50
+      # Design: O "mini-chefe" dos inimigos comuns. Extremamente resistente.
+
     Shadow Lurker:
       cost: 14
       weight: 60
       tags: [Common, Stealth, Debuff_Accuracy]
+      hp: 60
+      skills: ['Shadow Strike', 'Blinding Light', 'Wait']
+      equipment: ['Serrated Blade']
+      exp_yield: 28
+      # Design: Similar ao Assassin, mas com foco em debuffs mais duradouros.
+
     Wild Boar:
       cost: 9
       weight: 80
       tags: [Common, Beast, Physical, Aggressive]
+      hp: 85
+      skills: ['Heavy Blow', 'Wait']
+      equipment: []
+      exp_yield: 15
+      # Design: Simples, mas com muito HP e dano para seu custo. Uma "parede de carne".
 
-    # Bosses (heavy, high-cost, high-weight)
-    Lava Golem:
-      cost: 25
-      weight: 15
-      tags: [Elite, Thermal, Area_Damage]
-    Krul:
-      cost: 20
-      weight: 10
-      tags: [Elite, Physical, Heavy]
-    Laezarus:
-      cost: 22
-      weight: 5
-      tags: [Elite, Tank, Defensive]
-    'A Thousand Cursed':
-      cost: 23
-      weight: 3
-      tags: [Elite, Magical, Debuff_Speed]
-    'Queen Arachna':
-      cost: 48
-      weight: 6
-      tags: [Boss, Beast, Poison, Summoner]
-    'Ashen Monarch':
-      cost: 52
-      weight: 4
-      tags: [Boss, Thermal, Heat, Heavy]
-    'The Forgotten One':
-      cost: 55
-      weight: 3
-      tags: [Boss, Undead, Magical, Cursed, Control]
+      # Bosses (Rare, high cost, high weight, legendary drops)
+      Lava Golem:
+        cost: 25
+        weight: 15
+        tags: [Elite, Thermal, Area_Damage]
+        hp: 220
+        skills: ['Heavy Blow', 'Flame Burst', 'Earthquake', 'Wait']
+        equipment: ['Warhammer']
+        exp_yield: 90
+        # Design: Lento mas poderoso, com dano em área.
 
-    # Elite Enemies (more challenging, with unique abilities)
-    'Hopeless Agent':
-      cost: 40
-      weight: 5
-      tags: [Boss, Undead, Summoner]
-    'Bedrose Gardener':
-      cost: 30
-      weight: 10
-      tags: [Boss, Undead, Physical, Tank]
-    Lich:
-      cost: 50
-      weight: 20
-      tags: [Boss, Undead, Magical, Summoner]
-    'The Dark Knight':
-      cost: 45
-      weight: 15
-      tags: [Boss, Undead, Physical, Tank]
-    Kalisto:
-      cost: 35
-      weight: 5
-      tags: [Boss, Beast, Aggressive, Heavy]
-    'Berserker Spirit':
-      cost: 28
-      weight: 12
-      tags: [Elite, Undead, Aggressive, Physical]
-    'Flesh Abomination':
-      cost: 32
-      weight: 8
-      tags: [Elite, Undead, Cursed, Heavy]
-    'Twilight Stalker':
-      cost: 27
-      weight: 10
-      tags: [Elite, Stealth, Control_Fear]
+      Krul:
+        cost: 20
+        weight: 10
+        tags: [Elite, Physical, Heavy]
+        hp: 180
+        skills: ['Heavy Blow', 'War Cry', 'Wait']
+        equipment: ['Battle Axe', 'Steel Plate']
+        exp_yield: 75
+        # Design: Um guerreiro puro, focado em dano físico bruto.
 
-    # None
-    None:
-      cost: 0
-      weight: 40
-      tags: []
+      Laezarus: # Versão Elite
+        cost: 22
+        weight: 5
+        tags: [Elite, Tank, Defensive]
+        hp: 300
+        skills: ['Shield Bash', 'Stone Shield', 'Wait']
+        equipment: ['Knight’s Mail']
+        exp_yield: 85
+        # Design: Extremamente defensivo. Uma parede de escudos.
+
+      'A Thousand Cursed':
+        cost: 23
+        weight: 3
+        tags: [Elite, Magical, Debuff_Speed]
+        hp: 160
+        skills: ['Frostbite', 'Ice Spike', 'Wait']
+        equipment: ['Traveler’s Coat']
+        exp_yield: 95
+        # Design: Frágil, mas irritante, focado em controle de velocidade.
+
+      Berserker Spirit:
+        cost: 28
+        weight: 12
+        tags: [Elite, Undead, Aggressive, Physical]
+        hp: 190
+        skills: ['Heavy Blow', 'Berserker Rage', 'Wait']
+        equipment: ['Battle Axe']
+        exp_yield: 100
+        # Design: Entra em fúria, ensinando o jogador a usar controle ou defesa.
+
+      Flesh Abomination:
+        cost: 32
+        weight: 8
+        tags: [Elite, Undead, Cursed, Heavy]
+        hp: 320
+        skills: ['Heavy Blow', 'War Cry', 'Wait']
+        equipment: [] # Seu corpo é sua arma e armadura
+        exp_yield: 120
+        # Design: Um saco de pancadas gigante. Testa a capacidade do agente de sustentar o dano.
+
+      Twilight Stalker:
+        cost: 27
+        weight: 10
+        tags: [Elite, Stealth, Control_Fear]
+        hp: 150
+        skills: ['Shadow Strike', 'Blinding Light', 'Wait'] # 'Fear' seria uma skill especial
+        equipment: ['Twin Daggers']
+        exp_yield: 110
+        # Design: Alto dano explosivo e controle mental.
+
+      # --- Elite (Desafios Raros, HP e EXP altos, drops lendários) ---
+      'Hopeless Agent':
+        cost: 40
+        weight: 5
+        tags: [Boss, Undead, Summoner]
+        hp: 400
+        skills: ['Soul Drain', 'Wait'] # 'Summon' seria sua skill principal
+        equipment: ['Cursed Locket', 'Mantle of the Void']
+        exp_yield: 250
+        # Design: Um agente caído que invoca outros para lutar.
+
+      'Bedrose Gardener':
+        cost: 30
+        weight: 10
+        tags: [Boss, Undead, Physical, Tank]
+        hp: 600
+        skills: ['Heavy Blow', 'Stone Shield', "Natures' Grasp", 'Wait']
+        equipment: ['Stoneshield Armor']
+        exp_yield: 200
+        # Design: Um guardião que se cura. Uma luta de resistência.
+
+      Lich:
+        cost: 50
+        weight: 20
+        tags: [Boss, Undead, Magical, Summoner]
+        hp: 480
+        skills: ['Vampiric Touch', 'Frost Nova', 'Wait'] # 'Summon' seria outra skill
+        equipment: ['Orb of Decay', 'Void Crystal']
+        exp_yield: 500
+        # Design: Foco em auto-sustentação (lifesteal) e controle de área.
+
+      'The Dark Knight':
+        cost: 45
+        weight: 15
+        tags: [Boss, Undead, Physical, Tank]
+        hp: 700
+        skills: ['Heavy Blow', 'Shield Bash', 'War Cry', 'Wait']
+        equipment: ['Sword of the Forgotten King', 'Armor of Eternity']
+        exp_yield: 400
+        # Design: O "tanque" supremo. Dano e defesa massivos.
+
+      Kalisto:
+        cost: 35
+        weight: 5
+        tags: [Boss, Beast, Aggressive, Heavy]
+        hp: 550
+        skills: ['Heavy Blow', 'Berserker Rage', 'Wait']
+        equipment: ['Ragnar’s Wrath']
+        exp_yield: 350
+        # Design: Pura agressão. Uma corrida de dano.
+
+      Queen Arachna:
+        cost: 48
+        weight: 6
+        tags: [Boss, Beast, Poison, Summoner]
+        hp: 450
+        skills: ['Poison Shot', 'Poison Cloud', 'Wait']
+        equipment: ["Poisoner's Talisman", 'Shadowfang']
+        exp_yield: 380
+        # Design: Foco total em DoT. Exige cura ou alta resistência.
+
+      Ashen Monarch:
+        cost: 52
+        weight: 4
+        tags: [Boss, Thermal, Heat, Heavy]
+        hp: 550
+        skills: ['Meteor Strike', 'Flame Burst', 'War Cry', 'Wait']
+        equipment: ['Flamebrand', 'Mantle of the Phoenix']
+        exp_yield: 420
+        # Design: Dano massivo em área e contínuo.
+
+      'The Forgotten One':
+        cost: 55
+        weight: 3
+        tags: [Boss, Undead, Magical, Cursed, Control]
+        hp: 500
+        skills: ['Soul Drain', 'Stunning Hammer', 'Blinding Light', 'Wait']
+        equipment: ['Mantle of the Void', 'Crown of Omens']
+        exp_yield: 480
+        # Design: Um mestre do controle. Testa a capacidade do agente de agir sob pressão.
+
+      # --- None (Entrada para salas sem inimigos) ---
+      None:
+        cost: 0
+        weight: 40
+        tags: []
+        hp: 0
+        skills: []
+        equipment: []
+        exp_yield: 0
 
   events:
     # Common treasures (low cost, low weight)
