@@ -387,41 +387,47 @@ pools:
     Slow Terrain:
       cost: 5
       weight: 30
-      description: "O terreno difícil aplica 'Slow' em todos no início do combate."      
+      description: "O terreno difícil aplica 'Slow' em todos no início do combate."
+      tags: [Terrain, Debuff]
       stat_modifier:
         accuracy: -0.15
 
     Heat:
       cost: 7
       weight: 15
-      description: "O calor intenso aplica 'Burn' em todos a cada rodada."      
+      description: "O calor intenso aplica 'Burn' em todos a cada rodada."
+      tags: [Heat, Thermal]  
       type: DoT
       effect_to_apply: Burn
 
     Evasion Zone:
       cost: -4
       weight: 25
-      description: "Uma névoa mágica concede bônus de evasão a todos no início do combate."      
+      description: "Uma névoa mágica concede bônus de evasão a todos no início do combate."
+      tags: [Buff]  
       stat_modifier:
         evasion_chance: 0.15
 
     Dense Fog:
       cost: 4
       weight: 20
-      description: "A neblina densa aplica 'Blind' em todos no início do combate."      
+      description: "A neblina densa aplica 'Blind' em todos no início do combate."
+      tags: [Visibility, Debuff]  
       effect_to_apply: Blind
 
     Amplifying Field:
       cost: -10
       weight: 15
-      description: "O campo de energia aumenta o dano de todos em 15%."            
+      description: "O campo de energia aumenta o dano de todos em 15%."
+      tags: [Buff, Magical]
       stat_modifier:
         damage_modifier: 0.15
 
     Consecrated Ground:
       cost: -8
       weight: 10
-      description: "O solo sagrado cura todos os combatentes em 5% HP a cada rodada."      
+      description: "O solo sagrado cura todos os combatentes em 5% HP a cada rodada."
+      tags: [Sanctuary, Healing] 
       persistent_effect:
         type: Heal_Self
         heal_per_round: 0.02
