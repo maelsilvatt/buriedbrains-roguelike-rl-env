@@ -174,14 +174,14 @@ effect_ruleset:
     target: Target
     duration: 1
     stat_modifier:
-      accuracy: -0.5
+      accuracy: -0.3
 
   Debuff_Damage:
     type: Debuff
     target: Target
     duration: 3
     stat_modifier:
-      damage_output: -0.2
+      damage_modifier: -0.2
 
   Stun:
     type: Control
@@ -217,7 +217,7 @@ effect_ruleset:
     target: Self
     duration: 3
     stat_modifier:
-      damage_output: 0.5
+      damage_modifier: 0.5
 
   Buff_Evasion:
     type: Buff
@@ -235,6 +235,7 @@ effect_ruleset:
     type: Support
     target: Self
     duration: 0
+    potency: 0.02
 
   Life_Drain:
     type: Special
