@@ -39,8 +39,6 @@ class KFloorGenerator:
         
         # Opcional: Garante que o grafo seja conectado, se necessário para o benchmark
         # Se não for conectado, pode gerar múltiplos "pedaços" de mapa.
-        # Para um ambiente multiagente, talvez múltiplos componentes sejam OK.
-        # Aqui, vamos garantir que ele seja um único componente grande, se possível.
         if not nx.is_connected(self.G) and self.num_nodes > 1:
             components = list(nx.connected_components(self.G))
             # Conecta componentes menores ao maior
@@ -56,9 +54,6 @@ class KFloorGenerator:
 
     def calculate_centrality_metrics(self):
         """Calcula as métricas de centralidade para cada nó."""
-        # Se o grafo não estiver conectado, algumas métricas (como proximidade) 
-        # podem não ser bem definidas ou retornar infinito. 
-        # NetworkX lida com isso em suas implementações.
         
         # Centralidade de Grau (Degree Centrality)
         # cd[v] = deg(v) / (n-1)
@@ -72,9 +67,6 @@ class KFloorGenerator:
         # C_C(v) = (n-1) / sum(u!=v) d(u,v)
         # Nota: Closeness Centrality é calculada por padrão apenas para componentes conectados
         # Se o grafo não for totalmente conectado, ele calcula para cada componente.
-        # Para lidar com componentes desconectados sem erro/NaNs, podemos usar uma alternativa
-        # ou aceitar que nodos em componentes isolados terão closeness 0.0 ou similar,
-        # ou calcular apenas para o componente principal. Vamos usar a função padrão de nx.
         cc = nx.closeness_centrality(self.G)
         
         self.node_scores = {}
@@ -113,7 +105,7 @@ class KFloorGenerator:
         
         if self.visualize_enabled:
             self.visualize()
-            plt.show() # Mantém a janela aberta no final
+            plt.show() 
 
     def visualize(self):
         """Visualiza o grafo do Andar K."""
@@ -143,22 +135,20 @@ class KFloorGenerator:
                 font_weight='bold',
                 edge_color='gray')
         
-        # Adiciona legenda para os nós cinzas
+        # Legenda dos nós podados
         self.ax.scatter([], [], c='lightblue', label='Nó Ativo', s=120)
         self.ax.scatter([], [], c='gray', label='Nó Podado (Inativo)', s=120)
         self.ax.legend(loc='upper right')
         
         self.ax.set_title(f"Andar K Gerado com Poda Heurística (Nós: {self.num_nodes}, Prob. Aresta: {self.edge_probability})")
 
-
-# --- Exemplo de Uso ---
 if __name__ == "__main__":
     # Parametros para o Andar K
     num_nodes_k = 25 # Número de salas no andar K
     edge_prob_k = 0.15 # Probabilidade de conexão entre as salas (ajuste para densidade)
     
     # Pesos para as métricas de centralidade (alpha, beta, gamma)
-    # Reflete a ênfase em Exploração, Controle Territorial, Mobilidade [cite: 196, 197, 198, 199]
+    # Reflete a ênfase em Exploração, Controle Territorial, Mobilidade
     alpha_weight = 1.0 
     beta_weight = 1.0
     gamma_weight = 1.0
@@ -174,7 +164,7 @@ if __name__ == "__main__":
         beta=beta_weight,
         gamma=gamma_weight,
         prune_threshold_percent=prune_percentage,
-        seed=42, # Semente para reprodutibilidade
+        seed=42,
         visualize=True
     )
     
