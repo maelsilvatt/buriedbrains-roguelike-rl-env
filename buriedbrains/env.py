@@ -18,7 +18,7 @@ class BuriedBrainsEnv(gym.Env):
     """
     Ambiente principal do BuriedBrains, compatível com a interface Gymnasium.
     """
-    def __init__(self):
+    def __init__(self, guarantee_enemy: bool = False):
         super().__init__()        
         data_path = os.path.join(os.path.dirname(__file__), 'data')
         with open(os.path.join(data_path, 'skill_and_effects.yaml'), 'r', encoding='utf-8') as f:
@@ -56,6 +56,8 @@ class BuriedBrainsEnv(gym.Env):
             potential_params=reputation_params
         )
         self.agent_skill_names = [] # Para mapear ações a nomes de habilidades
+
+        self.guarantee_enemy = guarantee_enemy
 
     def _get_observation(self) -> np.ndarray:
         obs = np.zeros(self.observation_space.shape, dtype=np.float32)
@@ -155,7 +157,7 @@ class BuriedBrainsEnv(gym.Env):
                 self.pool_costs, 
                 budget, 
                 self.current_floor,
-                guarantee_enemy=True # Força a geração de um inimigo para teste
+                guarantee_enemy=self.guarantee_enemy 
             )
             self.graph.nodes[node]['content'] = content
         self.combat_state = None
@@ -214,6 +216,9 @@ class BuriedBrainsEnv(gym.Env):
         reward = 0
         terminated = False
         info = {}
+
+        # Penalidade de tempo: o agente perde um pouco a cada passo.
+        reward -= 0.1
 
         if self.combat_state:
             reward, combat_over = self._handle_combat_turn(action)
