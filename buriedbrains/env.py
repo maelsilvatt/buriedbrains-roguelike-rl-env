@@ -19,8 +19,7 @@ class BuriedBrainsEnv(gym.Env):
     Ambiente principal do BuriedBrains, compatível com a interface Gymnasium.
     """
     def __init__(self):
-        super().__init__()
-        # ... (código __init__ completo da etapa anterior, sem alterações) ...
+        super().__init__()        
         data_path = os.path.join(os.path.dirname(__file__), 'data')
         with open(os.path.join(data_path, 'skill_and_effects.yaml'), 'r', encoding='utf-8') as f:
             skill_data = yaml.safe_load(f)
@@ -235,6 +234,16 @@ class BuriedBrainsEnv(gym.Env):
         if self.agent_state['hp'] <= 0:
             terminated = True
             reward = -100
+
+        if terminated:
+            # Quando o episódio termina, coloca informações finais no dicionário 'info'
+            # para que os callbacks possam acessá-las.
+            info['final_status'] = {
+                'level': self.agent_state['level'],
+                'hp': self.agent_state['hp'],
+                'floor': self.current_floor,
+                'win': self.agent_state['hp'] > 0 # Venceu se terminou com HP > 0
+            }
 
         observation = self._get_observation()
         truncated = False 

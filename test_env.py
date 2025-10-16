@@ -102,7 +102,7 @@ def main():
     test_combat_encounter(env)
     
     # Em seguida, executa a exploração aleatória
-    test_random_exploration(env, num_episodes=3, max_steps=15)
+    test_random_exploration(env, num_episodes=3, max_steps=20)
 
     env.close()
     print("\nTeste concluído!")
