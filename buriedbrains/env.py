@@ -33,6 +33,14 @@ class BuriedBrainsEnv(gym.Env):
             'equipment': equipment_data['equipment_catalog'], 'enemies': enemy_data['pools']['enemies'],
             'room_effects': enemy_data['pools']['room_effects'],
         }
+
+        # Pré-processamento: Injeta a chave 'name' em cada item dos catálogos
+        for catalog_name, catalog_data in self.catalogs.items():
+            if isinstance(catalog_data, dict):
+                for name, data in catalog_data.items():
+                    if isinstance(data, dict):
+                        data['name'] = name
+                        
         self.pool_costs = content_generation._calculate_costs(enemy_data['pools'])
         self.rarity_map = {'Common': 0.25, 'Rare': 0.5, 'Epic': 0.75, 'Legendary': 1.0}
         self.action_space = spaces.Discrete(9) 
@@ -138,11 +146,18 @@ class BuriedBrainsEnv(gym.Env):
         
         self.reputation_system.add_agent("Player 1")
         self.current_floor = 1
-        self.graph = map_generation.generate_p_zone_topology(num_floors=5, seed=self.np_random.integers(0, 10000))
+        python_seed = self.np_random.integers(0, 10000).item()
+        self.graph = map_generation.generate_p_zone_topology(num_floors=5, seed=python_seed)
         self.current_node = "start"
         for node in self.graph.nodes():
             budget = 100 + (self.current_floor * 10)
-            content = content_generation.generate_room_content(self.catalogs, self.pool_costs, budget, self.current_floor)
+            content = content_generation.generate_room_content(
+                self.catalogs, 
+                self.pool_costs, 
+                budget, 
+                self.current_floor,
+                guarantee_enemy=True # Força a geração de um inimigo para teste
+            )
             self.graph.nodes[node]['content'] = content
         self.combat_state = None
         return self._get_observation(), {}
