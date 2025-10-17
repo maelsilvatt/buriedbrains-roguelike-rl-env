@@ -23,31 +23,60 @@ class LoggingCallback(BaseCallback):
     """
     Callback personalizado para logar métricas específicas do BuriedBrains.
     """
-    def __init__(self, verbose=0):
+    def __init__(self, log_interval: int = 10, verbose: int = 0):
         super().__init__(verbose)
+        self.log_interval = log_interval
         self.episode_wins = []
         self.episode_levels = []
         self.episode_count = 0
 
     def _on_step(self) -> bool:
-        dones = self.locals.get("dones", [])
-        for i, done in enumerate(dones):
-            if done:
-                self.episode_count += 1
-                info = self.locals["infos"][i]
-                final_status = info.get("final_status")
-                if final_status:
-                    self.episode_wins.append(1 if final_status.get("win") else 0)
-                    self.episode_levels.append(final_status.get("level"))
-                    if self.episode_count % 10 == 0:
-                        win_rate = np.mean(self.episode_wins)
-                        avg_level = np.mean(self.episode_levels)
-                        self.logger.record("custom/win_rate_(last_10_eps)", win_rate)
-                        self.logger.record("custom/average_level_(last_10_eps)", avg_level)
-                        self.episode_wins = []
-                        self.episode_levels = []
-        return True
+        # 'dones' sinaliza fim de episódio em cada ambiente vetorizado
+        dones = self.locals.get("dones", [])        
 
+        for i, done in enumerate(dones):
+            if not done:                                
+                continue
+
+            self.episode_count += 1
+            print(f"[DEBUG] Episódio {self.episode_count} finalizado no ambiente {i}.")            
+
+            # Obtém info do ambiente atual
+            info = self.locals["infos"][i]
+
+            # Usa final_info se existir
+            final_info = info.get("final_info", info)
+            if not isinstance(final_info, dict):
+                continue
+
+            final_status = final_info.get("final_status")
+            if not final_status:
+                continue
+
+            # Coleta dados do episódio
+            self.episode_wins.append(1 if final_status.get("win") else 0)
+            self.episode_levels.append(final_status.get("level", 0))
+
+            # Loga médias a cada N episódios
+            if self.episode_count % self.log_interval == 0:
+                if self.episode_wins:
+                    win_rate = float(np.mean(self.episode_wins))
+                    self.logger.record("custom/win_rate_last_episodes", win_rate)
+                    self.logger.dump(step=self.num_timesteps)
+                    if self.verbose > 0:
+                        print(f"[LOG] Episódios {self.episode_count - self.log_interval + 1}-{self.episode_count}: "
+                              f"win_rate={win_rate:.2f}")
+                    self.episode_wins.clear()
+
+                if self.episode_levels:
+                    avg_level = float(np.mean(self.episode_levels))
+                    self.logger.record("custom/avg_level_last_episodes", avg_level)
+                    self.logger.dump(step=self.num_timesteps)
+                    if self.verbose > 0:
+                        print(f"[LOG] avg_level={avg_level:.2f}")
+                    self.episode_levels.clear()
+
+        return True
 
 def main():
     """
@@ -100,7 +129,7 @@ def main():
 
     # --- 4. Callbacks ---
     checkpoint_callback = CheckpointCallback(save_freq=20000, save_path=run_models_dir, name_prefix="bb_model")
-    logging_callback = LoggingCallback()
+    logging_callback = LoggingCallback(verbose=1)
     callback_list = CallbackList([checkpoint_callback, logging_callback])
 
     # --- 5. Criação e configuração do modelo ---
@@ -129,7 +158,6 @@ def main():
     print(f"Treinamento concluído. Modelo final salvo em {run_models_dir}")
 
     env.close()
-
 
 if __name__ == "__main__":
     main()

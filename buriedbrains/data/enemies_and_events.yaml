@@ -9,7 +9,7 @@ pools:
       hp: 65
       skills: ['Quick Strike', 'Wait']
       equipment: []
-      exp_yield: 10
+      exp_yield: 25
       # Design: O inimigo mais básico. Lento, previsível, mas presente em grande número.
 
     Skeleton Archer:
@@ -19,7 +19,7 @@ pools:
       hp: 50
       skills: ['Quick Strike', 'Wait'] # O dano dele seria inerentemente 'Ranged'
       equipment: ['Rusty Dagger'] # Apenas um pequeno bônus simbólico
-      exp_yield: 12
+      exp_yield: 20
       # Design: Frágil, mas uma fonte constante de dano à distância.
 
     Cave Spider:
@@ -39,7 +39,7 @@ pools:
       hp: 75
       skills: ['Quick Strike', 'Heavy Blow', 'Wait']
       equipment: ['Shortsword', 'Leather Tunic']
-      exp_yield: 20
+      exp_yield: 40
       # Design: Um oponente mais tático, uma versão fraca do agente.
 
     Forest Wisp:
@@ -59,7 +59,7 @@ pools:
       hp: 50
       skills: ['Poison Shot', 'Wait'] # O 'Debuff_Healing' seria uma propriedade do seu veneno
       equipment: []
-      exp_yield: 10
+      exp_yield: 20
       # Design: Estacionário e frágil, mas pune agentes que dependem de cura.
 
     Goblin:
@@ -89,7 +89,7 @@ pools:
       hp: 70
       skills: ['Soul Drain', 'War Cry', 'Wait']
       equipment: []
-      exp_yield: 25
+      exp_yield: 100
       # Design: Foco em enfraquecer o agente com debuffs e se curar.
 
     Poisoned Rat:
@@ -99,7 +99,7 @@ pools:
       hp: 40
       skills: ['Quick Strike', 'Poison Shot', 'Wait']
       equipment: []
-      exp_yield: 8
+      exp_yield: 20
       # Design: O inimigo mais fraco, mas que pode ser irritante em grupos.
 
     Giant Bat:

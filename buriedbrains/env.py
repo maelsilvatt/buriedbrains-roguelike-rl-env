@@ -33,6 +33,11 @@ class BuriedBrainsEnv(gym.Env):
             'room_effects': enemy_data['pools']['room_effects'],
         }
 
+        self.max_episode_steps = 10000 # Define um limite, por exemplo, 1000 passos
+        self.current_step = 0
+        self.max_floors = 40 # Limite máximo de andares para evitar loops infinitos
+        self.max_level = 400
+
         # Pré-processamento: Injeta a chave 'name' em cada item dos catálogos
         for catalog_name, catalog_data in self.catalogs.items():
             if isinstance(catalog_data, dict):
@@ -65,7 +70,7 @@ class BuriedBrainsEnv(gym.Env):
 
         # --- Bloco Próprio (8 valores) ---
         obs[0] = (agent['hp'] / agent['max_hp']) * 2 - 1 if agent['max_hp'] > 0 else -1.0
-        obs[1] = (agent['level'] / 50.0) * 2 - 1
+        obs[1] = (agent['level'] / self.max_level) * 2 - 1
         # >> CORRIGIDO: Normalização de ratio para [0, 1] <<
         obs[2] = (agent['exp'] / agent['exp_to_level_up']) if agent['exp_to_level_up'] > 0 else 0.0
         for i in range(4):
@@ -148,43 +153,81 @@ class BuriedBrainsEnv(gym.Env):
         self.reputation_system.add_agent("Player 1")
         self.current_floor = 1
         python_seed = self.np_random.integers(0, 10000).item()
-        self.graph = map_generation.generate_p_zone_topology(num_floors=5, seed=python_seed)
+        self.graph = map_generation.generate_p_zone_topology(num_floors=self.max_floors, seed=python_seed)
         self.current_node = "start"
-        for node in self.graph.nodes():
-            budget = 100 + (self.current_floor * 10)
+        # Itera sobre os nós E SEUS DADOS (incluindo o atributo 'floor')
+        for node, data in self.graph.nodes(data=True):
+            # Pega o andar do nó específico, com 1 como valor padrão
+            node_floor = data.get('floor', 1)
+            
+            # Calcula o budget com base no andar DA SALA (node_floor)
+            budget = 100 + (node_floor * 10)
+            
             content = content_generation.generate_room_content(
                 self.catalogs, 
                 self.pool_costs, 
                 budget, 
-                self.current_floor,
+                node_floor, # Passa o andar correto da sala para a geração
                 guarantee_enemy=self.guarantee_enemy 
             )
             self.graph.nodes[node]['content'] = content
         self.combat_state = None
+
+        self.current_step = 0 # Reseta o contador a cada novo episódio
+        self.combat_state = None
+
         return self._get_observation(), {}
 
     def _handle_combat_turn(self, action: int) -> tuple[float, bool]:
         """Orquestra um único turno de combate e retorna (recompensa, combate_terminou)."""
         agent = self.combat_state['agent']
         enemy = self.combat_state['enemy']
-        reward = 1 # Recompensa pequena por sobreviver a um turno
+        reward = 0
         combat_over = False
 
         # 1. AGENTE AGE
         hp_before_enemy = enemy['hp']
         action_name = self.agent_skill_names[action] if action < len(self.agent_skill_names) else "Wait"
         
-        if agent['cooldowns'].get(action_name, 0) > 0:
-            reward = -5 # Penalidade por usar habilidade em cooldown
-        else:
-            combat.execute_action(agent, [enemy], action_name, self.catalogs)
+        combat.execute_action(agent, [enemy], action_name, self.catalogs)
 
-        # 2. VERIFICA MORTE DO INIMIGO E CALCULA RECOMPENSA
-        reward += (hp_before_enemy - enemy['hp']) * 0.5 # Recompensa por dano causado
+        # Recompensa por dano causado
+        damage_dealt = hp_before_enemy - enemy['hp']
+        reward += damage_dealt * 0.6
+
+        # 2. VERIFICA MORTE DO INIMIGO, ADICIONA EXP E FAZ O LEVEL UP
         if combat.check_for_death_and_revive(enemy):
-            reward += 300 # Recompensa grande por vencer
-            self.combat_state = None # Termina o combate
+            # PASSO 1: Dar a recompensa pela vitória e adicionar a EXP
+            reward += 100 # Recompensa grande por vencer
             self.agent_state['exp'] += enemy.get('exp_yield', 50) # Ganha XP
+            
+            # PASSO 2: Chamar a lógica de level up IMEDIATAMENTE
+
+            # ----> PRINT DE DIAGNÓSTICO <----
+            print(f"[DIAGNÓSTICO] Inimigo '{enemy.get('name')}' derrotado. "
+                f"EXP Ganhada: {enemy.get('exp_yield', 50)}. "
+                f"EXP Total: {self.agent_state['exp']}. "
+                f"EXP Nec: {self.agent_state['exp_to_level_up']}.")
+            
+            leveled_up = agent_rules.check_for_level_up(self.agent_state) 
+            if leveled_up:
+                print(f"[DEBUG] Agente subiu para o nível {self.agent_state['level']} durante o combate.")
+                reward += 50  # Recompensa extra por subir de nível
+                info = {} # Cria um dicionário de info temporário se precisar
+                info['level_up'] = True
+
+                # SINCRONIZAÇÃO CRÍTICA: Atualiza o agente em combate com os novos status                
+                agent_in_combat = self.combat_state['agent']
+                agent_in_combat['hp'] = self.agent_state['hp']
+                agent_in_combat['max_hp'] = self.agent_state['max_hp']
+                agent_in_combat['base_stats'] = self.agent_state['base_stats'].copy()
+                
+                # Reseta os cooldowns no estado principal
+                for skill in self.agent_state.get('cooldowns', {}):
+                    self.agent_state['cooldowns'][skill] = 0
+
+            # PASSO 3: AGORA combate pode ser encerrado
+            self.combat_state = None
             combat_over = True
         
         # 3. INIMIGO AGE (se o combate não terminou)
@@ -197,16 +240,21 @@ class BuriedBrainsEnv(gym.Env):
             
             combat.execute_action(enemy, [agent], enemy_action, self.catalogs)
 
-            # 4. VERIFICA MORTE DO AGENTE E CALCULA PENALIDADE
-            reward -= (hp_before_agent - agent['hp']) * 0.5 # Penalidade por dano sofrido
+            # Penalidade por dano sofrido
+            damage_taken = hp_before_agent - agent['hp']
+            reward -= damage_taken * 0.5
+
+            # 4. VERIFICA MORTE DO AGENTE
             if combat.check_for_death_and_revive(agent):
                 combat_over = True # O loop principal do step() aplicará a penalidade final
 
         # 5. FIM DO TURNO: RESOLVE EFEITOS E COOLDOWNS
-        combat.resolve_turn_effects_and_cooldowns(agent, self.catalogs)
-        if not combat_over:
-            combat.resolve_turn_effects_and_cooldowns(enemy, self.catalogs)
-
+        # A sincronização de HP é a última coisa a acontecer no turno
+        if self.combat_state:
+            combat.resolve_turn_effects_and_cooldowns(agent, self.catalogs)
+            if not combat_over: # Garante que não tentemos resolver efeitos de um inimigo morto
+                combat.resolve_turn_effects_and_cooldowns(enemy, self.catalogs)
+        
         # Sincroniza o HP do agente principal
         self.agent_state['hp'] = agent['hp']
         
@@ -216,6 +264,9 @@ class BuriedBrainsEnv(gym.Env):
         reward = 0
         terminated = False
         info = {}
+
+        self.current_step += 1 # Incrementa o contador a cada passo
+        truncated = self.current_step >= self.max_episode_steps
 
         # Penalidade de tempo: o agente perde um pouco a cada passo.
         reward -= 0.1
@@ -229,29 +280,46 @@ class BuriedBrainsEnv(gym.Env):
                     room_content['enemies'].pop(0)
         else:
             reward, terminated = self._handle_exploration_turn(action)
+        
+        # # Chama a função que JÁ FAZ o level up e retorna True se aconteceu
+        # leveled_up = agent_rules.check_for_level_up(self.agent_state)
 
-        if agent_rules.check_for_level_up(self.agent_state):
-            for skill in self.agent_state.get('cooldowns', {}):
-                self.agent_state['cooldowns'][skill] = 0
-            reward += 50
-            info['level_up'] = True
+        # if leveled_up:            
+        #     for skill in self.agent_state.get('cooldowns', {}):
+        #         self.agent_state['cooldowns'][skill] = 0
+        #     reward += 50
+        #     info['level_up'] = True
+            
+        #     # Sincroniza o estado de volta para o combate, se houver um
+        #     if self.combat_state:
+        #         agent_in_combat = self.combat_state['agent']
+                
+        #         # Sincroniza usando self.agent_state
+        #         agent_in_combat['hp'] = self.agent_state['hp']
+        #         agent_in_combat['max_hp'] = self.agent_state['max_hp']
+        #         agent_in_combat['base_stats'] = self.agent_state['base_stats'].copy()
 
+        # Se o agente morrer, é 'terminated', não 'truncated'
         if self.agent_state['hp'] <= 0:
             terminated = True
+            truncated = False 
             reward = -30
+            
 
-        if terminated:
-            # Quando o episódio termina, coloca informações finais no dicionário 'info'
-            # para que os callbacks possam acessá-las.
+        # Adiciona uma recompensa grande por vencer o jogo
+        if self.current_floor > self.max_floors: 
+             terminated = True
+             reward += 400
+
+        if terminated or truncated:
             info['final_status'] = {
                 'level': self.agent_state['level'],
                 'hp': self.agent_state['hp'],
                 'floor': self.current_floor,
-                'win': self.agent_state['hp'] > 0 # Venceu se terminou com HP > 0
+                'win': self.agent_state['hp'] > 0 and not terminated # Vence se o tempo acabou com HP > 0
             }
 
-        observation = self._get_observation()
-        truncated = False 
+        observation = self._get_observation()        
 
         return observation, reward, terminated, truncated, info
 
@@ -281,7 +349,7 @@ class BuriedBrainsEnv(gym.Env):
                     reward += 10 # Recompensa bônus por encontrar um desafio
             else:
                 # Movimento inválido (tentou ir para uma sala que não existe)
-                reward = -2
+                reward = -5
         
         # Ação 7: Soltar/Pegar Regalia
         elif action == 7:
@@ -298,7 +366,7 @@ class BuriedBrainsEnv(gym.Env):
                 # Ação: Pegar a Regalia do chão
                 self.agent_state['regalia'] = regalia_on_floor
                 room_items.remove(regalia_on_floor)
-                reward = 10 # Recompensa maior por adquirir um item de valor
+                reward = 20 # Recompensa maior por adquirir um item de valor
             else:
                 # Ação inválida (sem regalia para soltar ou pegar)
                 reward = -1
@@ -321,7 +389,7 @@ class BuriedBrainsEnv(gym.Env):
         
         # Ações de Combate (0 a 4) usadas fora de combate
         else:
-            reward = -1 # Penalidade por usar uma ação de combate quando não há inimigos
+            reward = -5 # Penalidade por usar uma ação de combate quando não há inimigos
 
         return reward, terminated
     
@@ -338,13 +406,24 @@ class BuriedBrainsEnv(gym.Env):
         )
         agent_combatant['cooldowns'] = self.agent_state.get('cooldowns', {s: 0 for s in self.agent_skill_names})
 
-        # >> CORREÇÃO AQUI <<
-        # Usa a função `instantiate_enemy` que está no módulo `agent_rules` para criar o inimigo escalonado
-        enemy_combatant = agent_rules.instantiate_enemy(
-            enemy_name, 
-            self.current_floor, 
-            self.catalogs
+        # >> ALTERAÇÃO 4: INIMIGOS "SACO DE BOXE" NOS PRIMEIROS ANDARES <<
+        enemy_base = self.catalogs['enemies'][enemy_name]
+        
+        # O escalonamento só começa a ter um efeito real a partir do andar 3
+        effective_floor = max(0, self.current_floor - 2)
+        
+        hp_scaling_factor = 1 + (effective_floor * 0.08) # HP escala mais lentamente no início
+        scaled_hp = int(enemy_base.get('hp', 50) * hp_scaling_factor)
+
+        enemy_combatant = combat.initialize_combatant(
+            name=enemy_name, hp=scaled_hp, equipment=enemy_base.get('equipment', []),
+            skills=enemy_base.get('skills', []), team=2, catalogs=self.catalogs
         )
+
+        damage_scaling_factor = 1 + (effective_floor * 0.1)
+        enemy_combatant['base_stats']['flat_damage_bonus'] *= damage_scaling_factor
+        enemy_combatant['exp_yield'] = int(enemy_base.get('exp_yield', 20) * (1 + effective_floor * 0.15))
+        enemy_combatant['level'] = self.current_floor
         
         self.combat_state = {
             'agent': agent_combatant,

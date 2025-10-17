@@ -8,15 +8,15 @@ def create_initial_agent(name: str = "Player") -> Dict[str, Any]:
     agent = {
         'name': name,
         'level': 1,
-        'hp': 400, 
-        'max_hp': 400,
+        'hp': 300, 
+        'max_hp': 300,
         'base_stats': {
-            'flat_damage_bonus': 5, # >> SUGESTÃO: Reduzido de 10 para 5 (para compensar o ganho por nível) <<
+            'flat_damage_bonus': 5,
             'damage_reduction': 0.0,
-            'damage_modifier': 1.0 # >> SUGESTÃO: Adicionado para escalonamento percentual <<
+            'damage_modifier': 1.0 
         },
         'exp': 0,
-        'exp_to_level_up': 200,
+        'exp_to_level_up': 30,
         'equipment': {},
         'skills': [],
     }
@@ -33,14 +33,14 @@ def check_for_level_up(agent: Dict[str, Any]) -> bool:
         agent['exp'] -= agent['exp_to_level_up']
         agent['level'] += 1
         
-        agent['exp_to_level_up'] = int(agent['exp_to_level_up'] * 1.2)
+        agent['exp_to_level_up'] = int(agent['exp_to_level_up'] * 1.05)  # Aumenta a EXP necessária para o próximo nível
                 
         # --- AUMENTOS DE PODER DO AGENTE ---
-        agent['max_hp'] += 20  # >> SUGESTÃO: Aumentado de +10 para +20 <<
+        agent['max_hp'] += 30  
         agent['hp'] = agent['max_hp']
         
         # >> SUGESTÃO: Aumento de dano muito mais significativo <<
-        agent['base_stats']['flat_damage_bonus'] += 3
+        agent['base_stats']['flat_damage_bonus'] += 5
         
         # Adiciona um pequeno bónus percentual a cada nível <<
         agent['base_stats']['damage_modifier'] += 0.02 # +2% de dano por nível
@@ -67,8 +67,8 @@ def instantiate_enemy(
     
     # --- ESCALONAMENTO DOS INIMIGOS ---
     
-    # Reduzido o escalonamento de HP de 8% para 6% por andar
-    hp_scaling_factor = 1 + (current_floor_k * 0.06)
+    # Escalonamento de HP por andar
+    hp_scaling_factor = 1 + (current_floor_k * 0.02)
     scaled_hp = int(base_enemy_data.get('hp', 50) * hp_scaling_factor)
     
     instantiated_enemy = combat.initialize_combatant(
@@ -81,9 +81,12 @@ def instantiate_enemy(
     )
     
     # Aumentado ligeiramente o escalonamento de dano do inimigo
-    bonus_factor = current_floor_k * 0.1
-    instantiated_enemy['base_stats']['flat_damage_bonus'] += int(bonus_factor * 1.5)
-    
-    instantiated_enemy['exp_yield'] = int(base_enemy_data.get('exp_yield', 20) * (1 + bonus_factor * 1.5))
+    bonus_factor = (current_floor_k + 1) * 0.08
+    damage_increase = int(current_floor_k * 0.8) # Um aumento mais direto: +0.8 de dano por andar.
+    instantiated_enemy['base_stats']['flat_damage_bonus'] += damage_increase
+
+    # Ajusta o yield de experiência do inimigo
+    exp_increase_factor = 1 + (current_floor_k * 0.2) # +20% de EXP por andar
+    instantiated_enemy['exp_yield'] = int(base_enemy_data.get('exp_yield', 20) * exp_increase_factor)
 
     return instantiated_enemy

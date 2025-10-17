@@ -17,7 +17,7 @@ def generate_p_zone_topology(
         random.seed(seed)
         
     G = nx.DiGraph()
-    G.add_node("start")
+    G.add_node("start", floor=0)
     
     current_level_nodes = ["start"]
     
