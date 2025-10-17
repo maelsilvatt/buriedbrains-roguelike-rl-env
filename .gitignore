@@ -18,4 +18,5 @@
 *.toc
 \corevenv
 \logs
+\models
 \__pycache__

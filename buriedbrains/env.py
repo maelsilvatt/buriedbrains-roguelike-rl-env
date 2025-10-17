@@ -167,7 +167,7 @@ class BuriedBrainsEnv(gym.Env):
         """Orquestra um único turno de combate e retorna (recompensa, combate_terminou)."""
         agent = self.combat_state['agent']
         enemy = self.combat_state['enemy']
-        reward = 0
+        reward = 1 # Recompensa pequena por sobreviver a um turno
         combat_over = False
 
         # 1. AGENTE AGE
@@ -180,9 +180,9 @@ class BuriedBrainsEnv(gym.Env):
             combat.execute_action(agent, [enemy], action_name, self.catalogs)
 
         # 2. VERIFICA MORTE DO INIMIGO E CALCULA RECOMPENSA
-        reward += (hp_before_enemy - enemy['hp']) * 0.1 # Recompensa por dano causado
+        reward += (hp_before_enemy - enemy['hp']) * 0.5 # Recompensa por dano causado
         if combat.check_for_death_and_revive(enemy):
-            reward += 100 # Recompensa grande por vencer
+            reward += 300 # Recompensa grande por vencer
             self.combat_state = None # Termina o combate
             self.agent_state['exp'] += enemy.get('exp_yield', 50) # Ganha XP
             combat_over = True
@@ -198,7 +198,7 @@ class BuriedBrainsEnv(gym.Env):
             combat.execute_action(enemy, [agent], enemy_action, self.catalogs)
 
             # 4. VERIFICA MORTE DO AGENTE E CALCULA PENALIDADE
-            reward -= (hp_before_agent - agent['hp']) * 0.1 # Penalidade por dano sofrido
+            reward -= (hp_before_agent - agent['hp']) * 0.5 # Penalidade por dano sofrido
             if combat.check_for_death_and_revive(agent):
                 combat_over = True # O loop principal do step() aplicará a penalidade final
 
@@ -238,7 +238,7 @@ class BuriedBrainsEnv(gym.Env):
 
         if self.agent_state['hp'] <= 0:
             terminated = True
-            reward = -100
+            reward = -30
 
         if terminated:
             # Quando o episódio termina, coloca informações finais no dicionário 'info'
