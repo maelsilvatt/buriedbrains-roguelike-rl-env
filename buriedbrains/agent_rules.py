@@ -9,7 +9,7 @@ def create_initial_agent(name: str = "Player") -> Dict[str, Any]:
         'name': name,
         'level': 1,
         'hp': 400, 
-        'max_hp': 80,
+        'max_hp': 400,
         'base_stats': {
             'flat_damage_bonus': 5, # >> SUGESTÃO: Reduzido de 10 para 5 (para compensar o ganho por nível) <<
             'damage_reduction': 0.0,
