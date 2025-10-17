@@ -35,8 +35,10 @@ class BuriedBrainsEnv(gym.Env):
 
         self.max_episode_steps = 10000 # Define um limite, por exemplo, 1000 passos
         self.current_step = 0
-        self.max_floors = 5 # Limite máximo de andares para evitar loops infinitos
+        self.max_floors = 5000 # Limite máximo de andares para evitar loops infinitos
         self.max_level = 400
+        self.branching_factor = 2 # Número de caminhos possíveis por andar
+        self.last_milestone_floor = 0 # Último andar que concedeu recompensa de marco
 
         # Pré-processamento: Injeta a chave 'name' em cada item dos catálogos
         for catalog_name, catalog_data in self.catalogs.items():
@@ -66,6 +68,40 @@ class BuriedBrainsEnv(gym.Env):
 
         self.guarantee_enemy = guarantee_enemy
 
+    def _generate_successors_for_node(self, parent_node: str):
+        """
+        Gera e popula os nós sucessores (filhos) para um determinado nó.
+        """
+        parent_floor = self.graph.nodes[parent_node].get('floor', 0)
+        next_floor = parent_floor + 1
+
+        # Para de gerar se atingir a profundidade máxima
+        if next_floor > self.max_floors:
+            return
+
+        for i in range(self.branching_factor):
+            # Cria um ID de nó único. Ex: "start" -> "start_c0", "start_c0" -> "start_c0_c0"
+            new_node = f"{parent_node}_c{i}" 
+            self.graph.add_node(new_node, floor=next_floor)
+            self.graph.add_edge(parent_node, new_node)
+            
+            # Popula este novo nó com conteúdo
+            budget = 100 + (next_floor * 10)
+            content = content_generation.generate_room_content(
+                self.catalogs, 
+                self.pool_costs, 
+                budget, 
+                next_floor,
+                guarantee_enemy=self.guarantee_enemy 
+            )
+            self.graph.nodes[new_node]['content'] = content
+
+            # --- ADICIONE ESTES LOGS ---
+            enemy_log = content.get('enemies', ['Nenhum'])
+            item_log = content.get('items', ['Nenhum'])
+            print(f"[MAPA] Sala '{new_node}' (Andar {next_floor}) gerada com: "
+                f"Inimigos: {enemy_log}, Itens: {item_log}")
+            # --- FIM DOS LOGS ---
 
     # VERSÃO MODIFICADA DA FUNÇÃO DE OBSERVAÇÃO, REMOVENDO BLOCOS SOCIAIS E ITENS SOCIAIS
     def _get_observation(self) -> np.ndarray:
@@ -203,38 +239,46 @@ class BuriedBrainsEnv(gym.Env):
         self.agent_state = agent_rules.create_initial_agent("Player 1")
 
         # Define as habilidades iniciais do agente
-        self.agent_skill_names = ["Quick Strike", "Heavy Blow", "Stone Shield", "Wait"]        
+        # self.agent_skill_names = ["Quick Strike", "Heavy Blow", "Stone Shield"]
+        self.agent_skill_names = ["Quick Strike", "Heavy Blow", "Stone Shield", "Wait"]
         self.agent_state['skills'] = self.agent_skill_names
-
-        self.agent_state['id'] = "Player 1" # Garante que o sistema de karma pode encontrá-lo
-
+        self.agent_state['id'] = "Player 1"
         self.reputation_system.add_agent("Player 1")
                 
-        self.current_floor = 1
-        python_seed = self.np_random.integers(0, 10000).item()
-        self.graph = map_generation.generate_p_zone_topology(num_floors=self.max_floors, seed=python_seed)
+        # --- LÓGICA DE GERAÇÃO DO MAPA CORRIGIDA ---
+        self.current_floor = 0
+        self.graph = nx.DiGraph()
         self.current_node = "start"
-        # Itera sobre os nós E SEUS DADOS (incluindo o atributo 'floor')
-        for node, data in self.graph.nodes(data=True):
-            # Pega o andar do nó específico, com 1 como valor padrão
-            node_floor = data.get('floor', 1)
-            
-            # Calcula o budget com base no andar DA SALA (node_floor)
-            budget = 100 + (node_floor * 10)
-            
-            content = content_generation.generate_room_content(
-                self.catalogs, 
-                self.pool_costs, 
-                budget, 
-                node_floor, # Passa o andar correto da sala para a geração
-                guarantee_enemy=self.guarantee_enemy 
-            )
-            self.graph.nodes[node]['content'] = content
-        self.combat_state = None
+        
+        # 1. Cria apenas o nó inicial
+        self.graph.add_node("start", floor=0)
+        
+        # 2. Popula o nó inicial (geralmente uma sala vazia)
+        start_content = content_generation.generate_room_content(
+            self.catalogs, self.pool_costs, 
+            budget=0, # Orçamento zero para a sala inicial
+            current_floor=0,
+            guarantee_enemy=False # Garante que a sala inicial seja segura
+        )
+        self.graph.nodes["start"]['content'] = start_content
 
-        self.current_step = 0 # Reseta o contador a cada novo episódio
-        self.combat_state = None
+        # 3. Pré-gera APENAS o primeiro nível de escolhas
+        self._generate_successors_for_node("start")
+        # --- FIM DA LÓGICA DO MAPA ---
 
+        self.combat_state = None
+        self.current_step = 0
+
+        # --- ADICIONE ESTES LOGS ---
+        print("\n" + "="*50)
+        print(f"[RESET] Novo episódio iniciado. Agente Nível {self.agent_state['level']}.")
+        print(f"[RESET] Mapa gerado. Sala inicial: '{self.current_node}'.")
+        
+        successors = list(self.graph.successors(self.current_node))
+        if successors:
+            print(f"[RESET] Próximas salas disponíveis: {', '.join(successors)}")
+        # --- FIM DOS LOGS ---
+        
         return self._get_observation(), {}
 
     def _handle_combat_turn(self, action: int, info: dict) -> tuple[float, bool]:
@@ -247,6 +291,8 @@ class BuriedBrainsEnv(gym.Env):
         # 1. AGENTE AGE
         hp_before_enemy = enemy['hp']
         action_name = self.agent_skill_names[action] if action < len(self.agent_skill_names) else "Wait"
+
+        # print(f"  [TURNO] Agente usou: '{action_name}'")
         
         combat.execute_action(agent, [enemy], action_name, self.catalogs)
 
@@ -295,6 +341,8 @@ class BuriedBrainsEnv(gym.Env):
             # IA Simples: escolhe uma habilidade aleatória que não esteja em cooldown
             available_skills = [s for s, cd in enemy['cooldowns'].items() if cd == 0]
             enemy_action = random.choice(available_skills) if available_skills else "Wait"
+
+            print(f"  [TURNO] Inimigo usou: '{enemy_action}'")
             
             combat.execute_action(enemy, [agent], enemy_action, self.catalogs)
 
@@ -327,7 +375,16 @@ class BuriedBrainsEnv(gym.Env):
             truncated = self.current_step >= self.max_episode_steps
 
             # Penalidade de tempo: o agente perde um pouco a cada passo.
-            reward -= 0.1
+            reward -= 0.5
+
+            # Verifica se o agente está no último andar E não tem para onde ir
+            is_on_last_floor = (self.current_floor == self.max_floors)
+            has_no_successors = not list(self.graph.successors(self.current_node))
+
+            if is_on_last_floor and has_no_successors and not self.combat_state:
+                terminated = True
+                reward += 400 # Recompensa final por chegar ao fim
+                print(f"[EPISÓDIO] FIM: Agente VENCEU! (Chegou ao fim do labirinto no Andar {self.current_floor})")            
 
             if self.combat_state:
                 # Em combate: usa o handler de combate
@@ -355,13 +412,32 @@ class BuriedBrainsEnv(gym.Env):
                 truncated = False 
                 # Penalidade de morte aumentada para ser mais significativa
                 reward = -300 
+                print(f"[EPISÓDIO] FIM: Agente MORREU no Andar {self.current_floor}.") # LOG
                 
-            # Adiciona uma recompensa grande por vencer o jogo
+            # Adiciona uma recompensa grande por vencer o jogo E TERMINA IMEDIATAMENTE
             if self.current_floor > self.max_floors:
                 terminated = True
+                reward += 400 # Pode adicionar a recompensa final aqui
+                print(f"[EPISÓDIO] FIM: Agente VENCEU! (Chegou ao andar {self.current_floor})")
+                # Prepara o info final AQUI e retorna
+                info['final_status'] = {
+                    'level': self.agent_state['level'],
+                    'hp': self.agent_state['hp'],
+                    'floor': self.current_floor,
+                    'win': self.agent_state['hp'] > 0 and not terminated
+                }
+                observation = self._get_observation()
+                return observation, reward, terminated, False, info # Retorna imediatamente
+
+            # Recompensa a cada 10 andares concluídos
+            if self.current_floor % 10 == 0 and self.current_floor > self.last_milestone_floor:
                 reward += 400
+                print(f"[MARCO] Agente alcançou o Andar {self.current_floor}! Bônus de +400.")
+                self.last_milestone_floor = self.current_floor # Atualiza o último marco alcançado
 
             if terminated or truncated:
+                if truncated and not terminated:
+                    print(f"[EPISÓDIO] FIM: TEMPO ESGOTADO (Truncated) no Andar {self.current_floor}.") # LOG
                 info['final_status'] = {
                     'level': self.agent_state['level'],
                     'hp': self.agent_state['hp'],
@@ -376,7 +452,7 @@ class BuriedBrainsEnv(gym.Env):
     # VERSÃO SIMPLIFICADA DA FUNÇÃO DE EXPLORAÇÃO, SEM AÇÃO DE SOLTAR/PEGAR ARTEFATO
     def _handle_exploration_turn(self, action: int):
             """
-            Processa uma ação tomada pelo agente em modo de exploração.
+            Processa uma ação em modo de exploração, incluindo a poda do mapa.
             Retorna (recompensa, episodio_terminou).
             """
             reward = 0
@@ -387,43 +463,60 @@ class BuriedBrainsEnv(gym.Env):
                 successors = list(self.graph.successors(self.current_node))
                 action_index = action - 5  # Mapeia ação 5 para índice 0, 6 para 1
 
+                print(f"[AÇÃO] Agente na sala '{self.current_node}'. Tentando Ação de Movimento {action_index}.") # LOG
+
                 if len(successors) > action_index:
-                    # Movimento válido: atualiza a posição do agente
-                    self.current_node = successors[action_index]
-                    self.current_floor = self.graph.nodes[self.current_node].get('floor', self.current_floor) # Atualiza o andar atual
+                    # --- LÓGICA DE PODA E GERAÇÃO ---
+                    # 1. Agente escolhe um caminho
+                    chosen_node = successors[action_index]
+                    print(f"[AÇÃO] Movimento VÁLIDO para '{chosen_node}'.") # LOG
+                    
+                    # 2. PODA: Identifica e remove os caminhos não escolhidos
+                    nodes_to_remove = [succ for i, succ in enumerate(successors) if i != action_index]
+                    self.graph.remove_nodes_from(nodes_to_remove) # Isso remove os nós e todas as suas sub-árvores
+
+                    # 3. GERAÇÃO: Move o agente e gera os próximos caminhos
+                    self.current_node = chosen_node
+                    self.current_floor = self.graph.nodes[self.current_node].get('floor', self.current_floor)
+                    self._generate_successors_for_node(self.current_node) # Gera os filhos do novo nó
+                    
                     reward = 5  # Recompensa por explorar
+
+                    # --- FIM DA LÓGICA DE PODA ---
 
                     # Após mover, verifica se a nova sala inicia um combate
                     room_content = self.graph.nodes[self.current_node].get('content', {})
                     enemy_names = room_content.get('enemies', [])
                     if enemy_names:
+                        print(f"[AÇÃO] >>> COMBATE INICIADO com {enemy_names[0]} <<<") # LOG
                         self._start_combat(enemy_names[0])
                         reward += 10 # Recompensa bônus por encontrar um desafio
                 else:
                     # Movimento inválido (tentou ir para uma sala que não existe)
+                    print(f"[AÇÃO] Movimento INVÁLIDO. (Sem sala no índice {action_index})") # LOG
                     reward = -5
             
             # Ação 7: (Antiga Ação 8) Equipar Item de Poder (Weapon/Armor)
-            elif action == 7: # Nota: O índice mudou de 8 para 7
+            elif action == 7: 
+                print(f"[AÇÃO] Agente tentou Ação 7 (Equipar Item).") # LOG
                 room_items = self.graph.nodes[self.current_node].get('content', {}).setdefault('items', [])
-                
-                # CORREÇÃO: Procura APENAS Weapon e Armor
                 equip_on_floor = next((item for item in room_items if self.catalogs['equipment'].get(item, {}).get('type') in ['Weapon', 'Armor']), None)
                 
                 if equip_on_floor:
-                    # Ação: Equipa o item, "destruindo" o antigo no mesmo slot
                     details = self.catalogs['equipment'][equip_on_floor]
-                    item_type = details['type'] # Será 'Weapon' ou 'Armor'
+                    item_type = details['type']
                     self.agent_state['equipment'][item_type] = equip_on_floor
                     room_items.remove(equip_on_floor)
-                    reward = 15 # Recompensa alta por um upgrade de poder
+                    print(f"[AÇÃO] Agente tentou Ação 7 (Equipar Item).") # LOG
+                    reward = 15 
                 else:
-                    # Ação inválida (nenhum equipamento no chão)
+                    print(f"[AÇÃO] Agente tentou equipar, mas não havia itens (Weapon/Armor) no chão.") # LOG            
                     reward = -1
             
             # Ações de Combate (0 a 4) ou Ação Inválida (antiga 7)
             else:
-                reward = -5 # Penalidade por usar uma ação de combate fora de combate ou uma ação inválida
+                print(f"[AÇÃO] Agente usou Ação {action} (Combate/Inválida) fora de combate.") # LOG
+                reward = -5 
 
             return reward, terminated
     
@@ -534,3 +627,8 @@ class BuriedBrainsEnv(gym.Env):
             'agent': agent_combatant,
             'enemy': enemy_combatant,
         }
+
+        # --- ADICIONE ESTES LOGS ---
+        print(f"[COMBATE] Agente (Nível {self.agent_state['level']}, HP {agent_combatant['hp']}) "
+            f"vs. {enemy_combatant['name']} (Nível {enemy_combatant['level']}, HP {enemy_combatant['hp']})")
+        # --- FIM DOS LOGS ---
