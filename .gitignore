@@ -17,4 +17,5 @@
 *.synctex.gz
 *.toc
 \corevenv
+\logs
 \__pycache__
