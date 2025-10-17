@@ -39,6 +39,7 @@ class BuriedBrainsEnv(gym.Env):
         self.max_level = 400
         self.branching_factor = 2 # Número de caminhos possíveis por andar
         self.last_milestone_floor = 0 # Último andar que concedeu recompensa de marco
+        self.nodes_per_floor = {} # Dicionário para contar nós por andar
 
         # Pré-processamento: Injeta a chave 'name' em cada item dos catálogos
         for catalog_name, catalog_data in self.catalogs.items():
@@ -75,17 +76,27 @@ class BuriedBrainsEnv(gym.Env):
         parent_floor = self.graph.nodes[parent_node].get('floor', 0)
         next_floor = parent_floor + 1
 
-        # Para de gerar se atingir a profundidade máxima
-        if next_floor > self.max_floors:
-            return
-
+        # Gera as salas sucessoras
         for i in range(self.branching_factor):
-            # Cria um ID de nó único. Ex: "start" -> "start_c0", "start_c0" -> "start_c0_c0"
-            new_node = f"{parent_node}_c{i}" 
+                            
+            # Garante que a chave do andar existe no contador
+            if next_floor not in self.nodes_per_floor:
+                self.nodes_per_floor[next_floor] = 0
+                
+            # Pega o índice atual para este andar
+            current_index = self.nodes_per_floor[next_floor]
+            
+            # Cria o novo nome no formato desejado
+            new_node = f"Sala {next_floor}_{current_index}" 
+            
+            # Incrementa o contador para o próximo nó neste andar
+            self.nodes_per_floor[next_floor] += 1
+            # --- FIM DA LÓGICA DE NOMENCLATURA ---
+            
             self.graph.add_node(new_node, floor=next_floor)
             self.graph.add_edge(parent_node, new_node)
             
-            # Popula este novo nó com conteúdo
+            # Popula este novo nó com conteúdo (como antes)
             budget = 100 + (next_floor * 10)
             content = content_generation.generate_room_content(
                 self.catalogs, 
@@ -249,6 +260,7 @@ class BuriedBrainsEnv(gym.Env):
         self.current_floor = 0
         self.graph = nx.DiGraph()
         self.current_node = "start"
+        self.nodes_per_floor = {0: 1} # Reseta o contador (andar 0 tem 1 nó: "start")
         
         # 1. Cria apenas o nó inicial
         self.graph.add_node("start", floor=0)
@@ -342,7 +354,7 @@ class BuriedBrainsEnv(gym.Env):
             available_skills = [s for s, cd in enemy['cooldowns'].items() if cd == 0]
             enemy_action = random.choice(available_skills) if available_skills else "Wait"
 
-            print(f"  [TURNO] Inimigo usou: '{enemy_action}'")
+            # print(f"  [TURNO] Inimigo usou: '{enemy_action}'")
             
             combat.execute_action(enemy, [agent], enemy_action, self.catalogs)
 
