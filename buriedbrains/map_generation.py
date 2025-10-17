@@ -1,7 +1,7 @@
 # buriedbrains/map_generation.py
 import networkx as nx
 import random
-from typing import Dict, Any
+from typing import Dict
 
 # --- Geração da Zona de Progressão (DAG) ---
 def generate_p_zone_topology(

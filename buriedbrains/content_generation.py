@@ -13,7 +13,7 @@ def _calculate_costs(pools: Dict) -> Dict:
             costs[pool_name] = 1
             continue
         
-        total_value = sum(item.get('value', 0) for item in items.values())
+        total_value = sum(item.get('cost', 0) for item in items.values())
         costs[pool_name] = total_value / len(items) if len(items) > 0 else 1
     return costs
 
@@ -41,12 +41,12 @@ def generate_room_content(
         if not candidates:
             continue
 
-        weights = [c.get('value', 0) * c.get('rarity_multiplier', 1) for c in candidates]
+        weights = [c.get('weight', 0) for c in candidates]
         
         while budget > 0 and any(w > 0 for w in weights):
             try:
                 chosen_entity = random.choices(candidates, weights=weights, k=1)[0]
-                entity_cost = costs.get(pool_name, 1)
+                entity_cost = chosen_entity.get('cost', 0)
 
                 if budget >= entity_cost:
                     selected_content[pool_name].append(chosen_entity['name'])
@@ -63,7 +63,7 @@ def generate_room_content(
             # Se a flag estiver ativa, for a pool de inimigos e nenhum inimigo foi selecionado,
             # adicionamos o inimigo mais barato possível.
             if candidates:
-                cheapest_enemy = min(candidates, key=lambda e: e.get('value', float('inf')))
+                cheapest_enemy = min(candidates, key=lambda e: e.get('cost', float('inf')))
                 enemy_cost = costs.get('enemies', 1)
                 
                 # Adicionamos mesmo que o orçamento seja baixo, garantindo o inimigo para o teste.

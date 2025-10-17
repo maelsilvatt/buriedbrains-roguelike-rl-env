@@ -35,7 +35,7 @@ class BuriedBrainsEnv(gym.Env):
 
         self.max_episode_steps = 10000 # Define um limite, por exemplo, 1000 passos
         self.current_step = 0
-        self.max_floors = 40 # Limite máximo de andares para evitar loops infinitos
+        self.max_floors = 5 # Limite máximo de andares para evitar loops infinitos
         self.max_level = 400
 
         # Pré-processamento: Injeta a chave 'name' em cada item dos catálogos
@@ -203,7 +203,7 @@ class BuriedBrainsEnv(gym.Env):
         self.agent_state = agent_rules.create_initial_agent("Player 1")
 
         # Define as habilidades iniciais do agente
-        self.agent_skill_names = ["Quick Strike", "Heavy Blow", "Stone Shield", "Wait"]
+        self.agent_skill_names = ["Quick Strike", "Heavy Blow", "Stone Shield", "Wait"]        
         self.agent_state['skills'] = self.agent_skill_names
 
         self.agent_state['id'] = "Player 1" # Garante que o sistema de karma pode encontrá-lo
@@ -319,67 +319,59 @@ class BuriedBrainsEnv(gym.Env):
         return reward, combat_over
 
     def step(self, action: int):
-        reward = 0
-        terminated = False
-        info = {}
+            reward = 0
+            terminated = False
+            info = {}
 
-        self.current_step += 1 # Incrementa o contador a cada passo
-        truncated = self.current_step >= self.max_episode_steps
+            self.current_step += 1 # Incrementa o contador a cada passo
+            truncated = self.current_step >= self.max_episode_steps
 
-        # Penalidade de tempo: o agente perde um pouco a cada passo.
-        reward -= 0.1
+            # Penalidade de tempo: o agente perde um pouco a cada passo.
+            reward -= 0.1
 
-        if self.combat_state:
-            reward, combat_over = self._handle_combat_turn(action, info)
-            if combat_over and self.agent_state['hp'] > 0:
-                # Se o combate terminou com vitória, remove o inimigo do conteúdo da sala
-                room_content = self.graph.nodes[self.current_node]['content']
-                if room_content['enemies']:
-                    room_content['enemies'].pop(0)
-        else:
-            reward_explore, terminated_explore = self._handle_exploration_turn(action)
-        
-        # # Chama a função que JÁ FAZ o level up e retorna True se aconteceu
-        # leveled_up = agent_rules.check_for_level_up(self.agent_state)
-
-        # if leveled_up:            
-        #     for skill in self.agent_state.get('cooldowns', {}):
-        #         self.agent_state['cooldowns'][skill] = 0
-        #     reward += 50
-        #     info['level_up'] = True
-            
-        #     # Sincroniza o estado de volta para o combate, se houver um
-        #     if self.combat_state:
-        #         agent_in_combat = self.combat_state['agent']
+            if self.combat_state:
+                # Em combate: usa o handler de combate
+                reward_combat, combat_over = self._handle_combat_turn(action, info)
+                reward += reward_combat # Adiciona a recompensa do combate
                 
-        #         # Sincroniza usando self.agent_state
-        #         agent_in_combat['hp'] = self.agent_state['hp']
-        #         agent_in_combat['max_hp'] = self.agent_state['max_hp']
-        #         agent_in_combat['base_stats'] = self.agent_state['base_stats'].copy()
+                if combat_over and self.agent_state['hp'] > 0:
+                    # Se o combate terminou com vitória, remove o inimigo do conteúdo da sala
+                    room_content = self.graph.nodes[self.current_node]['content']
+                    if room_content.get('enemies'):
+                        room_content['enemies'].pop(0)
+            else:
+                # Fora de combate: usa o handler de exploração
+                reward_explore, terminated_explore = self._handle_exploration_turn(action)
+                                
+                # Adiciona a recompensa da exploração ao total
+                reward += reward_explore
+                # Se a exploração retornou 'True' para terminado, atualiza
+                if terminated_explore:
+                    terminated = True                
 
-        # Se o agente morrer, é 'terminated', não 'truncated'
-        if self.agent_state['hp'] <= 0:
-            terminated = True
-            truncated = False 
-            reward = -30
-            
+            # Se o agente morrer, é 'terminated', não 'truncated'
+            if self.agent_state['hp'] <= 0:
+                terminated = True
+                truncated = False 
+                # Penalidade de morte aumentada para ser mais significativa
+                reward = -300 
+                
+            # Adiciona uma recompensa grande por vencer o jogo
+            if self.current_floor > self.max_floors:
+                terminated = True
+                reward += 400
 
-        # Adiciona uma recompensa grande por vencer o jogo
-        if self.current_floor > self.max_floors: 
-             terminated = True
-             reward += 400
+            if terminated or truncated:
+                info['final_status'] = {
+                    'level': self.agent_state['level'],
+                    'hp': self.agent_state['hp'],
+                    'floor': self.current_floor,
+                    'win': self.agent_state['hp'] > 0 and not terminated
+                }
 
-        if terminated or truncated:
-            info['final_status'] = {
-                'level': self.agent_state['level'],
-                'hp': self.agent_state['hp'],
-                'floor': self.current_floor,
-                'win': self.agent_state['hp'] > 0 and not terminated # Vence se o tempo acabou com HP > 0
-            }
+            observation = self._get_observation()        
 
-        observation = self._get_observation()        
-
-        return observation, reward, terminated, truncated, info
+            return observation, reward, terminated, truncated, info
 
     # VERSÃO SIMPLIFICADA DA FUNÇÃO DE EXPLORAÇÃO, SEM AÇÃO DE SOLTAR/PEGAR ARTEFATO
     def _handle_exploration_turn(self, action: int):
