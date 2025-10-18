@@ -4,70 +4,155 @@ from typing import Dict, List
 
 def _calculate_costs(pools: Dict) -> Dict:
     """
-    Calcula o 'custo' médio de cada pool (inimigos, itens, etc.)
-    para normalizar as probabilidades de seleção durante a geração.
+    Calcula o 'custo' médio de cada pool.
     """
     costs = {}
     for pool_name, items in pools.items():
         if not items:
             costs[pool_name] = 1
             continue
-        
-        total_value = sum(item.get('cost', 0) for item in items.values())
-        costs[pool_name] = total_value / len(items) if len(items) > 0 else 1
+
+        # Usa 'cost' do YAML
+        total_cost = sum(item.get('cost', 0) for item in items.values() if isinstance(item, dict))
+        # Evita divisão por zero se a lista de items for vazia após filtragem
+        num_items = len([item for item in items.values() if isinstance(item, dict)])
+        costs[pool_name] = total_cost / num_items if num_items > 0 else 1
     return costs
 
+# --- VERSÃO REFEITA ---
 def generate_room_content(
-    pools: Dict, 
-    costs: Dict, 
-    budget: float, 
+    catalogs: Dict, # Modificado: Recebe todos os catálogos
+    budget: float,
     current_floor: int,
-    guarantee_enemy: bool = False  # >> MODIFICAÇÃO AQUI: Novo parâmetro opcional <<
+    guarantee_enemy: bool = False
 ) -> Dict:
     """
-    Popula uma sala com conteúdo (inimigos, itens, efeitos) de forma
-    balanceada, respeitando um orçamento de dificuldade (budget).
+    Popula uma sala seguindo a arquitetura Gamma (PDF) e regras de Tesouro:
+    1. Seleciona no máximo 1 inimigo (ci).
+    2. Seleciona no máximo 1 resultado de evento (ce):
+        - Se Tesouro/Tesouro Mórbido: Gera 1 item de equipamento correspondente.
+        - Se outro evento (não 'None'): Adiciona o nome do evento.
+        - Se 'None': Nada acontece.
+    3. Seleciona no máximo 1 efeito de sala (cf).
     """
-    selected_content = {pool_name: [] for pool_name in pools.keys()}
-    
-    sorted_pools = sorted(
-        pools.keys(), 
-        key=lambda p: {'enemies': 0, 'items': 1, 'room_effects': 2}.get(p, 3)
-    )
+    # Adicionada a chave 'items' para guardar equipamentos encontrados
+    selected_content = {'enemies': [], 'events': [], 'items': [], 'room_effects': []}
 
-    for pool_name in sorted_pools:
-        candidates = list(pools[pool_name].values())
-        candidates = [c for c in candidates if c.get('min_floor', 0) <= current_floor]
+    # Ordem definida pela arquitetura Gamma [cite: 555-560]
+    processing_order = ['enemies', 'events', 'room_effects']
+    current_budget = budget
+
+    # Acesso aos catálogos individuais (assume que estão no nível superior de 'catalogs')
+    enemy_pool = catalogs.get('enemies', {})
+    event_pool = catalogs.get('events', {}) # Precisa garantir que 'events' esteja aqui
+    effect_pool = catalogs.get('room_effects', {})
+    equipment_catalog = catalogs.get('equipment', {}) # Necessário para gerar itens
+
+    pool_map = {
+        'enemies': enemy_pool,
+        'events': event_pool,
+        'room_effects': effect_pool
+    }
+
+    for pool_name in processing_order:
+
+        current_pool = pool_map.get(pool_name, {})
+        # Garante que estamos pegando os 'values' (os dicionários de dados)
+        all_candidates_in_pool = list(current_pool.values())
+        candidates = [
+            c for c in all_candidates_in_pool
+            if isinstance(c, dict) and c.get('min_floor', 0) <= current_floor
+        ]
+
         if not candidates:
-            continue
+            continue # Pula se não houver candidatos válidos para o andar
 
         weights = [c.get('weight', 0) for c in candidates]
-        
-        while budget > 0 and any(w > 0 for w in weights):
-            try:
-                chosen_entity = random.choices(candidates, weights=weights, k=1)[0]
-                entity_cost = chosen_entity.get('cost', 0)
 
-                if budget >= entity_cost:
-                    selected_content[pool_name].append(chosen_entity['name'])
-                    budget -= entity_cost
-                    idx = candidates.index(chosen_entity)
-                    weights[idx] = 0
-                else:
-                    break
-            except IndexError:
-                break
+        # --- Slot ci: Inimigos (Máximo 1) ---
+        if pool_name == 'enemies':
+            enemy_chosen_data = None # Guarda o dicionário do inimigo escolhido
+            if any(w > 0 for w in weights):
+                try:
+                    chosen_enemy_candidate = random.choices(candidates, weights=weights, k=1)[0]
+                    enemy_cost = chosen_enemy_candidate.get('cost', 0)
+                    # Adiciona se couber no budget inicial
+                    if budget >= enemy_cost:
+                        enemy_chosen_data = chosen_enemy_candidate
+                except (IndexError, ValueError): pass # Ignora erros de seleção
 
-        # >> MODIFICAÇÃO AQUI: Lógica para garantir um inimigo <<
-        if guarantee_enemy and pool_name == 'enemies' and not selected_content['enemies']:
-            # Se a flag estiver ativa, for a pool de inimigos e nenhum inimigo foi selecionado,
-            # adicionamos o inimigo mais barato possível.
-            if candidates:
-                cheapest_enemy = min(candidates, key=lambda e: e.get('cost', float('inf')))
-                enemy_cost = costs.get('enemies', 1)
-                
-                # Adicionamos mesmo que o orçamento seja baixo, garantindo o inimigo para o teste.
-                selected_content['enemies'].append(cheapest_enemy['name'])
-                budget -= enemy_cost # Deduz o custo para afetar a geração de itens.
-                
+            # Fallback da Garantia
+            if enemy_chosen_data is None and guarantee_enemy:
+                 eligible_enemies = [c for c in candidates if c.get('cost', float('inf')) > 0]
+                 if eligible_enemies:
+                      cheapest_enemy = min(eligible_enemies, key=lambda e: e.get('cost', float('inf')))
+                      enemy_chosen_data = cheapest_enemy # Adiciona mesmo que estoure o budget
+
+            if enemy_chosen_data:
+                 selected_content['enemies'].append(enemy_chosen_data['name'])
+                 # Sempre deduz o custo para afetar slots subsequentes
+                 current_budget -= enemy_chosen_data.get('cost', 0) # Atualiza B_res1
+
+        # --- Slot ce: Eventos/Itens (Máximo 1 Resultado) ---
+        elif pool_name == 'events':
+            if any(w > 0 for w in weights):
+                try:
+                    # Seleciona UM evento/resultado potencial baseado no peso
+                    chosen_event = random.choices(candidates, weights=weights, k=1)[0]
+                    event_cost = chosen_event.get('cost', 0)
+                    event_name = chosen_event.get('name') # Assume 'name' foi injetado no __init__
+
+                    # Processa o evento escolhido SOMENTE se couber no budget restante (B_res1)
+                    # OU se o custo for não-positivo (recompensa/neutro)
+                    if event_cost <= 0 or current_budget >= event_cost:
+
+                        if event_name == 'Treasure':
+                            # Filtra equipamentos Comuns ou Raros
+                            eligible_items = [
+                                name for name, data in equipment_catalog.items()
+                                if isinstance(data, dict) and data.get('rarity') in ['Common', 'Rare']
+                            ]
+                            if eligible_items:
+                                found_item = random.choice(eligible_items)
+                                selected_content['items'].append(found_item)
+                            # Deduz o custo do EVENTO Tesouro (negativo)
+                            current_budget -= event_cost # Atualiza B_res2
+
+                        elif event_name == 'Morbid Treasure':
+                            # Filtra equipamentos Épicos ou Lendários
+                            eligible_items = [
+                                name for name, data in equipment_catalog.items()
+                                if isinstance(data, dict) and data.get('rarity') in ['Epic', 'Legendary']
+                            ]
+                            if eligible_items:
+                                found_item = random.choice(eligible_items)
+                                selected_content['items'].append(found_item)
+                            # Deduz o custo do EVENTO Tesouro Mórbido (negativo)
+                            current_budget -= event_cost # Atualiza B_res2
+                            # Lembre-se: A *causa* de Morbid Treasure (Boss/Elite) é externa a esta função.
+
+                        elif event_name != 'None':
+                            # Para outros eventos (Trap, Fountain, etc.)
+                            selected_content['events'].append(event_name)
+                            # Deduz o custo apenas se for positivo
+                            if event_cost > 0:
+                                 current_budget -= event_cost # Atualiza B_res2
+
+                        # Se for 'None', não faz nada (custo 0)
+
+                except (IndexError, ValueError):
+                    pass # Ignora erros de seleção
+
+        # --- Slot cf: Efeitos de Sala (Máximo 1) ---
+        elif pool_name == 'room_effects':
+            if any(w > 0 for w in weights):
+                try:
+                    chosen_effect_candidate = random.choices(candidates, weights=weights, k=1)[0]
+                    effect_cost = chosen_effect_candidate.get('cost', 0)
+                    # Só adiciona se couber no budget restante (B_res2)
+                    if current_budget >= effect_cost:
+                        selected_content['room_effects'].append(chosen_effect_candidate['name'])
+                        current_budget -= effect_cost # Budget final
+                except (IndexError, ValueError): pass
+
     return selected_content

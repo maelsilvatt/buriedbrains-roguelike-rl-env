@@ -11,7 +11,7 @@ import networkx as nx
 from . import agent_rules
 from . import combat
 from . import content_generation
-from . import map_generation
+# from . import map_generation
 from . import reputation
 
 class BuriedBrainsEnv(gym.Env):
@@ -30,14 +30,15 @@ class BuriedBrainsEnv(gym.Env):
         self.catalogs = {
             'skills': skill_data['skill_catalog'], 'effects': skill_data['effect_ruleset'],
             'equipment': equipment_data['equipment_catalog'], 'enemies': enemy_data['pools']['enemies'],
-            'room_effects': enemy_data['pools']['room_effects'],
+            'room_effects': enemy_data['pools']['room_effects'], 'events': enemy_data['pools']['events']
         }
 
         self.max_episode_steps = 10000 # Define um limite, por exemplo, 1000 passos
         self.current_step = 0
-        self.max_floors = 5000 # Limite máximo de andares para evitar loops infinitos
-        self.max_level = 400
-        self.branching_factor = 2 # Número de caminhos possíveis por andar
+        self.max_floors = 300 # Limite máximo de andares para evitar loops infinitos
+        self.max_level = 400         
+        self.enemies_defeated_this_episode = 0 # Conta inimigos derrotados
+        self.invalid_action_count = 0 # Conta ações inválidas
         self.last_milestone_floor = 0 # Último andar que concedeu recompensa de marco
         self.nodes_per_floor = {} # Dicionário para contar nós por andar
 
@@ -75,9 +76,10 @@ class BuriedBrainsEnv(gym.Env):
         """
         parent_floor = self.graph.nodes[parent_node].get('floor', 0)
         next_floor = parent_floor + 1
+        branching_factor = 2
 
         # Gera as salas sucessoras
-        for i in range(self.branching_factor):
+        for i in range(branching_factor):
                             
             # Garante que a chave do andar existe no contador
             if next_floor not in self.nodes_per_floor:
@@ -99,20 +101,28 @@ class BuriedBrainsEnv(gym.Env):
             # Popula este novo nó com conteúdo (como antes)
             budget = 100 + (next_floor * 10)
             content = content_generation.generate_room_content(
-                self.catalogs, 
-                self.pool_costs, 
+                self.catalogs,                 
                 budget, 
                 next_floor,
                 guarantee_enemy=self.guarantee_enemy 
             )
             self.graph.nodes[new_node]['content'] = content
 
-            # --- ADICIONE ESTES LOGS ---
-            enemy_log = content.get('enemies', ['Nenhum'])
-            item_log = content.get('items', ['Nenhum'])
+            # Pega os nomes das entidades geradas, ou 'Nenhum' se a lista estiver vazia
+            enemy_log = content.get('enemies', []) or ['Nenhum']
+            # Pega o nome do EVENTO que aconteceu (ex: Trap, Fountain, ou Nenhum se Treasure/None)
+            event_outcome_log = content.get('events', []) or ['Nenhum']
+            # Pega o nome do ITEM gerado pelo evento Treasure (se houver)
+            item_generated_log = content.get('items', []) or ['Nenhum']
+            # Pega o nome do EFEITO de sala
+            effect_log = content.get('room_effects', []) or ['Nenhum']
+
+            # Monta o log final com todas as informações CORRETAS
             print(f"[MAPA] Sala '{new_node}' (Andar {next_floor}) gerada com: "
-                f"Inimigos: {enemy_log}, Itens: {item_log}")
-            # --- FIM DOS LOGS ---
+                f"Inimigo: {enemy_log[0]}, "
+                f"Evento: {event_outcome_log[0]}, " # Mostra 'Trap', 'Fountain', etc. ou 'Nenhum'
+                f"Item Gerado: {item_generated_log[0]}, " # Mostra o item de Treasure/Morbid ou 'Nenhum'
+                f"Efeito: {effect_log[0]}")
 
     # VERSÃO MODIFICADA DA FUNÇÃO DE OBSERVAÇÃO, REMOVENDO BLOCOS SOCIAIS E ITENS SOCIAIS
     def _get_observation(self) -> np.ndarray:
@@ -246,11 +256,18 @@ class BuriedBrainsEnv(gym.Env):
     #     return obs
 
     def reset(self, seed=None, options=None):
-        super().reset(seed=seed)
+        super().reset(seed=seed) # Semeia self.np_random
+
+        if seed is not None:
+            random.seed(seed)
+
+        self.enemies_defeated_this_episode = 0
+        self.invalid_action_count = 0
+        self.last_milestone_floor = 0
+
         self.agent_state = agent_rules.create_initial_agent("Player 1")
 
-        # Define as habilidades iniciais do agente
-        # self.agent_skill_names = ["Quick Strike", "Heavy Blow", "Stone Shield"]
+        # Define as habilidades iniciais do agente        
         self.agent_skill_names = ["Quick Strike", "Heavy Blow", "Stone Shield", "Wait"]
         self.agent_state['skills'] = self.agent_skill_names
         self.agent_state['id'] = "Player 1"
@@ -267,7 +284,7 @@ class BuriedBrainsEnv(gym.Env):
         
         # 2. Popula o nó inicial (geralmente uma sala vazia)
         start_content = content_generation.generate_room_content(
-            self.catalogs, self.pool_costs, 
+            self.catalogs, 
             budget=0, # Orçamento zero para a sala inicial
             current_floor=0,
             guarantee_enemy=False # Garante que a sala inicial seja segura
@@ -316,6 +333,7 @@ class BuriedBrainsEnv(gym.Env):
         if combat.check_for_death_and_revive(enemy):
             # PASSO 1: Dar a recompensa pela vitória e adicionar a EXP
             reward += 100 # Recompensa grande por vencer
+            self.enemies_defeated_this_episode += 1
             self.agent_state['exp'] += enemy.get('exp_yield', 50) # Ganha XP
             
             # PASSO 2: Chamar a lógica de level up IMEDIATAMENTE
@@ -436,7 +454,10 @@ class BuriedBrainsEnv(gym.Env):
                     'level': self.agent_state['level'],
                     'hp': self.agent_state['hp'],
                     'floor': self.current_floor,
-                    'win': self.agent_state['hp'] > 0 and not terminated
+                    'win': self.agent_state['hp'] > 0 and not terminated,
+                    'steps': self.current_step, # Duração do episódio
+                    'enemies_defeated': self.enemies_defeated_this_episode,
+                    'invalid_actions': self.invalid_action_count
                 }
                 observation = self._get_observation()
                 return observation, reward, terminated, False, info # Retorna imediatamente
@@ -506,6 +527,7 @@ class BuriedBrainsEnv(gym.Env):
                 else:
                     # Movimento inválido (tentou ir para uma sala que não existe)
                     print(f"[AÇÃO] Movimento INVÁLIDO. (Sem sala no índice {action_index})") # LOG
+                    self.invalid_action_count += 1
                     reward = -5
             
             # Ação 7: (Antiga Ação 8) Equipar Item de Poder (Weapon/Armor)
@@ -520,14 +542,17 @@ class BuriedBrainsEnv(gym.Env):
                     self.agent_state['equipment'][item_type] = equip_on_floor
                     room_items.remove(equip_on_floor)
                     print(f"[AÇÃO] Agente tentou Ação 7 (Equipar Item).") # LOG
-                    reward = 15 
+                    print(f"[AÇÃO] Agente equipou '{equip_on_floor}' ({item_type}).") # LOG
+                    reward = 50
                 else:
+                    self.invalid_action_count += 1
                     print(f"[AÇÃO] Agente tentou equipar, mas não havia itens (Weapon/Armor) no chão.") # LOG            
                     reward = -1
             
             # Ações de Combate (0 a 4) ou Ação Inválida (antiga 7)
             else:
                 print(f"[AÇÃO] Agente usou Ação {action} (Combate/Inválida) fora de combate.") # LOG
+                self.invalid_action_count += 1
                 reward = -5 
 
             return reward, terminated

@@ -18,63 +18,120 @@ from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback,
 # Importa o ambiente personalizado
 from buriedbrains.env import BuriedBrainsEnv
 
-
 class LoggingCallback(BaseCallback):
     """
-    Callback personalizado para logar métricas específicas do BuriedBrains.
+    Callback customizado para registrar métricas detalhadas do BuriedBrains.
+    Inclui: win_rate, avg_level, avg_floor, max_floor, episode_length,
+            avg_enemies_defeated, rate_invalid_actions.
     """
-    def __init__(self, log_interval: int = 10, verbose: int = 0):
+    def __init__(self, log_interval: int = 50, verbose: int = 1): # Aumentei o log_interval padrão
         super().__init__(verbose)
         self.log_interval = log_interval
+        # Listas para guardar dados do intervalo
+        self.episode_rewards = []
         self.episode_wins = []
         self.episode_levels = []
+        self.episode_floors = []
+        self.episode_lengths = []
+        self.episode_enemies_defeated = []
+        self.episode_invalid_actions = []
+        self.episode_total_actions = [] # Para calcular a taxa de ações inválidas
+        # Contadores gerais
         self.episode_count = 0
+        self.max_floor_ever = 0 # Rastreia o recorde de andar
 
     def _on_step(self) -> bool:
-        # 'dones' sinaliza fim de episódio em cada ambiente vetorizado
-        dones = self.locals.get("dones", [])        
+        dones = self.locals.get("dones", [])
 
         for i, done in enumerate(dones):
-            if not done:                                
+            if not done:
                 continue
 
+            # --- Coleta de Dados do Episódio Finalizado ---
             self.episode_count += 1
-            print(f"[DEBUG] Episódio {self.episode_count} finalizado no ambiente {i}.")            
-
-            # Obtém info do ambiente atual
             info = self.locals["infos"][i]
-
-            # Usa final_info se existir
-            final_info = info.get("final_info", info)
+            # final_info agora é garantido em ambientes Gymnasium/SB3 quando done=True
+            final_info = info.get("final_info")
             if not isinstance(final_info, dict):
-                continue
+                # Fallback caso 'final_info' não exista (menos provável com gym recente)
+                final_info = info
+                if not isinstance(final_info, dict):
+                     if self.verbose > 1: print("[Callback WARN] Não foi possível encontrar final_info.")
+                     continue # Pula se não conseguir ler os dados
 
+            # Pega os dados que adicionamos no env.py
             final_status = final_info.get("final_status")
             if not final_status:
-                continue
+                 if self.verbose > 1: print("[Callback WARN] 'final_status' não encontrado em final_info.")
+                 continue # Pula se 'final_status' estiver faltando
 
-            # Coleta dados do episódio
+            # Adiciona dados às listas do intervalo
+            self.episode_rewards.append(self.locals["rewards"][i]) # Recompensa total pode ser útil
             self.episode_wins.append(1 if final_status.get("win") else 0)
             self.episode_levels.append(final_status.get("level", 0))
+            current_floor = final_status.get("floor", 0)
+            self.episode_floors.append(current_floor)
+            self.episode_lengths.append(final_status.get("steps", 0))
+            self.episode_enemies_defeated.append(final_status.get("enemies_defeated", 0))
+            self.episode_invalid_actions.append(final_status.get("invalid_actions", 0))
+            self.episode_total_actions.append(final_status.get("steps", 1)) # Usa steps como total de ações
 
-            # Loga médias a cada N episódios
+            # Atualiza o recorde de andar
+            self.max_floor_ever = max(self.max_floor_ever, current_floor)
+
+            # --- Loga Médias a Cada `log_interval` Episódios ---
             if self.episode_count % self.log_interval == 0:
-                if self.episode_wins:
-                    win_rate = float(np.mean(self.episode_wins))
-                    self.logger.record("custom/win_rate_last_episodes", win_rate)
-                    self.logger.dump(step=self.num_timesteps)
-                    if self.verbose > 0:
-                        print(f"[LOG] Episódios {self.episode_count - self.log_interval + 1}-{self.episode_count}: "
-                              f"win_rate={win_rate:.2f}")
-                    self.episode_wins.clear()
+                # Calcula médias e outras estatísticas
+                mean_reward = np.mean(self.episode_rewards) if self.episode_rewards else 0
+                win_rate = np.mean(self.episode_wins) if self.episode_wins else 0
+                avg_level = np.mean(self.episode_levels) if self.episode_levels else 0
+                avg_floor = np.mean(self.episode_floors) if self.episode_floors else 0
+                max_floor_interval = np.max(self.episode_floors) if self.episode_floors else 0
+                avg_length = np.mean(self.episode_lengths) if self.episode_lengths else 0
+                avg_enemies = np.mean(self.episode_enemies_defeated) if self.episode_enemies_defeated else 0
+                
+                total_invalid = sum(self.episode_invalid_actions)
+                total_actions = sum(self.episode_total_actions)
+                invalid_rate = total_invalid / total_actions if total_actions > 0 else 0
 
-                if self.episode_levels:
-                    avg_level = float(np.mean(self.episode_levels))
-                    self.logger.record("custom/avg_level_last_episodes", avg_level)
-                    self.logger.dump(step=self.num_timesteps)
-                    if self.verbose > 0:
-                        print(f"[LOG] avg_level={avg_level:.2f}")
-                    self.episode_levels.clear()
+                # Loga para o TensorBoard
+                self.logger.record("rollout/ep_rew_mean", mean_reward) # Recompensa média padrão SB3
+                self.logger.record("custom/win_rate", win_rate)
+                self.logger.record("custom/avg_level", avg_level)
+                self.logger.record("custom/avg_floor_reached", avg_floor)
+                self.logger.record("custom/max_floor_reached_interval", max_floor_interval) # Max no intervalo
+                self.logger.record("custom/max_floor_reached_ever", self.max_floor_ever)   # Max geral
+                self.logger.record("custom/avg_episode_length", avg_length)
+                self.logger.record("custom/avg_enemies_defeated", avg_enemies)
+                self.logger.record("custom/rate_invalid_actions", invalid_rate)
+
+                # Força a escrita dos logs no TensorBoard
+                self.logger.dump(step=self.num_timesteps)
+
+                # Printa no console se verbose > 0
+                if self.verbose > 0:
+                    print(f"--- Intervalo Episódios {self.episode_count - self.log_interval + 1}-{self.episode_count} (Timestep {self.num_timesteps}) ---")
+                    print(f"  Avg Reward: {mean_reward:.2f}")
+                    print(f"  Win Rate: {win_rate:.2f}")
+                    print(f"  Avg Level: {avg_level:.2f}")
+                    print(f"  Avg Floor Reached: {avg_floor:.2f}")
+                    print(f"  Max Floor (Interval): {max_floor_interval}")
+                    print(f"  Max Floor (Ever): {self.max_floor_ever}")
+                    print(f"  Avg Ep Length: {avg_length:.1f}")
+                    print(f"  Avg Enemies Defeated: {avg_enemies:.2f}")
+                    print(f"  Invalid Action Rate: {invalid_rate:.3f}")
+                    print("-" * (len(f"--- Intervalo Episódios {self.episode_count - self.log_interval + 1}-{self.episode_count} (Timestep {self.num_timesteps}) ---")))
+
+
+                # Limpa as listas para o próximo intervalo
+                self.episode_rewards.clear()
+                self.episode_wins.clear()
+                self.episode_levels.clear()
+                self.episode_floors.clear()
+                self.episode_lengths.clear()
+                self.episode_enemies_defeated.clear()
+                self.episode_invalid_actions.clear()
+                self.episode_total_actions.clear()
 
         return True
 
@@ -129,20 +186,20 @@ def main():
 
     # --- 4. Callbacks ---
     checkpoint_callback = CheckpointCallback(save_freq=20000, save_path=run_models_dir, name_prefix="bb_model")
-    logging_callback = LoggingCallback(verbose=1)
+    logging_callback = LoggingCallback()
     callback_list = CallbackList([checkpoint_callback, logging_callback])
 
     # --- 5. Criação e configuração do modelo ---
     model = model_class(
         policy_class,
         env,
-        verbose=1,
+        verbose=0,
         tensorboard_log=base_logdir,  
         device=device,
         ent_coef=0.01,
     )
 
-    TIMESTEPS = 1_000_000
+    TIMESTEPS = 5_000_000
     print(f"Iniciando treinamento por {TIMESTEPS} passos...")
     print(f"Logs do TensorBoard serão salvos em: {os.path.join(base_logdir, run_name)}")
 
