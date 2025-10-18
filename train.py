@@ -24,7 +24,7 @@ class LoggingCallback(BaseCallback):
     Inclui: win_rate, avg_level, avg_floor, max_floor, episode_length,
             avg_enemies_defeated, rate_invalid_actions.
     """
-    def __init__(self, log_interval: int = 50, verbose: int = 1): # Aumentei o log_interval padrão
+    def __init__(self, log_interval: int = 10, verbose: int = 1): # Aumentei o log_interval padrão
         super().__init__(verbose)
         self.log_interval = log_interval
         # Listas para guardar dados do intervalo
@@ -157,7 +157,7 @@ def main():
 
     # --- 1. Verificação do ambiente base ---
     print("Verificando o ambiente BuriedBrainsEnv base...")
-    temp_env = BuriedBrainsEnv()
+    temp_env = BuriedBrainsEnv(verbose=0)  # verbose=1 para ver logs durante a verificação
     try:
         check_env(temp_env)
         print("Verificação do ambiente bem-sucedida!")
@@ -186,7 +186,7 @@ def main():
 
     # --- 4. Callbacks ---
     checkpoint_callback = CheckpointCallback(save_freq=20000, save_path=run_models_dir, name_prefix="bb_model")
-    logging_callback = LoggingCallback()
+    logging_callback = LoggingCallback(verbose=1)
     callback_list = CallbackList([checkpoint_callback, logging_callback])
 
     # --- 5. Criação e configuração do modelo ---
