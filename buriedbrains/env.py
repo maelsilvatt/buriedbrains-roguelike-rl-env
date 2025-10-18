@@ -776,7 +776,7 @@ class GeradorNomes:
             "num": self.random.choice(["7", "9", "X", "01", "007", "66", "88", "42"])
         }
 
-    def gerar_nome(self, garantir_unicidade=True):
+    def gerar_nome(self):
         """
         Gera um nome de agente com base nos formatos e listas definidos.
         
@@ -814,19 +814,8 @@ class GeradorNomes:
         # 1. Escolhe um formato e gera o nome base
         gerador_formato = self.random.choice(formatos)
         base_name = gerador_formato(parts)
-        
-        final_name = base_name
+        unique_id = int(time.time() * 1000)
+        final_name = base_name + f"_{unique_id}"
 
-        # 2. Lida com a unicidade (se solicitado)
-        if garantir_unicidade:
-            counter = 1
-            # Se o nome final já estiver no nosso set, tenta adicionar um número
-            while final_name in self.nomes_gerados:
-                counter += 1
-                final_name = f"{base_name}_{counter}" # Ex: ShadowWolf_2, ShadowWolf_3
-            
-            # Adiciona o nome final (que agora é 100% único) ao conjunto
-            self.nomes_gerados.add(final_name)
-        
         return final_name
               

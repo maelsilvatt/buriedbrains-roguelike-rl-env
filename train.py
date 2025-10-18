@@ -48,19 +48,31 @@ class LoggingCallback(BaseCallback):
         self.max_floor_ever = 0
 
     def _update_hall_of_fame(self, story: dict, hall_of_fame: list, metric_key: str):
-        """
-        Adiciona a história a uma lista do hall da fama se ela for boa o suficiente,
-        mantendo a lista ordenada e com tamanho 'top_n'.
-        """
-        # Adiciona a história atual
-        hall_of_fame.append(story)
-        
-        # Ordena a lista pela métrica (do maior para o menor)
-        hall_of_fame.sort(key=lambda s: s[metric_key], reverse=True)
-        
-        # Mantém apenas os Top N
-        while len(hall_of_fame) > self.top_n:
-            hall_of_fame.pop() # Remove o pior (último da lista)
+            """
+            Adiciona a história a uma lista do hall da fama se ela for boa o suficiente,
+            mantendo a lista ordenada e com tamanho 'top_n'.
+            Versão otimizada.
+            """
+            
+            # Pega a pontuação da história atual
+            new_score = story.get(metric_key, 0)
+
+            # Caso 1: A lista ainda não está cheia.
+            if len(hall_of_fame) < self.top_n:
+                hall_of_fame.append(story)
+                # Reordena (rápido com < top_n itens)
+                hall_of_fame.sort(key=lambda s: s[metric_key], reverse=True)
+                return # Adicionado e pronto
+
+            # Caso 2: A lista está cheia. Precisamos verificar se a nova pontuação é melhor que a pior.
+            # Como a lista está sempre ordenada, o pior está na última posição.
+            worst_score = hall_of_fame[-1].get(metric_key, 0)
+            
+            if new_score > worst_score:
+                # A nova história merece um lugar!
+                hall_of_fame.pop() # Remove o pior
+                hall_of_fame.append(story) # Adiciona o novo
+                hall_of_fame.sort(key=lambda s: s[metric_key], reverse=True) # Reordena
 
     def _on_step(self) -> bool:
         dones = self.locals.get("dones", [])
@@ -266,9 +278,10 @@ def main():
         ent_coef=0.01,
     )
 
-    TIMESTEPS = 5_000_000
+    TIMESTEPS = 5_000_000    
     print(f"Iniciando treinamento por {TIMESTEPS} passos...")
-    print(f"Logs do TensorBoard serão salvos em: {os.path.join(base_logdir, run_name)}")
+    tb_path = os.path.join(base_logdir, run_name)
+    print(f"Logs do TensorBoard serão salvos em: {tb_path}")
 
     model.learn(
         total_timesteps=TIMESTEPS,
@@ -287,13 +300,13 @@ def main():
         logging_callback_instance = callback_list.callbacks[1]
         
         # Chama a função de salvar que criamos dentro do callback
-        logging_callback_instance.save_hall_of_fame(run_models_dir)
+        logging_callback_instance.save_hall_of_fame(tb_path)
         
-        print(f"Histórias dos melhores agentes salvas em: {run_models_dir}")
+        print(f"Histórias dos melhores agentes salvas em: {tb_path}")
     else:
         print("[WARN] LoggingCallback não encontrado. Histórias não foram salvas.")    
 
-    print(f"Treinamento concluído. Modelo final salvo em {run_models_dir}")
+    print(f"Treinamento concluído. Modelo final salvo em {tb_path}")
 
     env.close()
 
