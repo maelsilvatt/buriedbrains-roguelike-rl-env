@@ -265,7 +265,7 @@ def main():
 
     # --- 4. Callbacks ---
     checkpoint_callback = CheckpointCallback(save_freq=20000, save_path=run_models_dir, name_prefix="bb_model")
-    logging_callback = LoggingCallback(verbose=1, log_interval=2)
+    logging_callback = LoggingCallback(verbose=0, log_interval=2)
     callback_list = CallbackList([checkpoint_callback, logging_callback])
 
     # --- 5. Criação e configuração do modelo ---
@@ -278,7 +278,7 @@ def main():
         ent_coef=0.01,
     )
 
-    TIMESTEPS = 5_000_000    
+    TIMESTEPS = 100_000    
     print(f"Iniciando treinamento por {TIMESTEPS} passos...")
     tb_path = os.path.join(base_logdir, run_name)
     print(f"Logs do TensorBoard serão salvos em: {tb_path}")

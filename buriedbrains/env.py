@@ -34,7 +34,7 @@ class BuriedBrainsEnv(gym.Env):
             'room_effects': enemy_data['pools']['room_effects'], 'events': enemy_data['pools']['events']
         }
 
-        self.max_episode_steps = 10000 # Define um limite, por exemplo, 1000 passos
+        self.max_episode_steps = 30000 # Define um limite, por exemplo, 1000 passos
         self.current_step = 0
         self.verbose = verbose 
         self.max_floors = 500 # Limite máximo de andares para evitar loops infinitos
@@ -411,6 +411,7 @@ class BuriedBrainsEnv(gym.Env):
             reward = 0
             terminated = False
             info = {}
+            game_won = False # <-- Variável para rastrear a vitória
 
             self.current_step += 1 # Incrementa o contador a cada passo
             truncated = self.current_step >= self.max_episode_steps
@@ -425,7 +426,7 @@ class BuriedBrainsEnv(gym.Env):
             if is_on_last_floor and has_no_successors and not self.combat_state:
                 terminated = True
                 reward += 400  # Recompensa final por chegar ao fim
-                
+                game_won = True # <-- Define a vitória
                 self._log(f"[EPISÓDIO] FIM: {self.agent_name} VENCEU! (Chegou ao fim do labirinto no Andar {self.current_floor})")                
 
             if self.combat_state:
@@ -453,50 +454,46 @@ class BuriedBrainsEnv(gym.Env):
                 terminated = True
                 truncated = False 
                 reward = -300  # Penalidade de morte aumentada para ser mais significativa
-                
                 self._log(f"[EPISÓDIO] FIM: {self.agent_name} MORREU no Andar {self.current_floor}.")                
 
-            # Recompensa por vencer o jogo e encerramento imediato
+            # Recompensa por vencer o jogo (condição de andar máximo)
             if self.current_floor > self.max_floors:
                 terminated = True
                 reward += 400  # Recompensa final
-                
+                game_won = True # <-- Define a vitória
                 self._log(f"[EPISÓDIO] FIM: {self.agent_name} VENCEU! (Chegou ao andar {self.current_floor})")                
-
-                # Prepara o info final AQUI e retorna
-                info['final_status'] = {
-                    'level': self.agent_state['level'],
-                    'hp': self.agent_state['hp'],
-                    'floor': self.current_floor,
-                    'win': self.agent_state['hp'] > 0 and not terminated,
-                    'steps': self.current_step, # Duração do episódio
-                    'enemies_defeated': self.enemies_defeated_this_episode,
-                    'invalid_actions': self.invalid_action_count,
-                    'agent_name': self.agent_name,
-                    'full_log': self.current_episode_log # Passa a história inteira
-                }
-                observation = self._get_observation()
-                return observation, reward, terminated, False, info # Retorna imediatamente
+                # REMOVEMOS o return imediato daqui
 
             # Recompensa a cada 10 andares concluídos
             if self.current_floor % 10 == 0 and self.current_floor > self.last_milestone_floor:
                 reward += 400                
                 self._log(f"[MARCO] {self.agent_name} alcançou o Andar {self.current_floor}! Bônus de +400.")                
-
                 self.last_milestone_floor = self.current_floor  # Atualiza o último marco alcançado
+                # REMOVEMOS o bloco "if terminated or truncated" que estava aninhado aqui
 
-                if terminated or truncated:
-                    if truncated and not terminated:                        
-                        self._log(f"[EPISÓDIO] Encerrado por tempo limite no andar {self.current_floor}.")
+            # Log se for truncado (limite de tempo)
+            if truncated and not terminated:                        
+                self._log(f"[EPISÓDIO] Encerrado por tempo limite no andar {self.current_floor}.")
+
+            # --- BLOCO DE INFO FINAL UNIFICADO ---
+            # Se o episódio terminou por QUALQUER motivo (morte, vitória, tempo),
+            # nós populamos o dicionário 'info' aqui.
+            if terminated or truncated:
                 info['final_status'] = {
                     'level': self.agent_state['level'],
                     'hp': self.agent_state['hp'],
                     'floor': self.current_floor,
-                    'win': self.agent_state['hp'] > 0 and not terminated
+                    'win': game_won and self.agent_state['hp'] > 0, # Vitória SÓ é verdade se 'game_won' foi marcado
+                    'steps': self.current_step,
+                    'enemies_defeated': self.enemies_defeated_this_episode,
+                    'invalid_actions': self.invalid_action_count,
+                    'agent_name': self.agent_name,
+                    'full_log': self.current_episode_log # Passa a história inteira
                 }
-
+                
             observation = self._get_observation()        
 
+            # Este é agora o ÚNICO ponto de retorno da função
             return observation, reward, terminated, truncated, info
 
     # VERSÃO SIMPLIFICADA DA FUNÇÃO DE EXPLORAÇÃO, SEM AÇÃO DE SOLTAR/PEGAR ARTEFATO
@@ -814,7 +811,7 @@ class GeradorNomes:
         # 1. Escolhe um formato e gera o nome base
         gerador_formato = self.random.choice(formatos)
         base_name = gerador_formato(parts)
-        unique_id = int(time.time() * 1000)
+        unique_id = random.randint(1, 999)
         final_name = base_name + f"_{unique_id}"
 
         return final_name
