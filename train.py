@@ -20,14 +20,15 @@ from buriedbrains.env import BuriedBrainsEnv
 
 class LoggingCallback(BaseCallback):
     """
-    Callback customizado para registrar métricas detalhadas do BuriedBrains.
-    Inclui: win_rate, avg_level, avg_floor, max_floor, episode_length,
-            avg_enemies_defeated, rate_invalid_actions.
+    Callback customizado para registrar métricas detalhadas do BuriedBrains
+    E salvar as "melhores histórias" (Hall da Fama).
     """
-    def __init__(self, log_interval: int = 10, verbose: int = 1): # Aumentei o log_interval padrão
+    def __init__(self, log_interval: int = 10, verbose: int = 1, top_n: int = 10):
         super().__init__(verbose)
         self.log_interval = log_interval
-        # Listas para guardar dados do intervalo
+        self.top_n = top_n # Quantas histórias "top" salvar
+
+        # Listas para guardar dados do intervalo (para o TensorBoard)
         self.episode_rewards = []
         self.episode_wins = []
         self.episode_levels = []
@@ -35,10 +36,31 @@ class LoggingCallback(BaseCallback):
         self.episode_lengths = []
         self.episode_enemies_defeated = []
         self.episode_invalid_actions = []
-        self.episode_total_actions = [] # Para calcular a taxa de ações inválidas
-        # Contadores gerais
+        self.episode_total_actions = []
+        
+        # --- ETAPA 3: O HALL DA FAMA ---
+        self.hall_of_fame_level = [] # Top N por Nível de EXP
+        self.hall_of_fame_floor = [] # Top N por Andar Alcançado
+        self.hall_of_fame_enemies = [] # Top N por Inimigos Mortos
+        # --- FIM DA ETAPA 3 ---
+
         self.episode_count = 0
-        self.max_floor_ever = 0 # Rastreia o recorde de andar
+        self.max_floor_ever = 0
+
+    def _update_hall_of_fame(self, story: dict, hall_of_fame: list, metric_key: str):
+        """
+        Adiciona a história a uma lista do hall da fama se ela for boa o suficiente,
+        mantendo a lista ordenada e com tamanho 'top_n'.
+        """
+        # Adiciona a história atual
+        hall_of_fame.append(story)
+        
+        # Ordena a lista pela métrica (do maior para o menor)
+        hall_of_fame.sort(key=lambda s: s[metric_key], reverse=True)
+        
+        # Mantém apenas os Top N
+        while len(hall_of_fame) > self.top_n:
+            hall_of_fame.pop() # Remove o pior (último da lista)
 
     def _on_step(self) -> bool:
         dones = self.locals.get("dones", [])
@@ -50,23 +72,19 @@ class LoggingCallback(BaseCallback):
             # --- Coleta de Dados do Episódio Finalizado ---
             self.episode_count += 1
             info = self.locals["infos"][i]
-            # final_info agora é garantido em ambientes Gymnasium/SB3 quando done=True
-            final_info = info.get("final_info")
+            final_info = info.get("final_info", info)
+            
             if not isinstance(final_info, dict):
-                # Fallback caso 'final_info' não exista (menos provável com gym recente)
-                final_info = info
-                if not isinstance(final_info, dict):
-                     if self.verbose > 1: print("[Callback WARN] Não foi possível encontrar final_info.")
-                     continue # Pula se não conseguir ler os dados
+                 if self.verbose > 1: print("[Callback WARN] Não foi possível encontrar final_info.")
+                 continue 
 
-            # Pega os dados que adicionamos no env.py
             final_status = final_info.get("final_status")
             if not final_status:
                  if self.verbose > 1: print("[Callback WARN] 'final_status' não encontrado em final_info.")
-                 continue # Pula se 'final_status' estiver faltando
+                 continue 
 
-            # Adiciona dados às listas do intervalo
-            self.episode_rewards.append(self.locals["rewards"][i]) # Recompensa total pode ser útil
+            # Coleta de métricas para o TensorBoard (como antes)
+            self.episode_rewards.append(self.locals["rewards"][i])
             self.episode_wins.append(1 if final_status.get("win") else 0)
             self.episode_levels.append(final_status.get("level", 0))
             current_floor = final_status.get("floor", 0)
@@ -74,14 +92,31 @@ class LoggingCallback(BaseCallback):
             self.episode_lengths.append(final_status.get("steps", 0))
             self.episode_enemies_defeated.append(final_status.get("enemies_defeated", 0))
             self.episode_invalid_actions.append(final_status.get("invalid_actions", 0))
-            self.episode_total_actions.append(final_status.get("steps", 1)) # Usa steps como total de ações
-
-            # Atualiza o recorde de andar
+            self.episode_total_actions.append(final_status.get("steps", 1))
             self.max_floor_ever = max(self.max_floor_ever, current_floor)
 
-            # --- Loga Médias a Cada `log_interval` Episódios ---
+            # --- ETAPA 3: COLETA E FILTRAGEM DA HISTÓRIA ---
+            agent_name = final_status.get('agent_name', 'Agente_Desconhecido')
+            full_log = final_status.get('full_log', ['Log não capturado.'])
+            
+            # Cria o objeto da "história"
+            story = {
+                'agent_name': agent_name,
+                'level': final_status.get('level', 0),
+                'floor': current_floor,
+                'enemies_defeated': final_status.get('enemies_defeated', 0),
+                'log_content': full_log # A gravação completa
+            }
+            
+            # Tenta adicionar a história a cada Hall da Fama
+            self._update_hall_of_fame(story, self.hall_of_fame_level, 'level')
+            self._update_hall_of_fame(story, self.hall_of_fame_floor, 'floor')
+            self._update_hall_of_fame(story, self.hall_of_fame_enemies, 'enemies_defeated')
+            # --- FIM DA ETAPA 3 ---
+
+            # --- Loga Médias a Cada `log_interval` Episódios (para o TensorBoard) ---
             if self.episode_count % self.log_interval == 0:
-                # Calcula médias e outras estatísticas
+                # ... (cálculo de médias: mean_reward, win_rate, avg_level, etc.) ...
                 mean_reward = np.mean(self.episode_rewards) if self.episode_rewards else 0
                 win_rate = np.mean(self.episode_wins) if self.episode_wins else 0
                 avg_level = np.mean(self.episode_levels) if self.episode_levels else 0
@@ -89,23 +124,21 @@ class LoggingCallback(BaseCallback):
                 max_floor_interval = np.max(self.episode_floors) if self.episode_floors else 0
                 avg_length = np.mean(self.episode_lengths) if self.episode_lengths else 0
                 avg_enemies = np.mean(self.episode_enemies_defeated) if self.episode_enemies_defeated else 0
-                
                 total_invalid = sum(self.episode_invalid_actions)
                 total_actions = sum(self.episode_total_actions)
                 invalid_rate = total_invalid / total_actions if total_actions > 0 else 0
 
                 # Loga para o TensorBoard
-                self.logger.record("rollout/ep_rew_mean", mean_reward) # Recompensa média padrão SB3
+                self.logger.record("rollout/ep_rew_mean", mean_reward)
                 self.logger.record("custom/win_rate", win_rate)
                 self.logger.record("custom/avg_level", avg_level)
                 self.logger.record("custom/avg_floor_reached", avg_floor)
-                self.logger.record("custom/max_floor_reached_interval", max_floor_interval) # Max no intervalo
-                self.logger.record("custom/max_floor_reached_ever", self.max_floor_ever)   # Max geral
+                self.logger.record("custom/max_floor_reached_interval", max_floor_interval)
+                self.logger.record("custom/max_floor_reached_ever", self.max_floor_ever)
                 self.logger.record("custom/avg_episode_length", avg_length)
                 self.logger.record("custom/avg_enemies_defeated", avg_enemies)
                 self.logger.record("custom/rate_invalid_actions", invalid_rate)
-
-                # Força a escrita dos logs no TensorBoard
+                
                 self.logger.dump(step=self.num_timesteps)
 
                 # Printa no console se verbose > 0
@@ -115,15 +148,12 @@ class LoggingCallback(BaseCallback):
                     print(f"  Win Rate: {win_rate:.2f}")
                     print(f"  Avg Level: {avg_level:.2f}")
                     print(f"  Avg Floor Reached: {avg_floor:.2f}")
-                    print(f"  Max Floor (Interval): {max_floor_interval}")
                     print(f"  Max Floor (Ever): {self.max_floor_ever}")
-                    print(f"  Avg Ep Length: {avg_length:.1f}")
                     print(f"  Avg Enemies Defeated: {avg_enemies:.2f}")
                     print(f"  Invalid Action Rate: {invalid_rate:.3f}")
                     print("-" * (len(f"--- Intervalo Episódios {self.episode_count - self.log_interval + 1}-{self.episode_count} (Timestep {self.num_timesteps}) ---")))
 
-
-                # Limpa as listas para o próximo intervalo
+                # Limpa as listas do intervalo
                 self.episode_rewards.clear()
                 self.episode_wins.clear()
                 self.episode_levels.clear()
@@ -134,6 +164,44 @@ class LoggingCallback(BaseCallback):
                 self.episode_total_actions.clear()
 
         return True
+
+    # --- ETAPA 4: FUNÇÃO PARA SALVAR (será chamada no final do treino) ---
+    def save_hall_of_fame(self, save_dir: str):
+        """Salva as melhores histórias em arquivos de texto."""
+        if self.verbose > 0:
+            print(f"\nSalvando Hall da Fama em {save_dir}...")
+        
+        # Helper interno para salvar uma lista específica
+        def _save_list(hall_list: list, sub_folder: str, metric_key: str):
+            path = os.path.join(save_dir, sub_folder)
+            os.makedirs(path, exist_ok=True)
+            
+            for i, story in enumerate(hall_list):
+                metric_val = story[metric_key]
+                name = story['agent_name']
+                # Define um nome de arquivo limpo (Rank_1__level_74__Agente_12345.txt)
+                filename = f"Rank_{i+1:02d}__{metric_key}_{metric_val}__{name}.txt"
+                
+                try:
+                    with open(os.path.join(path, filename), "w", encoding="utf-8") as f:
+                        f.write(f"AGENTE: {name}\n")
+                        f.write(f"MÉTRICA: {metric_key.upper()} = {metric_val}\n")
+                        f.write(f"ANDAR FINAL: {story['floor']}\n")
+                        f.write(f"NÍVEL FINAL: {story['level']}\n")
+                        f.write(f"INIMIGOS DERROTADOS: {story['enemies_defeated']}\n")
+                        f.write("="*50 + "\n\nHISTÓRIA DO AGENTE:\n" + "="*50 + "\n")
+                        f.writelines(story['log_content'])
+                except Exception as e:
+                    if self.verbose > 0:
+                        print(f"  [Callback ERROR] Falha ao salvar história: {filename}. Erro: {e}")
+        
+        # Salva cada categoria
+        _save_list(self.hall_of_fame_level, "top_por_nivel", "level")
+        _save_list(self.hall_of_fame_floor, "top_por_andar", "floor")
+        _save_list(self.hall_of_fame_enemies, "top_por_inimigos", "enemies_defeated")
+        
+        if self.verbose > 0:
+            print("Hall da Fama salvo com sucesso.")
 
 def main():
     """
@@ -157,7 +225,7 @@ def main():
 
     # --- 1. Verificação do ambiente base ---
     print("Verificando o ambiente BuriedBrainsEnv base...")
-    temp_env = BuriedBrainsEnv(verbose=0)  # verbose=1 para ver logs durante a verificação
+    temp_env = BuriedBrainsEnv()
     try:
         check_env(temp_env)
         print("Verificação do ambiente bem-sucedida!")
@@ -169,13 +237,12 @@ def main():
 
     # --- 2. Criação do ambiente vetorizado ---
     print("Criando ambiente vetorizado para treinamento...")
-    env = DummyVecEnv([lambda: BuriedBrainsEnv()])
+    env = DummyVecEnv([lambda: BuriedBrainsEnv(verbose=1)])
 
     # --- 3. Configuração de logs e diretórios ---
     timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
     base_logdir = os.path.normpath("logs").replace("\\", "/")
     base_models_dir = os.path.normpath("models").replace("\\", "/")
-
 
     os.makedirs(base_logdir, exist_ok=True)
     os.makedirs(base_models_dir, exist_ok=True)
@@ -186,7 +253,7 @@ def main():
 
     # --- 4. Callbacks ---
     checkpoint_callback = CheckpointCallback(save_freq=20000, save_path=run_models_dir, name_prefix="bb_model")
-    logging_callback = LoggingCallback(verbose=1)
+    logging_callback = LoggingCallback(verbose=1, log_interval=2)
     callback_list = CallbackList([checkpoint_callback, logging_callback])
 
     # --- 5. Criação e configuração do modelo ---
@@ -212,6 +279,20 @@ def main():
 
     # --- 6. Salvamento do modelo final ---
     model.save(os.path.join(run_models_dir, f"final_model_{TIMESTEPS}"))
+    
+    # --- 7. Salvar o Hall da Fama ---
+    print("Salvando histórias do Hall da Fama...")
+    # Acessa o callback de logging (índice [1] da lista, pois o [0] é o CheckpointCallback)
+    if len(callback_list.callbacks) > 1 and isinstance(callback_list.callbacks[1], LoggingCallback):
+        logging_callback_instance = callback_list.callbacks[1]
+        
+        # Chama a função de salvar que criamos dentro do callback
+        logging_callback_instance.save_hall_of_fame(run_models_dir)
+        
+        print(f"Histórias dos melhores agentes salvas em: {run_models_dir}")
+    else:
+        print("[WARN] LoggingCallback não encontrado. Histórias não foram salvas.")    
+
     print(f"Treinamento concluído. Modelo final salvo em {run_models_dir}")
 
     env.close()

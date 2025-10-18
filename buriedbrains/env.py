@@ -6,6 +6,7 @@ import yaml
 import os
 import random
 import networkx as nx
+import time
 
 # Importando todos os módulos que criamos
 from . import agent_rules
@@ -36,12 +37,15 @@ class BuriedBrainsEnv(gym.Env):
         self.max_episode_steps = 10000 # Define um limite, por exemplo, 1000 passos
         self.current_step = 0
         self.verbose = verbose 
-        self.max_floors = 300 # Limite máximo de andares para evitar loops infinitos
-        self.max_level = 400         
+        self.max_floors = 500 # Limite máximo de andares para evitar loops infinitos
+        self.max_level = 400 # Nível máximo do agente         
         self.enemies_defeated_this_episode = 0 # Conta inimigos derrotados
         self.invalid_action_count = 0 # Conta ações inválidas
         self.last_milestone_floor = 0 # Último andar que concedeu recompensa de marco
         self.nodes_per_floor = {} # Dicionário para contar nós por andar
+
+        self.agent_name = "Agent_000" # Um nome padrão
+        self.current_episode_log = []  # Lista para guardar a história do episódio
 
         # Pré-processamento: Injeta a chave 'name' em cada item dos catálogos
         for catalog_name, catalog_data in self.catalogs.items():
@@ -119,12 +123,11 @@ class BuriedBrainsEnv(gym.Env):
             effect_log = content.get('room_effects', []) or ['Nenhum']
 
             # Monta o log final com todas as informações CORRETAS
-            if self.verbose > 0:
-                print(f"[MAPA] Sala '{new_node}' (Andar {next_floor}) gerada com: "
-                    f"Inimigo: {enemy_log[0]}, "
-                    f"Evento: {event_outcome_log[0]}, " # Mostra 'Trap', 'Fountain', etc. ou 'Nenhum'
-                    f"Item Gerado: {item_generated_log[0]}, " # Mostra o item de Treasure/Morbid ou 'Nenhum'
-                    f"Efeito: {effect_log[0]}")
+            self._log(f"[MAPA] Sala '{new_node}' (Andar {next_floor}) gerada com: "
+                        f"Inimigo: {enemy_log[0]}, "
+                        f"Evento: {event_outcome_log[0]}, "
+                        f"Item Gerado: {item_generated_log[0]}, "
+                        f"Efeito: {effect_log[0]}")
 
     # VERSÃO MODIFICADA DA FUNÇÃO DE OBSERVAÇÃO, REMOVENDO BLOCOS SOCIAIS E ITENS SOCIAIS
     def _get_observation(self) -> np.ndarray:
@@ -257,59 +260,57 @@ class BuriedBrainsEnv(gym.Env):
         
     #     return obs
 
+# env.py - Substitua sua função reset por esta
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed) # Semeia self.np_random
-
         if seed is not None:
-            random.seed(seed)
+            random.seed(seed) # Garante que o 'random' global também seja semeado
+
+        # Hall da Fama: Gera um nome único para o agente
+        gerador = GeradorNomes()
+        self.agent_name = gerador.gerar_nome()
+        self.current_episode_log = [] # Reinicia o gravador de história
 
         self.enemies_defeated_this_episode = 0
         self.invalid_action_count = 0
         self.last_milestone_floor = 0
 
-        self.agent_state = agent_rules.create_initial_agent("Player 1")
+        self.agent_state = agent_rules.create_initial_agent(self.agent_name)
+        self.agent_state['name'] = self.agent_name
 
-        # Define as habilidades iniciais do agente        
         self.agent_skill_names = ["Quick Strike", "Heavy Blow", "Stone Shield", "Wait"]
-        self.agent_state['skills'] = self.agent_skill_names
-        self.agent_state['id'] = "Player 1"
-        self.reputation_system.add_agent("Player 1")
+        self.agent_state['skills'] = self.agent_skill_names        
+        self.reputation_system.add_agent(self.agent_name)
                 
-        # --- LÓGICA DE GERAÇÃO DO MAPA CORRIGIDA ---
+        # --- LÓGICA DE GERAÇÃO DO MAPA ---
         self.current_floor = 0
         self.graph = nx.DiGraph()
         self.current_node = "start"
-        self.nodes_per_floor = {0: 1} # Reseta o contador (andar 0 tem 1 nó: "start")
+        self.nodes_per_floor = {0: 1}
         
-        # 1. Cria apenas o nó inicial
         self.graph.add_node("start", floor=0)
         
-        # 2. Popula o nó inicial (geralmente uma sala vazia)
         start_content = content_generation.generate_room_content(
             self.catalogs, 
-            budget=0, # Orçamento zero para a sala inicial
+            budget=0,
             current_floor=0,
-            guarantee_enemy=False # Garante que a sala inicial seja segura
+            guarantee_enemy=False
         )
         self.graph.nodes["start"]['content'] = start_content
-
-        # 3. Pré-gera APENAS o primeiro nível de escolhas
-        self._generate_successors_for_node("start")
-        # --- FIM DA LÓGICA DO MAPA ---
+        
+        self._generate_successors_for_node("start") # Pré-gera o primeiro nível
+        # --- FIM DA GERAÇÃO DO MAPA ---
 
         self.combat_state = None
         self.current_step = 0
-
-        if self.verbose > 0:
-            print("\n" + "="*50)
-            print(f"[RESET] Novo episódio iniciado. Agente Nível {self.agent_state['level']}.")
-            print(f"[RESET] Mapa gerado. Sala inicial: '{self.current_node}'.")
         
+        self._log(f"[RESET] Novo episódio iniciado. {self.agent_name} (Nível {self.agent_state['level']}).\n"
+                  f"[RESET] Mapa gerado. Sala inicial: '{self.current_node}'.")
+                
         successors = list(self.graph.successors(self.current_node))
-
-        if successors and self.verbose > 0:
-            print(f"[RESET] Próximas salas disponíveis: {', '.join(successors)}")
-        
+        if successors:
+            self._log(f"[RESET] Próximas salas disponíveis: {', '.join(successors)}")        
         
         return self._get_observation(), {}
 
@@ -339,16 +340,16 @@ class BuriedBrainsEnv(gym.Env):
             
             # PASSO 2: Chamar a lógica de level up IMEDIATAMENTE
             
-            if self.verbose > 0:
-                print(f"[DIAGNÓSTICO] Inimigo '{enemy.get('name')}' derrotado. "
-                    f"EXP Ganhada: {enemy.get('exp_yield', 50)}. "
-                    f"EXP Total: {self.agent_state['exp']}. "
-                    f"EXP Nec: {self.agent_state['exp_to_level_up']}.")
-            
-            leveled_up = agent_rules.check_for_level_up(self.agent_state) 
-            if leveled_up:
-                if self.verbose > 0:
-                    print(f"[DEBUG] Agente subiu para o nível {self.agent_state['level']} durante o combate.")
+            self._log(
+                f"[DIAGNÓSTICO] Inimigo '{enemy.get('name')}' derrotado. "
+                f"EXP Ganhada: {enemy.get('exp_yield', 50)}. "
+                f"EXP Total: {self.agent_state['exp']}. "
+                f"EXP Nec: {self.agent_state['exp_to_level_up']}."
+            )
+            leveled_up = agent_rules.check_for_level_up(self.agent_state)
+
+            if leveled_up:                
+                self._log(f"[DEBUG] {self.agent_name} subiu para o nível {self.agent_state['level']} durante o combate.")                
 
                 reward += 50  # Recompensa extra por subir de nível                
                 info['level_up'] = True
@@ -396,6 +397,15 @@ class BuriedBrainsEnv(gym.Env):
         self.agent_state['hp'] = agent['hp']
         
         return reward, combat_over
+    
+    def _log(self, message: str):
+            """
+            Função auxiliar para salvar na história do episódio E
+            printar no console se self.verbose > 0.
+            """
+            if self.verbose > 0:
+                print(message) # Printa no console se verbose=1 ou mais
+            self.current_episode_log.append(message + "\n") # Sempre salva na lista
 
     def step(self, action: int):
             reward = 0
@@ -414,9 +424,9 @@ class BuriedBrainsEnv(gym.Env):
 
             if is_on_last_floor and has_no_successors and not self.combat_state:
                 terminated = True
-                reward += 400 # Recompensa final por chegar ao fim
-                if self.verbose > 0:
-                    print(f"[EPISÓDIO] FIM: Agente VENCEU! (Chegou ao fim do labirinto no Andar {self.current_floor})")            
+                reward += 400  # Recompensa final por chegar ao fim
+                
+                self._log(f"[EPISÓDIO] FIM: {self.agent_name} VENCEU! (Chegou ao fim do labirinto no Andar {self.current_floor})")                
 
             if self.combat_state:
                 # Em combate: usa o handler de combate
@@ -442,17 +452,16 @@ class BuriedBrainsEnv(gym.Env):
             if self.agent_state['hp'] <= 0:
                 terminated = True
                 truncated = False 
-                # Penalidade de morte aumentada para ser mais significativa
-                reward = -300
-                if self.verbose > 0: 
-                    print(f"[EPISÓDIO] FIM: Agente MORREU no Andar {self.current_floor}.") # LOG
+                reward = -300  # Penalidade de morte aumentada para ser mais significativa
                 
-            # Adiciona uma recompensa grande por vencer o jogo E TERMINA IMEDIATAMENTE
+                self._log(f"[EPISÓDIO] FIM: {self.agent_name} MORREU no Andar {self.current_floor}.")                
+
+            # Recompensa por vencer o jogo e encerramento imediato
             if self.current_floor > self.max_floors:
                 terminated = True
-                reward += 400 # Pode adicionar a recompensa final aqui
-                if self.verbose > 0:
-                    print(f"[EPISÓDIO] FIM: Agente VENCEU! (Chegou ao andar {self.current_floor})")
+                reward += 400  # Recompensa final
+                
+                self._log(f"[EPISÓDIO] FIM: {self.agent_name} VENCEU! (Chegou ao andar {self.current_floor})")                
 
                 # Prepara o info final AQUI e retorna
                 info['final_status'] = {
@@ -462,22 +471,23 @@ class BuriedBrainsEnv(gym.Env):
                     'win': self.agent_state['hp'] > 0 and not terminated,
                     'steps': self.current_step, # Duração do episódio
                     'enemies_defeated': self.enemies_defeated_this_episode,
-                    'invalid_actions': self.invalid_action_count
+                    'invalid_actions': self.invalid_action_count,
+                    'agent_name': self.agent_name,
+                    'full_log': self.current_episode_log # Passa a história inteira
                 }
                 observation = self._get_observation()
                 return observation, reward, terminated, False, info # Retorna imediatamente
 
             # Recompensa a cada 10 andares concluídos
             if self.current_floor % 10 == 0 and self.current_floor > self.last_milestone_floor:
-                reward += 400
-                if self.verbose > 0:
-                    print(f"[MARCO] Agente alcançou o Andar {self.current_floor}! Bônus de +400.")
-                self.last_milestone_floor = self.current_floor # Atualiza o último marco alcançado
+                reward += 400                
+                self._log(f"[MARCO] {self.agent_name} alcançou o Andar {self.current_floor}! Bônus de +400.")                
+
+                self.last_milestone_floor = self.current_floor  # Atualiza o último marco alcançado
 
                 if terminated or truncated:
-                    if truncated and not terminated and self.verbose > 0:
-                        print(f"[EPISÓDIO] Encerrado por tempo limite no andar {self.current_floor}.")  # LOG
-
+                    if truncated and not terminated:                        
+                        self._log(f"[EPISÓDIO] Encerrado por tempo limite no andar {self.current_floor}.")
                 info['final_status'] = {
                     'level': self.agent_state['level'],
                     'hp': self.agent_state['hp'],
@@ -502,19 +512,15 @@ class BuriedBrainsEnv(gym.Env):
             if 4 < action < 7:
                 successors = list(self.graph.successors(self.current_node))
                 action_index = action - 5  # Mapeia ação 5 para índice 0, 6 para 1
-
-                if self.verbose > 0:
-                    print(f"[AÇÃO] Agente na sala '{self.current_node}'. Tentando Ação de Movimento {action_index}.") # LOG
-
+                
+                self._log(f"[AÇÃO] {self.agent_name} na sala '{self.current_node}'. Tentando Ação de Movimento {action_index}.")
                 if len(successors) > action_index:
                     # --- LÓGICA DE PODA E GERAÇÃO ---
                     # 1. Agente escolhe um caminho
                     chosen_node = successors[action_index]
-
-                    if self.verbose > 0:
-                        print(f"[AÇÃO] Movimento VÁLIDO para '{chosen_node}'.") # LOG
                     
-                    # 2. PODA: Identifica e remove os caminhos não escolhidos
+                    self._log(f"[AÇÃO] Movimento VÁLIDO para '{chosen_node}'.")
+                                        # 2. PODA: Identifica e remove os caminhos não escolhidos
                     nodes_to_remove = [succ for i, succ in enumerate(successors) if i != action_index]
                     self.graph.remove_nodes_from(nodes_to_remove) # Isso remove os nós e todas as suas sub-árvores
 
@@ -530,50 +536,42 @@ class BuriedBrainsEnv(gym.Env):
                     # Após mover, verifica se a nova sala inicia um combate
                     room_content = self.graph.nodes[self.current_node].get('content', {})
                     enemy_names = room_content.get('enemies', [])
-                    if enemy_names:
-                        if self.verbose > 0:
-                            print(f"[AÇÃO] >>> COMBATE INICIADO com {enemy_names[0]} <<<") # LOG
+                    if enemy_names:                        
+                        self._log(f"[AÇÃO] >>> COMBATE INICIADO com {enemy_names[0]} <<<")
                         self._start_combat(enemy_names[0])
-                        reward += 10 # Recompensa bônus por encontrar um desafio
-                else:
-                    # Movimento inválido (tentou ir para uma sala que não existe)
-                    if self.verbose > 0:
-                        print(f"[AÇÃO] Movimento INVÁLIDO. (Sem sala no índice {action_index})") # LOG
+                        reward += 10  # Recompensa bônus por encontrar um desafio
 
+                else:                    
+                    self._log(f"[AÇÃO] Movimento INVÁLIDO. (Sem sala no índice {action_index})")
                     self.invalid_action_count += 1
                     reward = -5
             
-            # Ação 7: (Antiga Ação 8) Equipar Item de Poder (Weapon/Armor)
-            elif action == 7: 
-                if self.verbose > 0:
-                    print(f"[AÇÃO] Agente tentou Ação 7 (Equipar Item).") # LOG
+            # Ação 7: Equipar Item do Chão
+            elif action == 7:                
+                self._log(f"[AÇÃO] {self.agent_name} tentou Ação 7 (Equipar Item).")
                 room_items = self.graph.nodes[self.current_node].get('content', {}).setdefault('items', [])
-                equip_on_floor = next((item for item in room_items if self.catalogs['equipment'].get(item, {}).get('type') in ['Weapon', 'Armor']), None)
-                
+                equip_on_floor = next(
+                    (item for item in room_items if self.catalogs['equipment'].get(item, {}).get('type') in ['Weapon', 'Armor']),
+                    None
+                )
+
                 if equip_on_floor:
                     details = self.catalogs['equipment'][equip_on_floor]
                     item_type = details['type']
                     self.agent_state['equipment'][item_type] = equip_on_floor
                     room_items.remove(equip_on_floor)
-
-                    if self.verbose > 0:
-                        print(f"[AÇÃO] Agente tentou Ação 7 (Equipar Item).") # LOG
-                        print(f"[AÇÃO] Agente equipou '{equip_on_floor}' ({item_type}).") # LOG
-
+                    
+                    self._log(f"[AÇÃO] {self.agent_name} equipou '{equip_on_floor}' ({item_type}).")
                     reward = 50
                 else:
-                    self.invalid_action_count += 1
-
-                    if self.verbose > 0:
-                        print(f"[AÇÃO] Agente tentou equipar, mas não havia itens (Weapon/Armor) no chão.") # LOG            
-
+                    self.invalid_action_count += 1                    
+                    self._log("[AÇÃO] {self.agent_name} tentou equipar, mas não havia itens (Weapon/Armor) no chão.")
                     reward = -1
+
             
             # Ações de Combate (0 a 4) ou Ação Inválida (antiga 7)
-            else:
-                if self.verbose > 0:
-                    print(f"[AÇÃO] Agente usou Ação {action} (Combate/Inválida) fora de combate.") # LOG
-
+            else:                
+                self._log(f"[AÇÃO] {self.agent_name} usou Ação {action} (Combate/Inválida) fora de combate.")
                 self.invalid_action_count += 1
                 reward = -5 
 
@@ -687,6 +685,148 @@ class BuriedBrainsEnv(gym.Env):
             'enemy': enemy_combatant,
         }
         
-        if self.verbose > 0:
-            print(f"[COMBATE] Agente (Nível {self.agent_state['level']}, HP {agent_combatant['hp']}) "
-                f"vs. {enemy_combatant['name']} (Nível {enemy_combatant['level']}, HP {enemy_combatant['hp']})")        
+        self._log(
+            f"[COMBATE] {self.agent_name} (Nível {self.agent_state['level']}, HP {agent_combatant['hp']}) "
+            f"vs. {enemy_combatant['name']} (Nível {enemy_combatant['level']}, HP {enemy_combatant['hp']})"
+        )        
+
+class GeradorNomes:
+    """
+    Uma classe para gerar nomes de agentes únicos e variados para um roguelike.
+    
+    Ela armazena os nomes já gerados para garantir que nunca haja duplicatas
+    dentro da mesma instância.
+    """
+    
+    def __init__(self, seed=None):
+        """
+        Inicializa o gerador.
+        
+        :param seed: (Opcional) Uma seed para o gerador aleatório. 
+                     Útil se você quiser gerar os mesmos nomes para fins de teste
+                     ou para recriar um "mundo" específico.
+        """
+        # Usamos uma instância de Random interna para não afetar o 'random' global
+        self.random = random.Random()
+        if seed:
+            self.random.seed(seed)
+        else:
+            # Se nenhuma seed for dada, usa o tempo atual, como no seu original
+            self.random.seed(time.time())
+            
+        # Conjunto (set) para armazenar nomes já usados. É muito rápido
+        # para verificar se um nome já existe.
+        self.nomes_gerados = set()
+
+        # --- Listas de Partes de Nomes Expandidas ---
+        
+        self.nomes_pessoas = [
+            "Lucas", "Mateus", "Joao", "Pedro", "Rafael", "Bruno", "Thiago", "Gustavo", "Felipe", "Daniel",
+            "Ana", "Julia", "Marina", "Beatriz", "Camila", "Lara", "Isabela", "Carla", "Luana", "Fernanda",
+            # Adicionados:
+            "Kael", "Zara", "Milo", "Orion", "Sora", "Elara", "Jax", "Kai", "Ren", "Anya",
+            "Ryu", "Kenji", "Akira", "Yuki", "Hana", "Talia", "Niko", "Leon", "Max", "Eva"
+        ]
+        
+        self.apelidos_gamer = [
+            "Shadow", "Neo", "Dark", "Cyber", "Ghost", "Iron", "Alpha", "Omega", "Blade", "Storm",
+            "Sniper", "Hunter", "Rogue", "Wizard", "Titan", "Viper", "Ninja", "Specter", "Drifter", "Blitz",
+            # Adicionados:
+            "Reaper", "Slayer", "Warden", "Echo", "Vector", "Havoc", "Fury", "Razor", "Psyche", "Wraith",
+            "Jester", "Zero", "Bolt", "Spike", "Hex"
+        ]
+        
+        self.criaturas = [
+            "Wolf", "Dragon", "Phoenix", "Kraken", "Griffin", "Hydra", "Leviathan", "Falcon", "Cobra", "Bear",
+            # Adicionadas:
+            "Wyvern", "Golem", "Behemoth", "Manticore", "Basilisk", "Juggernaut", "Serpent", "Gorgon", "Chimera", "Droid"
+        ]
+        
+        self.sufixos_tech = [
+            "X", "Z", "99", "777", "Prime", "Zero", "One", "MK", "RX", "EXE", "VX", "Ultra", "Core", "Void",
+            # Adicionados:
+            "Matrix", "Data", "Net", "Sys", "Bot", "Log", "Unit"
+        ]
+        
+        # --- Novas Listas para Mais Variedade ---
+        
+        self.prefixos_tech = [
+            "Cyber", "Robo", "Mecha", "Nano", "Bio", "Psy", "Gen", "Xeno", "Proto", "Hyper", "Giga", "Auto"
+        ]
+
+        self.titulos_fantasy = [
+            "the_Silent", "the_Brave", "of_the_Void", "the_Wanderer", "the_Chosen", "Bloodhand", "Ironfist", 
+            "Shadowstep", "Stormcaller", "Fireheart", "Ghostblade"
+        ]
+        
+        self.sufixos_fantasy = [
+            "bane", "heart", "soul", "reaver", "shard", "wind", "fury", "shade"
+        ]
+
+    def _get_parts(self):
+        """Função auxiliar interna para pegar um conjunto de partes aleatórias."""
+        return {
+            "nome": self.random.choice(self.nomes_pessoas),
+            "apelido": self.random.choice(self.apelidos_gamer),
+            "criatura": self.random.choice(self.criaturas),
+            "sufixo_t": self.random.choice(self.sufixos_tech),
+            "prefixo_t": self.random.choice(self.prefixos_tech),
+            "titulo_f": self.random.choice(self.titulos_fantasy),
+            "sufixo_f": self.random.choice(self.sufixos_fantasy),
+            "num": self.random.choice(["7", "9", "X", "01", "007", "66", "88", "42"])
+        }
+
+    def gerar_nome(self, garantir_unicidade=True):
+        """
+        Gera um nome de agente com base nos formatos e listas definidos.
+        
+        :param garantir_unicidade: Se True (padrão), garante que o nome nunca 
+                                 foi gerado por esta instância, adicionando um 
+                                 sufixo numérico (ex: _2, _3) se necessário.
+        :return: Uma string com o nome do agente.
+        """
+        
+        parts = self._get_parts()
+        
+        # --- Lista de Formatos (Receitas de Nomes) ---
+        # Usamos 'lambda' para definir mini-funções que montam os nomes.
+        # A função vai escolher uma dessas aleatoriamente.
+        formatos = [
+            # Formatos Tech/Gamer
+            lambda p: f"{p['apelido']}{p['criatura']}",                          # Ex: ShadowWolf
+            lambda p: f"{p['prefixo_t']}{p['apelido']}",                        # Ex: CyberGhost
+            lambda p: f"{p['prefixo_t']}{p['criatura']}",                       # Ex: MechaDragon
+            lambda p: f"{p['apelido']}{p['num']}",                              # Ex: Sniper7
+            lambda p: f"{p['apelido']}_{p['sufixo_t']}",                        # Ex: Viper_Prime
+            lambda p: f"{p['criatura']}{p['sufixo_t']}",                        # Ex: GriffinCore
+            lambda p: f"{p['apelido']}{p['criatura']}{p['sufixo_t']}",          # O seu formato original!
+            
+            # Formatos com Nomes de Pessoas
+            lambda p: f"{p['nome']}_{p['apelido']}",                            # Ex: Lucas_Shadow
+            lambda p: f"{p['nome']}_{p['titulo_f']}",                           # Ex: Ana_the_Silent
+            lambda p: f"{p['nome']}{p['sufixo_f']}",                            # Ex: Kaelbane
+            
+            # Formatos Simples
+            lambda p: f"{p['apelido']}",                                        # Ex: Wraith
+            lambda p: f"{p['nome']}"                                            # Ex: Zara
+        ]
+        
+        # 1. Escolhe um formato e gera o nome base
+        gerador_formato = self.random.choice(formatos)
+        base_name = gerador_formato(parts)
+        
+        final_name = base_name
+
+        # 2. Lida com a unicidade (se solicitado)
+        if garantir_unicidade:
+            counter = 1
+            # Se o nome final já estiver no nosso set, tenta adicionar um número
+            while final_name in self.nomes_gerados:
+                counter += 1
+                final_name = f"{base_name}_{counter}" # Ex: ShadowWolf_2, ShadowWolf_3
+            
+            # Adiciona o nome final (que agora é 100% único) ao conjunto
+            self.nomes_gerados.add(final_name)
+        
+        return final_name
+              
