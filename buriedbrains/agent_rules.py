@@ -33,18 +33,25 @@ def check_for_level_up(agent: Dict[str, Any]) -> bool:
         agent['exp'] -= agent['exp_to_level_up']
         agent['level'] += 1
         
-        agent['exp_to_level_up'] = int(agent['exp_to_level_up'] * 1.05)  # Aumenta a EXP necessária para o próximo nível
+        # --- CORREÇÃO: Taxa de Custo (Linear) para Bater com a Taxa de Ganho ---
+        # A taxa de ganho (de instantiate_enemy) sobe em +4 por andar (20 * 0.2).
+        # A taxa de custo agora também sobe em +4 por nível.
+        
+        # Antes (Exponencial):
+        # agent['exp_to_level_up'] = int(agent['exp_to_level_up'] * 1.05)
+        # Minha Sugestão Ruim (Linear +20):
+        # agent['exp_to_level_up'] += 20 
+        
+        # Agora (Linear +4):
+        agent['exp_to_level_up'] += 4
+        # --- FIM DA CORREÇÃO ---
                 
         # --- AUMENTOS DE PODER DO AGENTE ---
         agent['max_hp'] += 30  
         agent['hp'] = agent['max_hp']
         
-        # >> SUGESTÃO: Aumento de dano muito mais significativo <<
         agent['base_stats']['flat_damage_bonus'] += 5
-        
-        # Adiciona um pequeno bónus percentual a cada nível <<
         agent['base_stats']['damage_modifier'] += 0.02 # +2% de dano por nível
-
         agent['base_stats']['damage_reduction'] += 0.005 # Levemente reduzido
 
     return leveled_up

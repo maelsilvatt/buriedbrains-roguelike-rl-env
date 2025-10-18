@@ -19,7 +19,13 @@ class BuriedBrainsEnv(gym.Env):
     """
     Ambiente principal do BuriedBrains, compatível com a interface Gymnasium.
     """
-    def __init__(self, guarantee_enemy: bool = False, verbose: int = 0):
+    def __init__(self, 
+                 max_episode_steps: int = 15000, 
+                 max_floors: int = 500,
+                 max_level: int = 400,
+                 budget_multiplier: float = 1.0,
+                 guarantee_enemy: bool = False, 
+                 verbose: int = 0):
         super().__init__()        
         data_path = os.path.join(os.path.dirname(__file__), 'data')
         with open(os.path.join(data_path, 'skill_and_effects.yaml'), 'r', encoding='utf-8') as f:
@@ -34,11 +40,12 @@ class BuriedBrainsEnv(gym.Env):
             'room_effects': enemy_data['pools']['room_effects'], 'events': enemy_data['pools']['events']
         }
 
-        self.max_episode_steps = 30000 # Define um limite, por exemplo, 1000 passos
+        self.max_episode_steps = max_episode_steps # Define um limite de passos por episódio
         self.current_step = 0
         self.verbose = verbose 
-        self.max_floors = 500 # Limite máximo de andares para evitar loops infinitos
-        self.max_level = 400 # Nível máximo do agente         
+        self.max_floors = max_floors # Limite máximo de andares para evitar loops infinitos
+        self.max_level = max_level # Nível máximo do agente         
+        self.budget_multiplier = budget_multiplier # Multiplicador de orçamento para geração de conteúdo
         self.enemies_defeated_this_episode = 0 # Conta inimigos derrotados
         self.invalid_action_count = 0 # Conta ações inválidas
         self.last_milestone_floor = 0 # Último andar que concedeu recompensa de marco
@@ -104,7 +111,7 @@ class BuriedBrainsEnv(gym.Env):
             self.graph.add_edge(parent_node, new_node)
             
             # Popula este novo nó com conteúdo (como antes)
-            budget = 100 + (next_floor * 10)
+            budget = ( 100 + (next_floor * 10) ) * self.budget_multiplier
             content = content_generation.generate_room_content(
                 self.catalogs,                 
                 budget, 
@@ -523,6 +530,7 @@ class BuriedBrainsEnv(gym.Env):
 
                     # 3. GERAÇÃO: Move o agente e gera os próximos caminhos
                     self.current_node = chosen_node
+                    
                     self.current_floor = self.graph.nodes[self.current_node].get('floor', self.current_floor)
                     self._generate_successors_for_node(self.current_node) # Gera os filhos do novo nó
                     
@@ -562,7 +570,7 @@ class BuriedBrainsEnv(gym.Env):
                     reward = 50
                 else:
                     self.invalid_action_count += 1                    
-                    self._log("[AÇÃO] {self.agent_name} tentou equipar, mas não havia itens (Weapon/Armor) no chão.")
+                    self._log(f"[AÇÃO] {self.agent_name} tentou equipar, mas não havia itens (Weapon/Armor) no chão.")
                     reward = -1
 
             

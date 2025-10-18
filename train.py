@@ -8,6 +8,7 @@ import time
 import gymnasium as gym
 import numpy as np
 import torch
+import argparse # para automação
 
 from stable_baselines3 import PPO
 from sb3_contrib import RecurrentPPO
@@ -219,8 +220,28 @@ def main():
     """
     Script principal para treinar um agente PPO no ambiente BuriedBrains.
     """
+    
+    # --- 0. PARSER DE ARGUMENTOS ---
+    parser = argparse.ArgumentParser(description="Script de Treinamento BuriedBrains")
+    
+    # Argumento para (não) usar LSTM
+    parser.add_argument('--no_lstm', action='store_true', help="Usar PPO padrão em vez de RecurrentPPO (LSTM)")
+    
+    # Argumentos do Treino
+    parser.add_argument('--total_timesteps', type=int, default=5_000_000, help="Total de passos de treino (model.learn)")
+    parser.add_argument('--suffix', type=str, default="", help="Sufixo para o nome da run (ex: 'Baseline_NoLSTM')")
+
+    # Argumentos do Ambiente
+    parser.add_argument('--max_episode_steps', type=int, default=30000, help="Limite de passos por episódio no ambiente")
+    parser.add_argument('--budget_multiplier', type=float, default=1.0, help="Multiplicador de dificuldade (budget) do ambiente")
+    
+    args = parser.parse_args()
+    # --- FIM DO PARSER ---
+
+
     # --- Escolha da política ---
-    use_lstm = True  # Mude para False se quiser treinar sem memória (PPO padrão)
+    # use_lstm = True # Antigo
+    use_lstm = not args.no_lstm # <--- MUDANÇA
 
     if use_lstm:
         model_class = RecurrentPPO
@@ -230,8 +251,6 @@ def main():
         policy_class = "MlpPolicy"
 
     print(f"Usando a política: {policy_class}")
-
-    # Dispositivo (GPU se disponível)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Usando o dispositivo: {device}")
 
@@ -249,7 +268,11 @@ def main():
 
     # --- 2. Criação do ambiente vetorizado ---
     print("Criando ambiente vetorizado para treinamento...")
-    env = DummyVecEnv([lambda: BuriedBrainsEnv(verbose=1)])
+    env = DummyVecEnv([lambda: BuriedBrainsEnv(
+        verbose=1,
+        max_episode_steps=args.max_episode_steps,
+        budget_multiplier=args.budget_multiplier
+    )])
 
     # --- 3. Configuração de logs e diretórios ---
     timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
@@ -260,8 +283,13 @@ def main():
     os.makedirs(base_models_dir, exist_ok=True)
 
     run_name = f"{model_class.__name__}_{policy_class}_{timestamp}"
+    if args.suffix:
+        run_name += f"_{args.suffix}"
     run_models_dir = os.path.join(base_models_dir, run_name)
     os.makedirs(run_models_dir, exist_ok=True)
+
+    tb_path = os.path.join(base_logdir, run_name)
+    os.makedirs(tb_path, exist_ok=True)
 
     # --- 4. Callbacks ---
     checkpoint_callback = CheckpointCallback(save_freq=20000, save_path=run_models_dir, name_prefix="bb_model")
@@ -278,9 +306,8 @@ def main():
         ent_coef=0.01,
     )
 
-    TIMESTEPS = 100_000    
+    TIMESTEPS = args.total_timesteps
     print(f"Iniciando treinamento por {TIMESTEPS} passos...")
-    tb_path = os.path.join(base_logdir, run_name)
     print(f"Logs do TensorBoard serão salvos em: {tb_path}")
 
     model.learn(
