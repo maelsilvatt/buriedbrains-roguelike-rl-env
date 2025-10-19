@@ -21,7 +21,7 @@ skill_catalog:
 
   Shadow Strike:
     damage: 25
-    cd: 3
+    cd: 4
     tags: [Damage, Physical, Stealth]
 
   Celestial Strike:
@@ -36,7 +36,7 @@ skill_catalog:
 
   Earthquake:
     damage: 15
-    cd: 5
+    cd: 6
     tags: [Damage, AOE, Stun]
 
   Arcane Explosion:
@@ -56,12 +56,12 @@ skill_catalog:
 
   Shield Bash:
     damage: 8
-    cd: 2
+    cd: 3
     tags: [Damage, Stun]
 
   Thunder Clap:
     damage: 15
-    cd: 2
+    cd: 3
     tags: [Damage, Stun]
 
   Frostbite:
@@ -86,12 +86,12 @@ skill_catalog:
 
   Blade of Chaos:
     damage: 20
-    cd: 2
+    cd: 3
     tags: [Damage, Debuff, Vulnerable]
 
-  War Cry:
-    damage: 6
-    cd: 2
+  War Cry:    
+    damage: 0
+    cd: 3
     tags: [Debuff_Damage]
 
   Poison Shot:
@@ -155,103 +155,102 @@ skill_catalog:
     tags: [Buff_Evasion]
 
 effect_ruleset:
+  # --- Debuffs ---
   Slow:
-    type: Debuff
-    target: Target
-    duration: 2
-    stat_modifier:
-      speed: -0.3
+    type: Debuff 
+    target: Target 
+    duration: 2 
+    stat_modifier: {speed: -0.3}
 
   Vulnerable:
-    type: Debuff
-    target: Target
-    duration: 2
-    stat_modifier:
-      defense_taken: 0.25
+    type: Debuff 
+    target: Target 
+    duration: 2 
+    stat_modifier: {defense_taken: 0.25}
 
   Blind:
-    type: Debuff
-    target: Target
-    duration: 1
-    stat_modifier:
-      accuracy: -0.3
+    type: Debuff 
+    target: Target 
+    duration: 1 
+    stat_modifier: {accuracy: -0.3}
 
-  Debuff_Damage:
-    type: Debuff
-    target: Target
-    duration: 3
-    stat_modifier:
-      damage_modifier: -0.2
+  Debuff_Damage: # (Leve Nerf na Duração)
+    type: Debuff 
+    target: Target 
+    duration: 2 # Era 3
+    stat_modifier: {damage_modifier: -0.2}
 
+  # --- Controle ---
   Stun:
-    type: Control
-    target: Target
+    type: Control 
+    target: Target 
     duration: 1
 
   Knockback:
-    type: Control
-    target: Target
+    type: Control 
+    target: Target 
     duration: 0
 
-  Damage_Over_Time:
-    type: DoT
-    target: Target
-    duration: 3
-    damage_per_turn: 4
+  # --- DoTs (Clarificados e Separados) ---
+  # (REMOVIDO o genérico 'Damage_Over_Time')
+  Poison: # NOVO efeito específico
+    type: DoT 
+    target: Target 
+    duration: 4 # Dura mais
+    damage_per_turn: 3 # Dano um pouco menor
 
-  Burn:
-    type: DoT
-    target: Target
-    duration: 2
+  Burn: # (Mantido como estava)
+    type: DoT 
+    target: Target 
+    duration: 2 
     damage_per_turn: 6
 
-  Buff_Defense:
-    type: Buff
-    target: Self
-    duration: 3
-    stat_modifier:
-      defense: 0.3
+  # --- Buffs ---
+  Buff_Defense: # (Mantido)
+    type: Buff 
+    target: Self 
+    duration: 3 
+    stat_modifier: {defense: 0.3}
 
-  Buff_Self_Damage:
-    type: Buff
-    target: Self
-    duration: 3
-    stat_modifier:
-      damage_modifier: 0.5
+  Buff_Self_Damage: # (Mantido)
+    type: Buff 
+    target: Self 
+    duration: 3 
+    stat_modifier: {damage_modifier: 0.5}
 
-  Buff_Evasion:
-    type: Buff
-    target: Self
-    duration: 1
-    stat_modifier:
-      evasion_chance: 0.75
+  Buff_Evasion: # (Mantido)
+    type: Buff 
+    target: Self 
+    duration: 1 
+    stat_modifier: {evasion_chance: 0.75}
 
-  Stealth:
-    type: Buff
-    target: Self
+  Stealth: # (Mantido)
+    type: Buff 
+    target: Self 
     duration: 1
 
-  Heal_Self:
-    type: Support
-    target: Self
-    duration: 0
-    potency: 0.02
+  # --- Suporte/Especial ---
+  Heal_Self: # (Potência Aumentada - se usada por skills)
+    type: Support 
+    target: Self 
+    duration: 0 
+    potency: 0.1 # Agora 10% - Ajustar se necessário
 
-  Life_Drain:
-    type: Special
-    target: Self
-    duration: 0
+  Life_Drain: # (Mantido)
+    type: Special 
+    target: Self 
+    duration: 0 
     potency: 0.5
 
-  Reflect:
-    type: Special
-    target: Attacker
+  Reflect: # (Mantido)
+    type: Special 
+    target: Attacker 
     potency: 0.15
 
-  Revive:
-    type: Special
-    target: Self
-    duration: 0
+  Revive: # (Mantido)
+    type: Special 
+    target: Self 
+    duration: 0 
     potency: 0.3
 
 base_skill_points: 10.0

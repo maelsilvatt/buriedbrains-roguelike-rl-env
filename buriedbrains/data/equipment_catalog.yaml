@@ -59,7 +59,7 @@ equipment_catalog:
     rarity: Rare
     on_hit_effect:
       chance: 0.20
-      effect_tag: Bleed
+      damage_modifier: 0.16
 
   Mace of Stunning:
     type: Weapon
@@ -80,8 +80,7 @@ equipment_catalog:
     type: Weapon
     rarity: Epic
     on_hit_effect:
-      chance: 0.20
-      effect_tag: Magic Burn
+      chance: 0.30      
 
   Flamebrand:
     type: Weapon
@@ -97,14 +96,14 @@ equipment_catalog:
     rarity: Epic
     on_hit_effect:
       chance: 0.30
-      effect_tag: Shock
+      effect_tag: Stun
 
   Blade of the Martyr:
     type: Weapon
     rarity: Legendary
     passive_effects:
       damage_modifier: 0.25
-      flat_damage_bonus: 5
+      flat_damage_bonus: 15
 
   Sword of the Forgotten King:
     type: Weapon
@@ -123,14 +122,14 @@ equipment_catalog:
     type: Weapon
     rarity: Legendary
     passive_effects:
-      flat_damage_bonus: 8
+      flat_damage_bonus: 40
 
   Celestial Blade:
     type: Weapon
     rarity: Legendary
     passive_effects:
       damage_modifier: 0.20
-      flat_damage_bonus: 4
+      flat_damage_bonus: 25
 
   Leather Tunic:
     type: Armor
@@ -160,7 +159,7 @@ equipment_catalog:
     type: Armor
     rarity: Common
     passive_effects:
-      damage_reduction: 0.04
+      damage_reduction: 0.06
 
   Steel Plate:
     type: Armor

@@ -1,544 +1,489 @@
 # Pools and conditional rules for the "before" state
 pools:
+# Pools and conditional rules for the "before" state
+pools:
   enemies:
-    # Common Enemies (basic, low-cost, low-weight)
-    Zombie:
-      cost: 10
-      weight: 100
-      tags: [Common, Undead, Physical]
-      hp: 65
-      skills: ['Quick Strike', 'Wait']
-      equipment: []
+    # --- Common Enemies ---
+    # (Maioria mantida, com ajustes pontuais para introduzir mecânicas)
+
+    Zombie: # (Mantido como está - Baseline)
+      cost: 10 
+      weight: 100 
+      tags: [Common, Undead, Physical] 
+      hp: 65 
+      skills: ['Quick Strike', 'Wait'] 
+      equipment: [] 
       exp_yield: 25
-      # Design: O inimigo mais básico. Lento, previsível, mas presente em grande número.
 
-    Skeleton Archer:
-      cost: 12
-      weight: 70
-      tags: [Common, Undead, Physical, Ranged]
-      hp: 50
-      skills: ['Quick Strike', 'Wait'] # O dano dele seria inerentemente 'Ranged'
-      equipment: ['Rusty Dagger'] # Apenas um pequeno bônus simbólico
+    Skeleton Archer: # (Mantido como está - Dano Ranged simples)
+      cost: 12 
+      weight: 70 
+      tags: [Common, Undead, Physical, Ranged] 
+      hp: 50 
+      skills: ['Quick Strike', 'Wait'] 
+      equipment: ['Rusty Dagger'] 
       exp_yield: 20
-      # Design: Frágil, mas uma fonte constante de dano à distância.
 
-    Cave Spider:
-      cost: 11
-      weight: 75
-      tags: [Common, Beast, Poison, Debuff_Speed]
-      hp: 60
-      skills: ['Quick Strike', 'Poison Shot', 'Wait']
-      equipment: []
+    Cave Spider: # (AUMENTAR Peso - Aparecer mais cedo para ensinar DoT)
+      cost: 11 
+      weight: 85 
+      tags: [Common, Beast, Poison, Debuff_Speed] 
+      hp: 60 
+      skills: ['Quick Strike', 'Poison Shot', 'Wait'] 
+      equipment: [] 
       exp_yield: 15
-      # Design: Introduz o jogador aos efeitos de Dano Contínuo (DoT).
 
-    Bandit:
-      cost: 13
-      weight: 65
-      tags: [Common, Human, Physical]
-      hp: 75
-      skills: ['Quick Strike', 'Heavy Blow', 'Wait']
-      equipment: ['Shortsword', 'Leather Tunic']
+    Bandit: # (Mantido como está - Simula o agente)
+      cost: 13 
+      weight: 65 
+      tags: [Common, Human, Physical] 
+      hp: 75 
+      skills: ['Quick Strike', 'Heavy Blow', 'Wait'] 
+      equipment: ['Shortsword', 'Leather Tunic'] 
       exp_yield: 40
-      # Design: Um oponente mais tático, uma versão fraca do agente.
 
-    Forest Wisp:
-      cost: 10
-      weight: 70
-      tags: [Common, Magical, Illusion]
-      hp: 40
-      skills: ['Blinding Light', 'Wait']
-      equipment: []
+    Forest Wisp: # (Mantido como está - Ensina Blind)
+      cost: 10 
+      weight: 70 
+      tags: [Common, Magical, Illusion] 
+      hp: 40 
+      skills: ['Blinding Light', 'Wait'] 
+      equipment: [] 
       exp_yield: 18
-      # Design: Não causa muito dano, mas atrapalha com debuffs.
 
-    Poisonous Mushroom:
-      cost: 8
-      weight: 80
-      tags: [Common, Beast, Poison, Debuff_Healing]
-      hp: 50
-      skills: ['Poison Shot', 'Wait'] # O 'Debuff_Healing' seria uma propriedade do seu veneno
-      equipment: []
+    Poisonous Mushroom: # (Mantido como está - DoT + Anti-cura)
+      cost: 8 
+      weight: 80 
+      tags: [Common, Beast, Poison, Debuff_Healing] 
+      hp: 50 
+      skills: ['Poison Shot', 'Wait'] 
+      equipment: [] 
       exp_yield: 20
-      # Design: Estacionário e frágil, mas pune agentes que dependem de cura.
 
-    Goblin:
-      cost: 9
-      weight: 90
-      tags: [Common, Beast, Aggressive]
-      hp: 55
-      skills: ['Quick Strike', 'War Cry', 'Wait']
-      equipment: ['Wooden Club']
+    Goblin: # (AUMENTAR HP + ADICIONAR Debuff - Ensina War Cry mais cedo)
+      cost: 9 
+      weight: 90 
+      tags: [Common, Beast, Aggressive] 
+      hp: 65 
+      skills: ['Quick Strike', 'War Cry', 'Wait'] 
+      equipment: ['Wooden Club'] 
       exp_yield: 12
-      # Design: Fraco, mas agressivo. Aparece em grupos.
 
-    Shadow Assassin:
-      cost: 15
-      weight: 50
-      tags: [Common, Stealth, Debuff_Accuracy]
-      hp: 65
-      skills: ['Shadow Strike', 'Blinding Light', 'Wait']
-      equipment: ['Twin Daggers']
+    Shadow Assassin: # (Mantido como está - Ensina burst/stealth)
+      cost: 15 
+      weight: 50 
+      tags: [Common, Stealth, Debuff_Accuracy] 
+      hp: 65 
+      skills: ['Shadow Strike', 'Blinding Light', 'Wait'] 
+      equipment: ['Twin Daggers'] 
       exp_yield: 30
-      # Design: Alto potencial de dano inicial. Ensina a importância de defesa no primeiro turno.
 
-    Cursed Spirit:
-      cost: 14
-      weight: 55
-      tags: [Common, Undead, Cursed, Debuff_Morale]
-      hp: 70
-      skills: ['Soul Drain', 'War Cry', 'Wait']
-      equipment: []
-      exp_yield: 100
-      # Design: Foco em enfraquecer o agente com debuffs e se curar.
+    Cursed Spirit: # (Mantido como está - Ensina Life Drain + Debuff)
+      cost: 14 
+      weight: 55 
+      tags: [Common, Undead, Cursed, Debuff_Morale] 
+      hp: 70 
+      skills: ['Soul Drain', 'War Cry', 'Wait'] 
+      equipment: [] 
+      exp_yield: 100 # EXP talvez um pouco alto? Mas ok.
 
-    Poisoned Rat:
-      cost: 7
-      weight: 85
-      tags: [Common, Beast, Poison, Debuff_Speed]
-      hp: 40
-      skills: ['Quick Strike', 'Poison Shot', 'Wait']
-      equipment: []
+    Poisoned Rat: # (Mantido como está - DoT Fraco)
+      cost: 7 
+      weight: 85 
+      tags: [Common, Beast, Poison, Debuff_Speed] 
+      hp: 40 
+      skills: ['Quick Strike', 'Poison Shot', 'Wait'] 
+      equipment: [] 
       exp_yield: 20
-      # Design: O inimigo mais fraco, mas que pode ser irritante em grupos.
 
-    Giant Bat:
-      cost: 10
-      weight: 75
-      tags: [Common, Beast, Aggressive]
-      hp: 50
-      skills: ['Quick Strike', 'Wind Slash', 'Wait']
-      equipment: []
+    Giant Bat: # (Mantido como está - Evasivo/Knockback)
+      cost: 10 
+      weight: 75 
+      tags: [Common, Beast, Aggressive] 
+      hp: 50 
+      skills: ['Quick Strike', 'Wind Slash', 'Wait'] 
+      equipment: [] 
       exp_yield: 11
-      # Design: Rápido e evasivo.
 
-    Cursed Zombie:
-      cost: 12
-      weight: 60
-      tags: [Common, Undead, Cursed, Debuff_Morale]
-      hp: 80
-      skills: ['Heavy Blow', 'War Cry', 'Wait']
-      equipment: []
+    Cursed Zombie: # (Mantido como está - Tank + Debuff)
+      cost: 12 
+      weight: 60 
+      tags: [Common, Undead, Cursed, Debuff_Morale] 
+      hp: 80 
+      skills: ['Heavy Blow', 'War Cry', 'Wait'] 
+      equipment: [] 
       exp_yield: 18
-      # Design: Uma versão mais lenta e resistente do Zombie, com foco em debuffs.
 
-    Dark Cultist:
-      cost: 16
-      weight: 40
-      tags: [Common, Human, Magical, Debuff_Speed]
-      hp: 65
-      skills: ['Frostbite', 'Blade of Chaos', 'Wait'] # Usa a vulnerabilidade para seus feitiços
-      equipment: ['Worn Cloak', 'Old Charm']
+    Dark Cultist: # (Mantido como está - Glass Cannon Mágico)
+      cost: 16 
+      weight: 40 
+      tags: [Common, Human, Magical, Debuff_Speed] 
+      hp: 65 
+      skills: ['Frostbite', 'Blade of Chaos', 'Wait'] 
+      equipment: ['Worn Cloak', 'Old Charm'] 
       exp_yield: 35
-      # Design: Um "glass cannon". Perigoso se não for focado rapidamente.
 
-    Poisoned Scorpion:
-      cost: 9
-      weight: 80
-      tags: [Common, Beast, Poison, Debuff_Speed]
-      hp: 50
-      skills: ['Poison Shot', 'Wait']
-      equipment: []
+    Poisoned Scorpion: # (Mantido como está - Variante DoT)
+      cost: 9 
+      weight: 80 
+      tags: [Common, Beast, Poison, Debuff_Speed] 
+      hp: 50 
+      skills: ['Poison Shot', 'Wait'] 
+      equipment: [] 
       exp_yield: 14
-      # Design: Outra variante de inimigo com DoT.
 
-    Cursed Knight:
-      cost: 18
-      weight: 30
-      tags: [Common, Undead, Cursed, Physical, Tank]
+    Cursed Knight: # (MODIFICADO - Introduz Stun Simples)
+      cost: 18 
+      weight: 30 
+      tags: [Common, Undead, Cursed, Physical, Tank, Control] 
       hp: 130
-      skills: ['Heavy Blow', 'Stone Shield', 'Wait']
-      equipment: ['Iron Sword', 'Chain Shirt', 'Amulet of Vigor']
+      skills: ['Heavy Blow', 'Shield Bash', 'Wait'] # Remove Stone Shield, adiciona Stun (Shield Bash cd 2)
+      equipment: ['Iron Sword', 'Chain Shirt', 'Amulet of Vigor'] 
       exp_yield: 50
-      # Design: O "mini-chefe" dos inimigos comuns. Extremamente resistente.
+      # Redesign: Agora ele é um tanque que *ensina* o agente a lidar com Stun frequente, sem outras mecânicas complexas.
 
-    Shadow Lurker:
-      cost: 14
-      weight: 60
-      tags: [Common, Stealth, Debuff_Accuracy]
-      hp: 60
-      skills: ['Shadow Strike', 'Blinding Light', 'Wait']
-      equipment: ['Serrated Blade']
+    Shadow Lurker: # (Mantido como está - Stealth + Blind)
+      cost: 14 
+      weight: 60 
+      tags: [Common, Stealth, Debuff_Accuracy] 
+      hp: 60 
+      skills: ['Shadow Strike', 'Blinding Light', 'Wait'] 
+      equipment: ['Serrated Blade'] 
       exp_yield: 28
-      # Design: Similar ao Assassin, mas com foco em debuffs mais duradouros.
 
-    Wild Boar:
-      cost: 9
-      weight: 80
-      tags: [Common, Beast, Physical, Aggressive]
-      hp: 85
-      skills: ['Heavy Blow', 'Wait']
-      equipment: []
+    Wild Boar: # (Mantido como está - Parede de HP simples)
+      cost: 9 
+      weight: 80 
+      tags: [Common, Beast, Physical, Aggressive] 
+      hp: 85 
+      skills: ['Heavy Blow', 'Wait'] 
+      equipment: [] 
       exp_yield: 15
-      # Design: Simples, mas com muito HP e dano para seu custo. Uma "parede de carne".
 
-    # Bosses (Rare, high cost, high weight, legendary drops)
-    Lava Golem:
-      cost: 25
-      weight: 15
-      tags: [Elite, Thermal, Area_Damage]
+    # --- Elites (Antigos "Bosses" de Nível Baixo/Médio) ---
+    # (Ajustes para suavizar a curva inicial)
+
+    Lava Golem: # (NERFADO - Aumenta CD do Stun)
+      cost: 25 
+      weight: 15 
+      tags: [Elite, Thermal, Area_Damage] 
       hp: 220
-      skills: ['Heavy Blow', 'Flame Burst', 'Earthquake', 'Wait']
-      equipment: ['Warhammer']
+      skills: ['Heavy Blow', 'Flame Burst', 'Earthquake', 'Wait'] # Earthquake CD original: 5
+      # Mudar skill Earthquake para ter CD 6 (no skill_catalog.yaml ou aqui se possível sobrescrever)
+      equipment: ['Warhammer'] 
       exp_yield: 90
-      # Design: Lento mas poderoso, com dano em área.
+      # Redesign: Stun um pouco menos frequente para reduzir o lockdown. Continua perigoso com AOE+DoT.
 
-    Krul:
-      cost: 20
-      weight: 10
-      tags: [Elite, Physical, Heavy]
-      hp: 180
-      skills: ['Heavy Blow', 'War Cry', 'Wait']
-      equipment: ['Battle Axe', 'Steel Plate']
+    Krul: # (Mantido como está - Stat check físico)
+      cost: 20 weight: 
+      10 tags: [Elite, Physical, Heavy] 
+      hp: 180 
+      skills: ['Heavy Blow', 'War Cry', 'Wait'] 
+      equipment: ['Battle Axe', 'Steel Plate'] 
       exp_yield: 75
-      # Design: Um guerreiro puro, focado em dano físico bruto.
 
-    Laezarus: # Versão Elite
-      cost: 22
-      weight: 5
-      tags: [Elite, Tank, Defensive]
-      hp: 300
-      skills: ['Shield Bash', 'Stone Shield', 'Wait']
-      equipment: ['Knight’s Mail']
+    Laezarus: # (NERFADO - Leve redução de HP)
+      cost: 22 
+      weight: 5 
+      tags: [Elite, Tank, Defensive] 
+      hp: 260 # Era 300
+      skills: ['Shield Bash', 'Stone Shield', 'Wait'] 
+      equipment: ['Knight’s Mail'] 
       exp_yield: 85
-      # Design: Extremamente defensivo. Uma parede de escudos.
+      # Redesign: Ainda muito tanque, mas um pouco menos HP para reduzir a duração da luta.
 
-    'A Thousand Cursed':
-      cost: 23
-      weight: 3
-      tags: [Elite, Magical, Debuff_Speed]
-      hp: 160
-      skills: ['Frostbite', 'Ice Spike', 'Wait']
-      equipment: ['Traveler’s Coat']
+    'A Thousand Cursed': # (Mantido como está - Controle chato mas frágil)
+      cost: 23 
+      weight: 3 
+      tags: [Elite, Magical, Debuff_Speed] 
+      hp: 160 
+      skills: ['Frostbite', 'Ice Spike', 'Wait'] 
+      equipment: ['Traveler’s Coat'] 
       exp_yield: 95
-      # Design: Frágil, mas irritante, focado em controle de velocidade.
 
-    Berserker Spirit:
-      cost: 28
-      weight: 12
-      tags: [Elite, Undead, Aggressive, Physical]
-      hp: 190
-      skills: ['Heavy Blow', 'Berserker Rage', 'Wait']
-      equipment: ['Battle Axe']
+    Berserker Spirit: # (NERFADO - HP Reduzido)
+      cost: 28 
+      weight: 12 
+      tags: [Elite, Undead, Aggressive, Physical] 
+      hp: 170 # Era 190
+      skills: ['Heavy Blow', 'Berserker Rage', 'Wait'] 
+      equipment: ['Battle Axe'] 
       exp_yield: 100
-      # Design: Entra em fúria, ensinando o jogador a usar controle ou defesa.
+      # Redesign: Agente tem mais chance de matá-lo antes que o Berserker Rage (buff de dano) se torne insustentável.
 
-    Flesh Abomination:
-      cost: 32
-      weight: 8
-      tags: [Elite, Undead, Cursed, Heavy]
-      hp: 320
-      skills: ['Heavy Blow', 'War Cry', 'Wait']
-      equipment: [] # Seu corpo é sua arma e armadura
+    Flesh Abomination: # (Mantido como está - DPS Check)
+      cost: 32 
+      weight: 8 
+      tags: [Elite, Undead, Cursed, Heavy] 
+      hp: 320 
+      skills: ['Heavy Blow', 'War Cry', 'Wait'] 
+      equipment: [] 
       exp_yield: 120
-      # Design: Um saco de pancadas gigante. Testa a capacidade do agente de sustentar o dano.
 
-    Twilight Stalker:
-      cost: 27
-      weight: 10
-      tags: [Elite, Stealth, Control_Fear]
+    Twilight Stalker: # (NERFADO - Aumenta CD do ataque forte)
+      cost: 27 
+      weight: 10 
+      tags: [Elite, Stealth, Control_Fear] 
       hp: 150
-      skills: ['Shadow Strike', 'Blinding Light', 'Wait'] # 'Fear' seria uma skill especial
-      equipment: ['Twin Daggers']
+      skills: ['Shadow Strike', 'Blinding Light', 'Wait'] # Shadow Strike CD original: 3
+      # Mudar skill Shadow Strike para ter CD 4 (no skill_catalog.yaml ou aqui)
+      equipment: ['Twin Daggers'] 
       exp_yield: 110
-      # Design: Alto dano explosivo e controle mental.
+      # Redesign: Reduz a frequência do burst damage inicial.
 
-    # --- Elite (Desafios Raros, HP e EXP altos, drops lendários) ---
-    'Hopeless Agent':
-      cost: 40
-      weight: 5
-      tags: [Boss, Undead, Summoner]
-      hp: 400
-      skills: ['Soul Drain', 'Wait'] # 'Summon' seria sua skill principal
-      equipment: ['Cursed Locket', 'Mantle of the Void']
-      exp_yield: 250
-      # Design: Um agente caído que invoca outros para lutar.
+    # --- Bosses (Antigos "Elite" de Nível Alto - Desafios Maiores) ---
+    # (Reordenados e alguns mantidos como desafios finais)
 
-    'Bedrose Gardener':
-      cost: 30
-      weight: 10
-      tags: [Boss, Undead, Physical, Tank]
-      hp: 600
-      skills: ['Heavy Blow', 'Stone Shield', "Natures' Grasp", 'Wait']
-      equipment: ['Stoneshield Armor']
+    Kalisto: # (NERFADO DRASTICAMENTE - Era um muro muito cedo)
+      cost: 35 
+      weight: 5 # Peso baixo, deve aparecer mais tarde
+      tags: [Boss, Beast, Aggressive, Heavy] 
+      hp: 400 # Era 550
+      skills: ['Heavy Blow', 'Berserker Rage', 'Wait'] # Berserker Rage CD original: 5
+      # Mudar skill Berserker Rage para ter CD 6 (no skill_catalog.yaml ou aqui)
+      equipment: ['Ragnar’s Wrath'] 
+      exp_yield: 350 # EXP ainda alto para compensar
+      # Redesign: HP muito reduzido e Rage menos frequente. Deixa de ser o "filtro" inicial.
+
+    'Bedrose Gardener': # (Mantido Forte - Desafio de Sustentação)
+      cost: 30 
+      weight: 10 
+      tags: [Boss, Undead, Physical, Tank] 
+      hp: 600 
+      skills: ['Heavy Blow', 'Stone Shield', "Natures' Grasp", 'Wait'] 
+      equipment: ['Stoneshield Armor'] 
       exp_yield: 200
-      # Design: Um guardião que se cura. Uma luta de resistência.
 
-    Lich:
-      cost: 50
-      weight: 20
-      tags: [Boss, Undead, Magical, Summoner]
-      hp: 480
-      skills: ['Vampiric Touch', 'Frost Nova', 'Wait'] # 'Summon' seria outra skill
-      equipment: ['Orb of Decay', 'Void Crystal']
-      exp_yield: 500
-      # Design: Foco em auto-sustentação (lifesteal) e controle de área.
-
-    'The Dark Knight':
-      cost: 45
-      weight: 15
-      tags: [Boss, Undead, Physical, Tank]
-      hp: 700
-      skills: ['Heavy Blow', 'Shield Bash', 'War Cry', 'Wait']
-      equipment: ['Sword of the Forgotten King', 'Armor of Eternity']
-      exp_yield: 400
-      # Design: O "tanque" supremo. Dano e defesa massivos.
-
-    Kalisto:
-      cost: 35
-      weight: 5
-      tags: [Boss, Beast, Aggressive, Heavy]
-      hp: 550
-      skills: ['Heavy Blow', 'Berserker Rage', 'Wait']
-      equipment: ['Ragnar’s Wrath']
-      exp_yield: 350
-      # Design: Pura agressão. Uma corrida de dano.
-
-    Queen Arachna:
-      cost: 48
-      weight: 6
-      tags: [Boss, Beast, Poison, Summoner]
-      hp: 450
-      skills: ['Poison Shot', 'Poison Cloud', 'Wait']
-      equipment: ["Poisoner's Talisman", 'Shadowfang']
+    Queen Arachna: # (Mantida Forte - Desafio de DoT)
+      cost: 48 
+      weight: 6 
+      tags: [Boss, Beast, Poison] 
+      hp: 450 # Removido Summoner
+      skills: ['Poison Shot', 'Poison Cloud', 'Wait'] 
+      equipment: ["Poisoner's Talisman", 'Shadowfang'] 
       exp_yield: 380
-      # Design: Foco total em DoT. Exige cura ou alta resistência.
 
-    Ashen Monarch:
-      cost: 52
-      weight: 4
-      tags: [Boss, Thermal, Heat, Heavy]
-      hp: 550
-      skills: ['Meteor Strike', 'Flame Burst', 'War Cry', 'Wait']
-      equipment: ['Flamebrand', 'Mantle of the Phoenix']
+    Ashen Monarch: # (Mantido Forte - Desafio de AOE)
+      cost: 52 
+      weight: 4 
+      tags: [Boss, Thermal, Heat, Heavy] 
+      hp: 550 
+      skills: ['Meteor Strike', 'Flame Burst', 'War Cry', 'Wait'] 
+      equipment: ['Flamebrand', 'Mantle of the Phoenix'] 
       exp_yield: 420
-      # Design: Dano massivo em área e contínuo.
 
-    'The Forgotten One':
-      cost: 55
-      weight: 3
-      tags: [Boss, Undead, Magical, Cursed, Control]
-      hp: 500
-      skills: ['Soul Drain', 'Stunning Hammer', 'Blinding Light', 'Wait']
-      equipment: ['Mantle of the Void', 'Crown of Omens']
+    'Hopeless Agent': # (REFEITO - Agora foca no Life Drain, EXP ajustado)
+      cost: 40 
+      weight: 5 
+      tags: [Boss, Undead, Cursed] 
+      hp: 400 # Removido Summoner
+      skills: ['Soul Drain', 'War Cry', 'Wait'] # Adicionado War Cry para mais pressão
+      equipment: ['Cursed Locket', 'Mantle of the Void'] 
+      exp_yield: 180 # EXP Reduzido
+      # Redesign: Foca no desgaste (DoT, Life Drain, Debuff Damage). EXP mais condizente.
+
+    Lich: # (REFEITO - Foco no Controle + Life Drain, EXP ajustado)
+      cost: 50 
+      weight: 20 # Peso alto, aparece com frequência no late game
+      tags: [Boss, Undead, Magical, Control] 
+      hp: 480 # Removido Summoner
+      skills: ['Vampiric Touch', 'Frost Nova', 'Wait'] 
+      equipment: ['Orb of Decay', 'Void Crystal'] 
+      exp_yield: 300 # EXP Reduzido
+      # Redesign: Principal desafio de controle mágico e sustentação.
+
+    'The Dark Knight': # (Mantido como Chefão Final - Tanque Supremo)
+      cost: 45 weight: 15 tags: [Boss, Undead, Physical, Tank] 
+      hp: 700 skills: ['Heavy Blow', 'Shield Bash', 'War Cry', 'Wait'] 
+      equipment: ['Sword of the Forgotten King', 'Armor of Eternity'] 
+      exp_yield: 400
+
+    'The Forgotten One': # (Mantido como Chefão Final - Controle Supremo)
+      cost: 55 weight: 3 # Peso baixo, raro
+      tags: [Boss, Undead, Magical, Cursed, Control] 
+      hp: 500 skills: ['Soul Drain', 'Stunning Hammer', 'Blinding Light', 'Wait'] 
+      equipment: ['Mantle of the Void', 'Crown of Omens'] 
       exp_yield: 480
-      # Design: Um mestre do controle. Testa a capacidade do agente de agir sob pressão.
 
-  events:
-    # Common treasures (low cost, low weight)
-    Treasure:
-      cost: -5
-      weight: 50
-      tags: [Reward, Common]
+events:
+  # --- Recompensas ---
+  Treasure:
+    cost: -5
+    weight: 50 # (Mantido)
+    tags: [Reward, Common]
+  'Morbid Treasure':
+    cost: -15
+    weight: 20 # (Mantido)
+    tags: [Reward, Morbid]
+  'Fountain of Life':
+    cost: -10
+    weight: 25 # (Mantido)
+    tags: [Reward, Healing, Sanctuary]
 
-    # Morbid Treasure: (high cost, high weight, atracts undead)
-    'Morbid Treasure':
-      cost: -15
-      weight: 20
-      tags: [Reward, Morbid]
+  # --- NOVO Evento Positivo Menor ---
+  'Warding Glyph':
+    cost: -3
+    weight: 15 # Raro, mas um pequeno alívio
+    tags: [Reward, Buff, Sanctuary] # Aplica um buff defensivo temporário ao agente ao entrar/interagir
 
-    # Traps (hazards, high cost, high weight)
-    Trap:
-      cost: 8
-      weight: 40
-      tags: [Hazard, Physical]
+  # --- Perigos (Hazards) ---
+  Trap:
+    cost: 8
+    weight: 30 # (Reduzido de 40) - Menos frequente
+    tags: [Hazard, Physical]
+  'Cursed Altar':
+    cost: 5
+    weight: 25 # (Mantido)
+    tags: [Hazard, Cursed, Morbid]
+  Ambush:
+    cost: 15
+    weight: 15 # (Mantido) - Raro e perigoso
+    tags: [Hazard, Surprise_Attack]
 
-    # Cursed Altar: (high cost, high weight, cursed)
-    'Cursed Altar':
-      cost: 5
-      weight: 25
-      tags: [Hazard, Cursed, Morbid]
+  # --- Risco/Recompensa ---
+  'Dark Pact':
+    cost: 0
+    weight: 10 # (Mantido) - Raro e intrigante
+    tags: [Risk_Reward, Morbid]
 
-    # Healing Fountain: (low cost, low weight, healing)
-    'Fountain of Life':
-      cost: -10
-      weight: 25
-      tags: [Reward, Healing, Sanctuary]
+  # --- Vazio ---
+  None:
+    cost: 0
+    weight: 85 # (Aumentado de 80) - Compensa a adição do Warding Glyph e redução da Trap
+    tags: []
 
-    # Ambush: (surprise attack, high cost, high weight)
-    Ambush:
-      cost: 15
-      weight: 15
-      tags: [Hazard, Surprise_Attack]
+room_effects:
+  # --- Efeitos Negativos ---
+  'Slow Terrain': # (REFEITO - Aplica Slow real, menos comum)
+    cost: 5
+    weight: 20 # (Reduzido de 30)
+    description: "O terreno difícil aplica 'Slow' em todos no início do combate."
+    tags: [Terrain, Debuff, Control] # Adicionado Control
+    effect_to_apply: Slow # Assume que agora aplica o efeito 'Slow' do effect_ruleset
 
-    # Dark Pact: (high risk, high reward)
-    'Dark Pact':
-      cost: 0
-      weight: 10
-      tags: [Risk_Reward, Morbid]
+  Heat: # (Mantido)
+    cost: 7
+    weight: 15
+    description: "O calor intenso aplica 'Burn' em todos a cada rodada."
+    tags: [Heat, Thermal, Hazard] # Adicionado Hazard
+    type: DoT
+    effect_to_apply: Burn
 
-    # None
-    None:
-      cost: 0
-      weight: 80
-      tags: []
+  'Dense Fog': # (Mantido, mas menos comum)
+    cost: 4
+    weight: 15 # (Reduzido de 20)
+    description: "A neblina densa aplica 'Blind' em todos no início do combate."
+    tags: [Visibility, Debuff]
+    effect_to_apply: Blind
 
-  room_effects:
-    Slow Terrain:
-      cost: 5
-      weight: 30
-      description: "O terreno difícil aplica 'Slow' em todos no início do combate."
-      tags: [Terrain, Debuff]
-      stat_modifier:
-        accuracy: -0.15
+  # --- NOVO Efeito Negativo Temático ---
+  'Weakening Field':
+    cost: 6
+    weight: 10 # Raro
+    description: "Uma aura profana reduz a eficácia de curas em 50% na sala."
+    tags: [Cursed, Debuff, Healing_Debuff]
+    # Implementação: No combate, verificar se esse efeito está ativo e reduzir curas
 
-    Heat:
-      cost: 7
-      weight: 15
-      description: "O calor intenso aplica 'Burn' em todos a cada rodada."
-      tags: [Heat, Thermal]  
-      type: DoT
-      effect_to_apply: Burn
+  # --- Efeitos Positivos ---
+  'Evasion Zone': # (Mais Comum)
+    cost: -4
+    weight: 30 # (Aumentado de 25)
+    description: "Uma névoa mágica concede bônus de evasão a todos no início do combate."
+    tags: [Buff, Visibility] # Adicionado Visibility
+    stat_modifier:
+      evasion_chance: 0.15
 
-    Evasion Zone:
-      cost: -4
-      weight: 25
-      description: "Uma névoa mágica concede bônus de evasão a todos no início do combate."
-      tags: [Buff]  
-      stat_modifier:
-        evasion_chance: 0.15
+  'Amplifying Field': # (Mantido)
+    cost: -10
+    weight: 15
+    description: "O campo de energia aumenta o dano de todos em 15%."
+    tags: [Buff, Magical]
+    stat_modifier:
+      damage_modifier: 0.15
 
-    Dense Fog:
-      cost: 4
-      weight: 20
-      description: "A neblina densa aplica 'Blind' em todos no início do combate."
-      tags: [Visibility, Debuff]  
-      effect_to_apply: Blind
+  'Consecrated Ground': # (Mantido)
+    cost: -8
+    weight: 10
+    description: "O solo sagrado cura todos os combatentes em 2% HP a cada rodada." # Clarificado o valor
+    tags: [Sanctuary, Healing, Buff] # Adicionado Buff
+    persistent_effect:
+      type: Heal_Self
+      heal_per_round: 0.02 # Usando o valor que estava no código
 
-    Amplifying Field:
-      cost: -10
-      weight: 15
-      description: "O campo de energia aumenta o dano de todos em 15%."
-      tags: [Buff, Magical]
-      stat_modifier:
-        damage_modifier: 0.15
+  # --- NOVO Efeito Positivo/Negativo Temático ---
+  'Conductive Field':
+    cost: -2 # Ligeiramente positivo por permitir estratégias de burst
+    weight: 10 # Raro
+    description: "A energia arcana no ar aumenta todo o dano mágico causado e recebido em 25%."
+    tags: [Magical, Risk_Reward]
+    # Implementação: No combate, verificar se efeito está ativo e modificar dano mágico
 
-    Consecrated Ground:
-      cost: -8
-      weight: 10
-      description: "O solo sagrado cura todos os combatentes em 5% HP a cada rodada."
-      tags: [Sanctuary, Healing] 
-      persistent_effect:
-        type: Heal_Self
-        heal_per_round: 0.02
+  # --- Vazio ---
+  None:
+    cost: 0
+    weight: 115 # (Aumentado de 100) - Compensa as adições e ajustes
+    tags: []
 
-    # None
-    None:
-      cost: 0
-      weight: 100
-      tags: []
-
-# Defining the content pools and conditional rules for the "before" state
 conditional_rules:
-  # Elites shape the environment around them.
-  - if_tag: Elite
-    then_tag: Terrain
-    multiplier: 2.5
-
-  # Bosses guard macabre treasures.
-  - if_tag: Boss
+  # --- SINERGIAS TEMÁTICAS FORTES (Mantidas ou Levemente Ajustadas) ---
+  # Chefes e Elites moldam o ambiente
+  - if_tag: Boss   # Bosses ainda atraem eventos mórbidos/perigosos
     then_tag: Morbid
-    multiplier: 3.0
+    multiplier: 2.5 # (Reduzido de 3.0)
+  - if_tag: Elite  # Elites ainda aparecem mais em terrenos táticos
+    then_tag: Terrain
+    multiplier: 2.0 # (Reduzido de 2.5)
 
-  # A small bonus for simpler encounters.
-  - if_tag: Common
-    then_tag: Buff
-    multiplier: 1.5
-
-  # Strong thematic synergy.
-  - if_tag: Thermal
+  # Sinergias Elementais/Tipo
+  - if_tag: Thermal # Sinergia forte mantida, mas menos extrema
     then_tag: Heat
-    multiplier: 10.0
-
-  # Undead and curses go hand in hand.
-  - if_tag: Undead
+    multiplier: 6.0 # (Reduzido de 10.0)
+  - if_tag: Heat    # Sinergia inversa também reduzida
+    then_tag: Thermal
+    multiplier: 3.0 # (Reduzido de 4.0)
+  - if_tag: Undead  # Mortos-vivos e maldições continuam ligados
     then_tag: Cursed
     multiplier: 4.0
-
-  # Wild beasts can ambush prey.
-  - if_tag: Beast
-    then_tag: Surprise_Attack
-    multiplier: 3.0
-
-  # Sacred places often provide healing.
-  - if_tag: Sanctuary
-    then_tag: Healing
-    multiplier: 5.0
-
-  # Hazards are rare in sacred places.
-  - if_tag: Sanctuary
-    then_tag: Hazard
-    multiplier: 0.1
-
-  # Undead avoid holy ground.
-  - if_tag: Sanctuary
-    then_tag: Undead
-    multiplier: 0.05
-
-  # Archers are less effective in fog.
-  - if_tag: Ranged
-    then_tag: Visibility
-    multiplier: 0.2
-
-  # Healing and hazards rarely coexist.
-  - if_tag: Healing
-    then_tag: Hazard
-    multiplier: 0.3
-
-  # Poison enemies thrive in fog and hinder healing.
-  - if_tag: Poison
-    then_tag: Healing
-    multiplier: 0.2
-  - if_tag: Poison
-    then_tag: Visibility
-    multiplier: 2.0
-
-  # Control abilities synergize with Debuffs.
-  - if_tag: Control
-    then_tag: Debuff
-    multiplier: 3.0
-
-  # Stealth-based units favor low visibility.
-  - if_tag: Stealth
-    then_tag: Visibility
-    multiplier: 1.8
-
-  # Aggressive enemies are more common in wild terrains.
-  - if_tag: Aggressive
-    then_tag: Terrain
-    multiplier: 1.5
-
-  # Cursed creatures thrive in morbid settings.
-  - if_tag: Cursed
+  - if_tag: Cursed  # Maldições e ambientes mórbidos também
     then_tag: Morbid
     multiplier: 3.5
-
-  # Magical buffs intensify magical creatures.
-  - if_tag: Magical
-    then_tag: Magical
+  - if_tag: Poison  # Veneno ainda prefere baixa visibilidade
+    then_tag: Visibility
     multiplier: 2.0
-
-  # Physical enemies are hindered by terrain effects.
-  - if_tag: Physical
-    then_tag: Terrain
-    multiplier: 0.6
-
-  # Humans are vulnerable to surprise attacks.
-  - if_tag: Human
-    then_tag: Surprise_Attack
-    multiplier: 2.2
-
-  # Illusions distort visibility and debuff perception.
-  - if_tag: Illusion
+  - if_tag: Stealth # Furtividade também prefere baixa visibilidade
+    then_tag: Visibility
+    multiplier: 1.8
+  - if_tag: Illusion # Ilusões também se beneficiam da baixa visibilidade
     then_tag: Visibility
     multiplier: 2.5
 
-  # Burn effects intensify in thermal environments.
-  - if_tag: Heat
-    then_tag: Thermal
-    multiplier: 4.0
+  # Sinergias Comportamentais/Táticas
+  - if_tag: Beast   # Bestas ainda podem emboscar
+    then_tag: Surprise_Attack
+    multiplier: 3.0
+  - if_tag: Human   # Humanos também podem emboscar
+    then_tag: Surprise_Attack
+    multiplier: 2.2
+  - if_tag: Aggressive # Agressivos aparecem mais em terrenos abertos/simples (Invertido!)
+    then_tag: Terrain
+    multiplier: 0.7 # (Invertido de 1.5 - faz mais sentido tático?)
+  - if_tag: Control # Habilidades de controle combinam com efeitos de sala de Debuff
+    then_tag: Debuff
+    multiplier: 2.5 # (Levemente reduzido de 3.0)
 
-  # Summoners benefit from magical buffs.
-  - if_tag: Summoner
-    then_tag: Buff
-    multiplier: 1.8
+  # --- SINERGIAS POSITIVAS / ANTI-SINERGIAS (Mantidas) ---
+  - if_tag: Sanctuary # Lugares sagrados curam
+    then_tag: Healing
+    multiplier: 5.0
+  - if_tag: Sanctuary # Lugares sagrados evitam perigos
+    then_tag: Hazard
+    multiplier: 0.1
+  - if_tag: Sanctuary # Lugares sagrados repelem mortos-vivos
+    then_tag: Undead
+    multiplier: 0.05
+  - if_tag: Healing  # Onde há cura, há menos perigo direto
+    then_tag: Hazard
+    multiplier: 0.3
+  - if_tag: Poison   # Veneno e cura não combinam
+    then_tag: Healing
+    multiplier: 0.2

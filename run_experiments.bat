@@ -4,6 +4,8 @@ echo [INICIANDO SCRIPT DE TREINAMENTO EM OFF]
 echo O primeiro treino (5M steps) pode levar mais de 4 horas.
 echo Os treinos seguintes (2M steps) devem levar aprox. 1.5-2h cada.
 echo.
+:: --- Experimento 1: Baseline PPO (Com LSTM) ---
+python train.py --total_timesteps 5000000 --max_episode_steps 30000 --budget_multiplier 1.0 --suffix "PPO_Baseline_5M"
 echo =================================================================
 echo [RUN 1/5] Iniciando Baseline PPO (Sem LSTM) - 5M Steps...
 echo OBJETIVO: Provar que PPO sem memoria e pior (grupo de controle).
