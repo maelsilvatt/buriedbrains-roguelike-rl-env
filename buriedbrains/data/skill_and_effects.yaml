@@ -160,25 +160,29 @@ effect_ruleset:
     type: Debuff 
     target: Target 
     duration: 2 
-    stat_modifier: {speed: -0.3}
+    stat_modifier: 
+      speed: -0.3
 
   Vulnerable:
     type: Debuff 
     target: Target 
     duration: 2 
-    stat_modifier: {defense_taken: 0.25}
+    stat_modifier: 
+      defense_taken: 0.25
 
   Blind:
     type: Debuff 
     target: Target 
     duration: 1 
-    stat_modifier: {accuracy: -0.3}
+    stat_modifier: 
+      accuracy: -0.3
 
   Debuff_Damage: # (Leve Nerf na Duração)
     type: Debuff 
     target: Target 
     duration: 2 # Era 3
-    stat_modifier: {damage_modifier: -0.2}
+    stat_modifier: 
+      damage_modifier: -0.2
 
   # --- Controle ---
   Stun:
@@ -210,19 +214,22 @@ effect_ruleset:
     type: Buff 
     target: Self 
     duration: 3 
-    stat_modifier: {defense: 0.3}
+    stat_modifier: 
+      defense: 0.3
 
   Buff_Self_Damage: # (Mantido)
     type: Buff 
     target: Self 
     duration: 3 
-    stat_modifier: {damage_modifier: 0.5}
+    stat_modifier: 
+      damage_modifier: 0.5
 
   Buff_Evasion: # (Mantido)
     type: Buff 
     target: Self 
     duration: 1 
-    stat_modifier: {evasion_chance: 0.75}
+    stat_modifier: 
+      evasion_chance: 0.75
 
   Stealth: # (Mantido)
     type: Buff 
