@@ -165,10 +165,10 @@ pools:
       weight: 15 
       tags: [Elite, Thermal, Area_Damage] 
       hp: 220
-      skills: ['Heavy Blow', 'Flame Burst', 'Earthquake', 'Wait'] # Earthquake CD original: 5
-      # Mudar skill Earthquake para ter CD 6 (no skill_catalog.yaml ou aqui se possível sobrescrever)
+      skills: ['Heavy Blow', 'Flame Burst', 'Earthquake', 'Wait']
       equipment: ['Warhammer'] 
       exp_yield: 90
+      min_floor: 20
       # Redesign: Stun um pouco menos frequente para reduzir o lockdown. Continua perigoso com AOE+DoT.
 
     Krul: # (Mantido como está - Stat check físico)
@@ -179,6 +179,7 @@ pools:
       skills: ['Heavy Blow', 'War Cry', 'Wait'] 
       equipment: ['Battle Axe', 'Steel Plate'] 
       exp_yield: 75
+      min_floor: 25
 
     Laezarus: # (NERFADO - Leve redução de HP)
       cost: 22 
@@ -188,6 +189,7 @@ pools:
       skills: ['Shield Bash', 'Stone Shield', 'Wait'] 
       equipment: ['Knight’s Mail'] 
       exp_yield: 85
+      min_floor: 25
       # Redesign: Ainda muito tanque, mas um pouco menos HP para reduzir a duração da luta.
 
     'A Thousand Cursed': # (Mantido como está - Controle chato mas frágil)
@@ -198,6 +200,7 @@ pools:
       skills: ['Frostbite', 'Ice Spike', 'Wait'] 
       equipment: ['Traveler’s Coat'] 
       exp_yield: 95
+      min_floor: 50
 
     Berserker Spirit: # (NERFADO - HP Reduzido)
       cost: 28 
@@ -207,6 +210,7 @@ pools:
       skills: ['Heavy Blow', 'Berserker Rage', 'Wait'] 
       equipment: ['Battle Axe'] 
       exp_yield: 100
+      min_floor: 50
       # Redesign: Agente tem mais chance de matá-lo antes que o Berserker Rage (buff de dano) se torne insustentável.
 
     Flesh Abomination: # (Mantido como está - DPS Check)
@@ -217,6 +221,7 @@ pools:
       skills: ['Heavy Blow', 'War Cry', 'Wait'] 
       equipment: [] 
       exp_yield: 120
+      min_floor: 70
 
     Twilight Stalker: # (NERFADO - Aumenta CD do ataque forte)
       cost: 27 
@@ -227,6 +232,7 @@ pools:
       # Mudar skill Shadow Strike para ter CD 4 (no skill_catalog.yaml ou aqui)
       equipment: ['Twin Daggers'] 
       exp_yield: 110
+      min_floor: 70
       # Redesign: Reduz a frequência do burst damage inicial.
 
     # --- Bosses (Antigos "Elite" de Nível Alto - Desafios Maiores) ---
@@ -241,6 +247,7 @@ pools:
       # Mudar skill Berserker Rage para ter CD 6 (no skill_catalog.yaml ou aqui)
       equipment: ['Ragnar’s Wrath'] 
       exp_yield: 350 # EXP ainda alto para compensar
+      min_floor: 100
       # Redesign: HP muito reduzido e Rage menos frequente. Deixa de ser o "filtro" inicial.
 
     'Bedrose Gardener': # (Mantido Forte - Desafio de Sustentação)
@@ -251,6 +258,7 @@ pools:
       skills: ['Heavy Blow', 'Stone Shield', "Natures' Grasp", 'Wait'] 
       equipment: ['Stoneshield Armor'] 
       exp_yield: 200
+      min_floor: 130
 
     Queen Arachna: # (Mantida Forte - Desafio de DoT)
       cost: 48 
@@ -260,6 +268,7 @@ pools:
       skills: ['Poison Shot', 'Poison Cloud', 'Wait'] 
       equipment: ["Poisoner's Talisman", 'Shadowfang'] 
       exp_yield: 380
+      min_floor: 130
 
     Ashen Monarch: # (Mantido Forte - Desafio de AOE)
       cost: 52 
@@ -269,6 +278,7 @@ pools:
       skills: ['Meteor Strike', 'Flame Burst', 'War Cry', 'Wait'] 
       equipment: ['Flamebrand', 'Mantle of the Phoenix'] 
       exp_yield: 420
+      min_floor: 150
 
     'Hopeless Agent': # (REFEITO - Agora foca no Life Drain, EXP ajustado)
       cost: 40 
@@ -278,6 +288,7 @@ pools:
       skills: ['Soul Drain', 'War Cry', 'Wait'] # Adicionado War Cry para mais pressão
       equipment: ['Cursed Locket', 'Mantle of the Void'] 
       exp_yield: 180 # EXP Reduzido
+      min_floor: 180
       # Redesign: Foca no desgaste (DoT, Life Drain, Debuff Damage). EXP mais condizente.
 
     Lich: # (REFEITO - Foco no Controle + Life Drain, EXP ajustado)
@@ -288,6 +299,7 @@ pools:
       skills: ['Vampiric Touch', 'Frost Nova', 'Wait'] 
       equipment: ['Orb of Decay', 'Void Crystal'] 
       exp_yield: 300 # EXP Reduzido
+      min_floor: 250
       # Redesign: Principal desafio de controle mágico e sustentação.
 
     'The Dark Knight': # (Mantido como Chefão Final - Tanque Supremo)
@@ -298,6 +310,7 @@ pools:
       skills: ['Heavy Blow', 'Shield Bash', 'War Cry', 'Wait'] 
       equipment: ['Sword of the Forgotten King', 'Armor of Eternity'] 
       exp_yield: 400
+      min_floor: 300
 
     'The Forgotten One': # (Mantido como Chefão Final - Controle Supremo)
       cost: 55 
@@ -307,52 +320,29 @@ pools:
       skills: ['Soul Drain', 'Stunning Hammer', 'Blinding Light', 'Wait'] 
       equipment: ['Mantle of the Void', 'Crown of Omens'] 
       exp_yield: 480
+      min_floor: 400
 
   events:
     # --- Recompensas ---
-    Treasure:
+    Treasure:      # Baú comum, mais frequente das recompensas
       cost: -5
-      weight: 50 # (Mantido)
+      weight: 60   # Aumentado para ser a recompensa padrão
       tags: [Reward, Common]
-    'Morbid Treasure':
+
+    'Morbid Treasure': # Baú melhor, mais raro e talvez com maior risco (associado a 'Morbid')
       cost: -15
-      weight: 20 # (Mantido)
+      weight: 15   # Mantido raro
       tags: [Reward, Morbid]
-    'Fountain of Life':
+
+    'Fountain of Life': # Cura, relativamente rara mas muito valiosa
       cost: -10
-      weight: 25 # (Mantido)
+      weight: 25   # Peso intermediário, mais comum que Morbid Treasure
       tags: [Reward, Healing, Sanctuary]
 
-    # --- NOVO Evento Positivo Menor ---
-    'Warding Glyph':
-      cost: -3
-      weight: 15 # Raro, mas um pequeno alívio
-      tags: [Reward, Buff, Sanctuary] # Aplica um buff defensivo temporário ao agente ao entrar/interagir
-
-    # --- Perigos (Hazards) ---
-    Trap:
-      cost: 8
-      weight: 30 # (Reduzido de 40) - Menos frequente
-      tags: [Hazard, Physical]
-    'Cursed Altar':
-      cost: 5
-      weight: 25 # (Mantido)
-      tags: [Hazard, Cursed, Morbid]
-    Ambush:
-      cost: 15
-      weight: 15 # (Mantido) - Raro e perigoso
-      tags: [Hazard, Surprise_Attack]
-
-    # --- Risco/Recompensa ---
-    'Dark Pact':
-      cost: 0
-      weight: 10 # (Mantido) - Raro e intrigante
-      tags: [Risk_Reward, Morbid]
-
     # --- Vazio ---
-    None:
+    None:          # O resultado mais provável
       cost: 0
-      weight: 85 # (Aumentado de 80) - Compensa a adição do Warding Glyph e redução da Trap
+      weight: 100  # Ajustado para balancear (Total = 60+15+25+100 = 200)
       tags: []
 
   room_effects:
