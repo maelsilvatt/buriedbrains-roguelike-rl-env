@@ -1,6 +1,8 @@
 # BuriedBrains: A Roguelike-Inspired Single-Agent RL Environment
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) ## 📜 Visão Geral
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) 
+
+## 📜 Visão Geral
 
 **BuriedBrains** é um ambiente de simulação procedural, parcialmente observável (POMDP) e de alto risco, projetado como um benchmark para pesquisa em Aprendizado por Reforço (RL), com foco no estudo de agentes com memória e na emergência de comportamentos complexos. Inspirado em jogos do gênero roguelike, o ambiente utiliza mecânicas como morte permanente (`permadeath`) e geração procedural de níveis para criar cenários desafiadores que exigem planejamento estratégico, gerenciamento de risco e adaptação sob incerteza.
 
@@ -121,5 +123,3 @@ Se usar este ambiente em sua pesquisa, por favor, cite o trabalho
 ## ⚖️ Licença
 
 Este projeto é licenciado sob a Licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
-
-```
