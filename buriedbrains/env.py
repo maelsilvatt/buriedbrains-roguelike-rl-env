@@ -201,7 +201,6 @@ class BuriedBrainsEnv(gym.Env):
 
         self.agent_skill_names = ["Quick Strike", "Heavy Blow", "Stone Shield", "Wait"]
         self.agent_state['skills'] = self.agent_skill_names        
-        self.reputation_system.add_agent(self.agent_name)
                 
         # --- LÓGICA DE GERAÇÃO DO MAPA ---
         self.current_floor = 0

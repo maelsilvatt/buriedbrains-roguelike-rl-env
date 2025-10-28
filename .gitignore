@@ -17,6 +17,7 @@
 *.run.xml
 *.synctex.gz
 *.toc
+*.db
 \corevenv
 \logs
 \models

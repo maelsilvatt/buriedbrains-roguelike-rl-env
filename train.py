@@ -239,9 +239,8 @@ def main():
     # --- FIM DO PARSER ---
 
 
-    # --- Escolha da política ---
-    # use_lstm = True # Antigo
-    use_lstm = not args.no_lstm # <--- MUDANÇA
+    # --- Escolha da política ---    
+    use_lstm = not args.no_lstm 
 
     if use_lstm:
         model_class = RecurrentPPO
