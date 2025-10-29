@@ -295,14 +295,62 @@ def main():
     logging_callback = LoggingCallback(verbose=0, log_interval=2)
     callback_list = CallbackList([checkpoint_callback, logging_callback])
 
-    # --- 5. Criação e configuração do modelo ---
+# Define os parâmetros otimizados para PPO (sem LSTM)
+    ppo_params = {
+        "learning_rate": 0.0009880458115502663,
+        "n_steps": 512,
+        "batch_size": 128,
+        "gamma": 0.999,
+        "gae_lambda": 0.95,
+        "ent_coef": 0.01814275260474149,
+        "vf_coef": 0.5,
+        "clip_range": 0.2,
+        "n_epochs": 20,
+        "policy_kwargs": {
+            "net_arch": {
+                "pi": [256, 256], # Baseado no net_arch_size: 256
+                "vf": [256, 256]
+            }
+        }
+    }
+
+    # Define os parâmetros otimizados para RecurrentPPO (com LSTM)
+    lstm_params = {
+        "learning_rate": 0.0001653881849494385,
+        "n_steps": 512,
+        "batch_size": 128,
+        "gamma": 0.98,
+        "gae_lambda": 0.92,
+        "ent_coef": 0.00943339989056226,
+        "vf_coef": 0.4,
+        "clip_range": 0.2,
+        "n_epochs": 20,
+        "policy_kwargs": {
+            "net_arch": {
+                "pi": [64, 64], # Baseado no net_arch_size: 64
+                "vf": [64, 64]
+            },
+            "lstm_hidden_size": 128,
+            "enable_critic_lstm": False
+        }
+    }
+
+    # Seleciona os parâmetros com base no modelo
+    if use_lstm:
+        print("Carregando modelo RecurrentPPO com hiperparâmetros otimizados (LSTM)...")
+        model_kwargs = lstm_params
+    else:
+        print("Carregando modelo PPO com hiperparâmetros otimizados (MLP)...")
+        model_kwargs = ppo_params
+
+    # Cria o modelo usando desempacotamento de dicionário (**)
     model = model_class(
         policy_class,
         env,
         verbose=0,
-        tensorboard_log=base_logdir,  
+        tensorboard_log=base_logdir, 
         device=device,
-        ent_coef=0.01,
+        **model_kwargs  # Aplica todos os parâmetros otimizados
     )
 
     TIMESTEPS = args.total_timesteps
