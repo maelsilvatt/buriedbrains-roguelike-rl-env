@@ -250,55 +250,98 @@ class BuriedBrainsEnv(gym.Env):
         return obs
 
     def reset(self, seed=None, options=None):
+        """
+        Reinicia o ambiente para um novo episódio multiagente.
+        Inicializa o estado, o grafo e as métricas para todos os agentes ('a1', 'a2').
+        """
         super().reset(seed=seed) # Semeia self.np_random
         if seed is not None:
-            random.seed(seed) # Garante que o 'random' global também seja semeado
+            # Garante que o 'random' global também seja semeado para consistência
+            random.seed(seed) 
 
-        # Hall da Fama: Gera um nome único para o agente
-        gerador = GeradorNomes()
-        self.agent_name = gerador.gerar_nome()
-        self.current_episode_log = [] # Reinicia o gravador de história
-
-        self.enemies_defeated_this_episode = 0
-        self.invalid_action_count = 0
-        self.last_milestone_floor = 0
-
-        self.agent_state = agent_rules.create_initial_agent(self.agent_name)
-        self.agent_state['name'] = self.agent_name
-
-        self.agent_skill_names = ["Quick Strike", "Heavy Blow", "Stone Shield", "Wait"]
-        self.agent_state['skills'] = self.agent_skill_names        
-                
-        # --- LÓGICA DE GERAÇÃO DO MAPA ---
-        self.current_floor = 0
-        self.graph = nx.DiGraph()
-        self.current_node = "start"
-        self.nodes_per_floor = {0: 1}
+        # --- 1. RESETAR ESTADOS GLOBAIS E DE AGENTE ---
+        # Limpa todos os dicionários de estado da sessão anterior
+        self.agent_states = {}
+        self.agent_names = {}
+        self.graphs = {}
+        self.current_nodes = {}
+        self.current_floors = {}
+        self.nodes_per_floor_counters = {} # Antiga 'nodes_per_floor'
+        self.combat_states = {}
         
-        self.graph.add_node("start", floor=0)
-        
-        start_content = content_generation.generate_room_content(
-            self.catalogs, 
-            budget=0,
-            current_floor=0,
-            guarantee_enemy=False
-        )
-        self.graph.nodes["start"]['content'] = start_content
-        
-        self._generate_successors_for_node("start") # Pré-gera o primeiro nível
-        # --- FIM DA GERAÇÃO DO MAPA ---
+        # Métricas
+        self.current_episode_logs = {}
+        self.enemies_defeated_this_episode = {}
+        self.invalid_action_counts = {}
+        self.last_milestone_floors = {}
 
-        self.combat_state = None
+        # Estado Global
         self.current_step = 0
-        
-        self._log(f"[RESET] Novo episódio iniciado. {self.agent_name} (Nível {self.agent_state['level']}).\n"
-                  f"[RESET] Mapa gerado. Sala inicial: '{self.current_node}'.")
-                
-        successors = list(self.graph.successors(self.current_node))
-        if successors:
-            self._log(f"[RESET] Próximas salas disponíveis: {', '.join(successors)}")        
-        
-        return self._get_observation(), {}
+        self.env_state = 'PROGRESSION' # Começa no modo de progressão separado
+        self.arena_graph = None
+        self.agents_in_arena = set()
+
+        # Dicionários de retorno para a API MAE
+        observations = {}
+        infos = {}
+
+        # Gerador de nomes único para este episódio
+        gerador_nomes = GeradorNomes()
+
+        # --- 2. LOOP DE INICIALIZAÇÃO POR AGENTE ---
+        # Itera sobre ['a1', 'a2'] e cria um mundo PvE para cada um
+        for agent_id in self.agent_ids:
+            
+            # --- Criação do Agente ---
+            agent_name = gerador_nomes.gerar_nome()
+            self.agent_names[agent_id] = agent_name
+            self.agent_states[agent_id] = agent_rules.create_initial_agent(agent_name)
+            # As skills base são compartilhadas e definidas no __init__
+            self.agent_states[agent_id]['skills'] = self.agent_skill_names 
+            
+            # --- Métricas e Logs ---
+            self.current_episode_logs[agent_id] = []
+            self.enemies_defeated_this_episode[agent_id] = 0
+            self.invalid_action_counts[agent_id] = 0
+            self.last_milestone_floors[agent_id] = 0
+            self.combat_states[agent_id] = None
+
+            # --- Geração do Grafo de Progressão Individual ---
+            self.current_floors[agent_id] = 0
+            self.current_nodes[agent_id] = "start"
+            self.nodes_per_floor_counters[agent_id] = {0: 1} # Cada agente tem seu contador
+            self.graphs[agent_id] = nx.DiGraph() # Cada agente tem seu grafo
+            self.graphs[agent_id].add_node("start", floor=0)
+            
+            # Gera conteúdo da sala inicial (vazia)
+            start_content = content_generation.generate_room_content(
+                self.catalogs, 
+                budget=0,
+                current_floor=0,
+                guarantee_enemy=False
+            )
+            self.graphs[agent_id].nodes["start"]['content'] = start_content
+            
+            # Pré-gera o primeiro andar para este agente
+            # (ASSUMINDO que _generate_successors_for_node será refatorado para aceitar agent_id)
+            self._generate_successors_for_node(agent_id, "start")
+            
+            # --- Logging e Retorno ---
+            # (ASSUMINDO que _log será refatorado para aceitar agent_id)
+            self._log(agent_id, 
+                      f"[RESET] Novo episódio iniciado. {agent_name} (Nível {self.agent_states[agent_id]['level']}).\n"
+                      f"[RESET] Mapa de progressão individual gerado. Sala inicial: 'start'.")
+            
+            successors = list(self.graphs[agent_id].successors(self.current_nodes[agent_id]))
+            if successors:
+                self._log(agent_id, f"[RESET] Próximas salas disponíveis: {', '.join(successors)}")
+            
+            # (ASSUMINDO que _get_observation será refatorado para aceitar agent_id)
+            observations[agent_id] = self._get_observation(agent_id)
+            infos[agent_id] = {} # Dicionário de info inicial é vazio
+
+        # Retorna os dicionários de observação e info, conforme a API MAE
+        return observations, infos
 
     def _handle_combat_turn(self, action: int, info: dict) -> tuple[float, bool]:
         """Orquestra um único turno de combate e retorna (recompensa, combate_terminou)."""
