@@ -18,13 +18,15 @@ class BuriedBrainsEnv(gym.Env):
     Ambiente principal do BuriedBrains, compatível com a interface Gymnasium.
     """
     def __init__(self, 
-                 max_episode_steps: int = 15000, 
+                 max_episode_steps: int = 30000, 
                  max_floors: int = 500,
                  max_level: int = 400,
                  budget_multiplier: float = 1.0,
                  guarantee_enemy: bool = False, 
                  verbose: int = 0):
         super().__init__()        
+        
+        # --- 1. CARREGAMENTO DE CATÁLOGOS ---        
         data_path = os.path.join(os.path.dirname(__file__), 'data')
         with open(os.path.join(data_path, 'skill_and_effects.yaml'), 'r', encoding='utf-8') as f:
             skill_data = yaml.safe_load(f)
@@ -32,46 +34,111 @@ class BuriedBrainsEnv(gym.Env):
             equipment_data = yaml.safe_load(f)
         with open(os.path.join(data_path, 'enemies_and_events.yaml'), 'r', encoding='utf-8') as f:
             enemy_data = yaml.safe_load(f)
+            
         self.catalogs = {
             'skills': skill_data['skill_catalog'], 'effects': skill_data['effect_ruleset'],
             'equipment': equipment_data['equipment_catalog'], 'enemies': enemy_data['pools']['enemies'],
             'room_effects': enemy_data['pools']['room_effects'], 'events': enemy_data['pools']['events']
         }
-
-        self.max_episode_steps = max_episode_steps # Define um limite de passos por episódio
+        
+        # --- 2. PARÂMETROS GLOBAIS DO AMBIENTE (Sem Mudanças) ---
+        # Estes parâmetros afetam o episódio como um todo.
+        self.max_episode_steps = max_episode_steps
         self.current_step = 0
         self.verbose = verbose 
-        self.max_floors = max_floors # Limite máximo de andares para evitar loops infinitos
-        self.max_level = max_level # Nível máximo do agente         
-        self.budget_multiplier = budget_multiplier # Multiplicador de orçamento para geração de conteúdo
-        self.enemies_defeated_this_episode = 0 # Conta inimigos derrotados
-        self.invalid_action_count = 0 # Conta ações inválidas
-        self.last_milestone_floor = 0 # Último andar que concedeu recompensa de marco
-        self.nodes_per_floor = {} # Dicionário para contar nós por andar
-
-        self.agent_name = "Agent_000" # Um nome padrão
-        self.current_episode_log = []  # Lista para guardar a história do episódio
-
-        # Pré-processamento: Injeta a chave 'name' em cada item dos catálogos
+        self.max_floors = max_floors
+        self.max_level = max_level         
+        self.budget_multiplier = budget_multiplier
+        self.guarantee_enemy = guarantee_enemy
+        self.pool_costs = content_generation._calculate_costs(enemy_data['pools'])
+        self.rarity_map = {'Common': 0.25, 'Rare': 0.5, 'Epic': 0.75, 'Legendary': 1.0}
+        
+        # Pré-processamento dos catálogos
         for catalog_name, catalog_data in self.catalogs.items():
             if isinstance(catalog_data, dict):
                 for name, data in catalog_data.items():
                     if isinstance(data, dict):
                         data['name'] = name
-                        
-        self.pool_costs = content_generation._calculate_costs(enemy_data['pools'])
-        self.rarity_map = {'Common': 0.25, 'Rare': 0.5, 'Epic': 0.75, 'Legendary': 1.0}
-        self.action_space = spaces.Discrete(8) # sem a ação de soltar item (social)         
-        observation_shape = (14,) # PvE         
-        self.observation_space = spaces.Box(low=-1.0, high=1.0, shape=observation_shape, dtype=np.float32)
-        self.agent_state = None
-        self.graph = None
-        self.current_node = None
-        self.current_floor = 0
-        self.combat_state = None
-        self.agent_skill_names = [] # Para mapear ações a nomes de habilidades
 
-        self.guarantee_enemy = guarantee_enemy
+        # --- 3. DEFINIÇÕES MULTIAGENTE (MAE) ---
+        # Define os IDs dos agentes que habitarão o ambiente
+        self.agent_ids = ["a1", "a2"]
+        
+        # As skills base são compartilhadas
+        self.agent_skill_names = ["Quick Strike", "Heavy Blow", "Stone Shield", "Wait"]
+
+        # --- 4. ESPAÇOS DE AÇÃO E OBSERVAÇÃO (Refatorados para MAE) ---        
+        
+        # Ação 0-3: Skills, 4: Wait (realocado), 5-6: Mover, 7: Equipar, 8: Soltar/Pegar Artefato
+        ACTION_SHAPE = 9 
+        # --- Detalhamento do Espaço de Observação (24 estados) ---
+        # Bloco Próprio (7 estados):
+        # 0: Agent HP Ratio (-1.0 a 1.0)
+        # 1: Agent Level Ratio (-1.0 a 1.0)
+        # 2: Agent EXP Ratio (0.0 a 1.0)
+        # 3: Skill 1 Cooldown Ratio (0.0 a 1.0)
+        # 4: Skill 2 Cooldown Ratio (0.0 a 1.0)
+        # 5: Skill 3 Cooldown Ratio (0.0 a 1.0)
+        # 6: Skill 4 (Wait) Cooldown Ratio (sempre 0.0)
+        #
+        # Bloco Contexto PvE (7 estados):
+        # 7: Flag: In Combat (PvE)? (1.0 se sim)
+        # 8: Flag: Item/Evento na sala? (1.0 se sim)
+        # 9: Flag: Sala Vazia/Segura? (1.0 se sim)
+        # 10: Combat: HP Ratio do Inimigo PvE (-1.0 a 1.0)
+        # 11: Combat: Level Ratio do Inimigo PvE (-1.0 a 1.0)
+        # 12: Floor: Flag: Equipamento (Weapon/Armor) no chão? (1.0 se sim)
+        # 13: Floor: Raridade do Equipamento (0.0 a 1.0)
+        #
+        # Bloco Contexto Social/PvP (10 estados):
+        # 14: Flag: Está em uma Zona K (Arena)? (1.0 se sim)
+        # 15: Flag: Outro Agente (Player) na mesma sala? (1.0 se sim)
+        # 16: PvP: HP Ratio do Outro Agente (-1.0 a 1.0)
+        # 17: PvP: Diferença de Nível (MeuNível - OutroNível, normalizado)
+        # 18: PvP: Karma do Outro Agente (Dimensão Real, -1.0 a 1.0) 
+        # 19: PvP: Karma do Outro Agente (Dimensão Imaginária/Contexto, -1.0 a 1.0)
+        # 20: Social: Flag: Artefato no chão da sala? (1.0 se sim)
+        # 21: Social: Flag: Eu possuo um Artefato (posso dropar)? (1.0 se sim)
+        # 22: Social: Flag (Evento): Outro Agente *acabou* de dropar um item? (1.0 apenas por 1 step)
+        # 23: Social: Flag: Outro Agente está em combate comigo? (1.0 se sim)
+        OBS_SHAPE = (24,) 
+        
+        self.action_space = spaces.Dict({
+            agent_id: spaces.Discrete(ACTION_SHAPE) for agent_id in self.agent_ids
+        })
+        self.observation_space = spaces.Dict({
+            agent_id: spaces.Box(low=-1.0, high=1.0, shape=OBS_SHAPE, dtype=np.float32) 
+            for agent_id in self.agent_ids
+        })
+
+        # --- 5. VARIÁVEIS DE ESTADO (Dicionarizadas para MAE) ---
+        # Todas as variáveis que antes eram únicas agora são dicionários 
+        # com chaves 'a1' e 'a2'. Elas serão inicializadas no reset().
+
+        # Variáveis de estado do agente
+        self.agent_states = {}
+        self.agent_names = {}
+        
+        # Variáveis de estado do mundo (cada agente tem seu grafo de progressão)
+        self.graphs = {}
+        self.current_nodes = {}
+        self.current_floors = {}
+        self.nodes_per_floor_counters = {} # Antiga 'nodes_per_floor'
+        
+        # Variáveis de estado de combate (cada agente pode estar em seu combate PvE)
+        self.combat_states = {}
+        
+        # Métricas de episódio
+        self.current_episode_logs = {}
+        self.enemies_defeated_this_episode = {}
+        self.invalid_action_counts = {}
+        self.last_milestone_floors = {}
+
+        # --- 6. ESTADO GLOBAL DO AMBIENTE (Novo para MAE) ---
+        # Controla se os agentes estão separados (Progression) ou juntos (Arena)
+        self.env_state = 'PROGRESSION' # Estados: 'PROGRESSION', 'ARENA_SYNC', 'ARENA_INTERACTION'
+        self.arena_graph = None # Armazena o grafo da Zona K
+        self.agents_in_arena = set() # Rastreia quem está na arena
 
     def _generate_successors_for_node(self, parent_node: str):
         """
