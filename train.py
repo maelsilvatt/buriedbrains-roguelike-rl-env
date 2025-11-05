@@ -220,8 +220,7 @@ def main():
     """
     Script principal para treinar um agente PPO no ambiente BuriedBrains.
     """
-    
-    # --- 0. PARSER DE ARGUMENTOS ---
+        
     parser = argparse.ArgumentParser(description="Script de Treinamento BuriedBrains")
     
     # Argumento para (não) usar LSTM
@@ -235,9 +234,7 @@ def main():
     parser.add_argument('--max_episode_steps', type=int, default=30000, help="Limite de passos por episódio no ambiente")
     parser.add_argument('--budget_multiplier', type=float, default=1.0, help="Multiplicador de dificuldade (budget) do ambiente")
     
-    args = parser.parse_args()
-    # --- FIM DO PARSER ---
-
+    args = parser.parse_args()    
 
     # --- Escolha da política ---    
     use_lstm = not args.no_lstm 

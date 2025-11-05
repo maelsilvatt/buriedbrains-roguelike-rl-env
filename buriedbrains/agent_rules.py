@@ -15,9 +15,14 @@ def create_initial_agent(name: str = "Player") -> Dict[str, Any]:
             'damage_reduction': 0.0,
             'damage_modifier': 1.0 
         },
+        'karma': {
+            'real': 0.0,  # Orientação (Bom/Mal)
+            'imag': 0.0   # Magnitude (Força/Contexto)
+        },
         'exp': 0,
         'exp_to_level_up': 30,
         'equipment': {},
+        'artifact': {},
         'skills': [],
     }
     return agent
