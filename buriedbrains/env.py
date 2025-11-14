@@ -38,21 +38,20 @@ class BuriedBrainsEnv(gym.Env):
             'room_effects': enemy_data['pools']['room_effects'], 'events': enemy_data['pools']['events']
         }
 
-        self.max_episode_steps = max_episode_steps # Define um limite de passos por episódio
+        self.max_episode_steps = max_episode_steps
         self.current_step = 0
         self.verbose = verbose 
-        self.max_floors = max_floors # Limite máximo de andares para evitar loops infinitos
-        self.max_level = max_level # Nível máximo do agente         
-        self.budget_multiplier = budget_multiplier # Multiplicador de orçamento para geração de conteúdo
-        self.enemies_defeated_this_episode = 0 # Conta inimigos derrotados
-        self.invalid_action_count = 0 # Conta ações inválidas
-        self.last_milestone_floor = 0 # Último andar que concedeu recompensa de marco
-        self.nodes_per_floor = {} # Dicionário para contar nós por andar
+        self.max_floors = max_floors
+        self.max_level = max_level         
+        self.budget_multiplier = budget_multiplier
+        self.enemies_defeated_this_episode = 0
+        self.invalid_action_count = 0
+        self.last_milestone_floor = 0
+        self.nodes_per_floor = {}
 
-        self.agent_name = "Agent_000" # Um nome padrão
-        self.current_episode_log = []  # Lista para guardar a história do episódio
+        self.agent_name = "Agent_000"
+        self.current_episode_log = []
 
-        # Pré-processamento: Injeta a chave 'name' em cada item dos catálogos
         for catalog_name, catalog_data in self.catalogs.items():
             if isinstance(catalog_data, dict):
                 for name, data in catalog_data.items():
@@ -61,15 +60,43 @@ class BuriedBrainsEnv(gym.Env):
                         
         self.pool_costs = content_generation._calculate_costs(enemy_data['pools'])
         self.rarity_map = {'Common': 0.25, 'Rare': 0.5, 'Epic': 0.75, 'Legendary': 1.0}
-        self.action_space = spaces.Discrete(8) # sem a ação de soltar item (social)         
-        observation_shape = (14,) # PvE         
-        self.observation_space = spaces.Box(low=-1.0, high=1.0, shape=observation_shape, dtype=np.float32)
+        
+        # --- MUDANÇA AQUI ---
+        self.action_space = spaces.Discrete(8) # 0-3 Skills, 4 Wait, 5-6 Mover, 7 Equipar
+        
+        # O shape agora é (16,)
+        observation_shape = (16,) # 14 PvE + 2 Estados de Equipamento
+        
+        # --- Detalhamento do Espaço de Observação (16 estados) ---
+        # Bloco Próprio (7 estados):
+        # 0: HP Ratio, 1: Level Ratio, 2: EXP Ratio
+        # 3: Skill 0 (Quick Strike) Cooldown
+        # 4: Skill 1 (Heavy Blow) Cooldown
+        # 5: Skill 2 (Stone Shield) Cooldown
+        # 6: Skill 3 (Wait) Cooldown
+        #
+        # Bloco Contexto PvE (7 estados):
+        # 7: Flag: Em Combate?
+        # 8: Flag: Item/Evento na sala?
+        # 9: Flag: Sala Vazia/Segura?
+        # 10: Combat: HP Ratio Inimigo
+        # 11: Combat: Level Ratio Inimigo
+        # 12: Floor: Flag: Equipamento (Wep/Arm) no chão?
+        # 13: Floor: Raridade *melhor* Wep/Arm no chão
+        #
+        # --- NOVOS ESTADOS ---
+        # Bloco Equipamento Atual (2 estados):
+        # 14: Self: Raridade da Arma *Equipada* (0.0 a 1.0)
+        # 15: Self: Raridade da Armadura *Equipada* (0.0 a 1.0)        
+        
+        self.observation_space = spaces.Box(low=-1.0, high=1.0, shape=observation_shape, dtype=np.float32)        
+
         self.agent_state = None
         self.graph = None
         self.current_node = None
         self.current_floor = 0
         self.combat_state = None
-        self.agent_skill_names = [] # Para mapear ações a nomes de habilidades
+        self.agent_skill_names = []
 
         self.guarantee_enemy = guarantee_enemy
 
@@ -127,18 +154,17 @@ class BuriedBrainsEnv(gym.Env):
                         f"Item Gerado: {item_generated_log[0]}, "
                         f"Efeito: {effect_log[0]}")
 
-    # VERSÃO MODIFICADA DA FUNÇÃO DE OBSERVAÇÃO, REMOVENDO BLOCOS SOCIAIS E ITENS SOCIAIS
+    # Versão corrigida da função de observação com os 16 estados
     def _get_observation(self) -> np.ndarray:
-        # O shape agora é (14,)
-        obs = np.zeros(self.observation_space.shape, dtype=np.float32)
+        # --- O shape agora é (16,) ---
+        obs = np.zeros((16,), dtype=np.float32) # Inicializa com 0 (neutro)        
         agent = self.agent_state
 
-        # --- Bloco Próprio (7 valores) ---
-        # (Antigo obs[7] (has_artifact) foi removido)
+        # --- Bloco Próprio (7 valores, obs[0] - obs[6]) ---
         obs[0] = (agent['hp'] / agent['max_hp']) * 2 - 1 if agent['max_hp'] > 0 else -1.0
         obs[1] = (agent['level'] / self.max_level) * 2 - 1
         obs[2] = (agent['exp'] / agent['exp_to_level_up']) if agent['exp_to_level_up'] > 0 else 0.0
-        for i in range(4):
+        for i in range(4): # 4 skills base
             skill_name = self.agent_skill_names[i] if i < len(self.agent_skill_names) else None
             if skill_name:
                 max_cd = self.catalogs['skills'].get(skill_name, {}).get('cd', 1)
@@ -149,36 +175,54 @@ class BuriedBrainsEnv(gym.Env):
         room_content = self.graph.nodes[self.current_node].get('content', {})
         enemy_in_combat = self.combat_state.get('enemy') if self.combat_state else None
         
-        # --- Flags de Sala (3 valores) ---
+        # --- Flags de Sala (3 valores, obs[7] - obs[9]) ---
         items_events = room_content.get('items', []) or room_content.get('room_effects', [])
         if self.combat_state:
-            obs[7] = 1.0 # (Antigo obs[8])
+            obs[7] = 1.0 # Em Combate
         elif items_events:
-            obs[8] = 1.0 # (Antigo obs[9])
+            obs[8] = 1.0 # Item/Evento na sala
         else:
-            obs[9] = 1.0 # (Antigo obs[10])
+            obs[9] = 1.0 # Sala Vazia
 
-        # --- Informações de Combate (2 valores) ---
+        # --- Informações de Combate (2 valores, obs[10] - obs[11]) ---
         if enemy_in_combat:
-            obs[10] = (enemy_in_combat['hp'] / enemy_in_combat['max_hp']) * 2 - 1 if enemy_in_combat['max_hp'] > 0 else -1.0 # (Antigo obs[11])
-            obs[11] = enemy_in_combat.get('level', 1) / 50.0 * 2 - 1 # (Antigo obs[12])
+            obs[10] = (enemy_in_combat['hp'] / enemy_in_combat['max_hp']) * 2 - 1 if enemy_in_combat['max_hp'] > 0 else -1.0
+            obs[11] = (enemy_in_combat.get('level', 1) / self.max_level) * 2 - 1 # Nível normalizado pelo max_level
 
-        # --- Bloco Itens no Chão (2 valores) ---
-        # (Antigos obs[13] e obs[14] (artifact) foram removidos)
+        # --- Bloco Itens no Chão (2 valores, obs[12] - obs[13]) ---
         items_in_room = room_content.get('items', [])
         if items_in_room:
+            best_rarity_on_floor = 0.0
             found_equip = False
             for item_name in items_in_room:
                 details = self.catalogs['equipment'].get(item_name, {})
                 item_type = details.get('type')
                 
-                # Procura APENAS por 'Weapon' ou 'Armor'
-                if item_type in ['Weapon', 'Armor'] and not found_equip:
-                    rarity = details.get('rarity')
-                    obs[12] = 1.0 # (Antigo obs[15])
-                    obs[13] = self.rarity_map.get(rarity, 0.0) # (Antigo obs[16])
+                if item_type in ['Weapon', 'Armor']:
                     found_equip = True
-                    break # Encontrou o único item de poder que importa
+                    rarity_val = self.rarity_map.get(details.get('rarity'), 0.0)
+                    if rarity_val > best_rarity_on_floor:
+                        best_rarity_on_floor = rarity_val
+            
+            if found_equip:
+                obs[12] = 1.0 # Flag: Equipamento no chão
+                obs[13] = best_rarity_on_floor # Raridade do MELHOR Wep/Arm no chão
+        
+        # --- NOVO BLOCO: Equipamento Atual (2 valores, obs[14] - obs[15]) ---
+        
+        # obs[14]: Raridade da Arma Equipada
+        equipped_weapon_name = agent['equipment'].get('Weapon')
+        if equipped_weapon_name:
+            weapon_rarity_str = self.catalogs['equipment'].get(equipped_weapon_name, {}).get('rarity')
+            obs[14] = self.rarity_map.get(weapon_rarity_str, 0.0)
+        # (else: permanece 0.0, como inicializado)
+            
+        # obs[15]: Raridade da Armadura Equipada
+        equipped_armor_name = agent['equipment'].get('Armor')
+        if equipped_armor_name:
+            armor_rarity_str = self.catalogs['equipment'].get(equipped_armor_name, {}).get('rarity')
+            obs[15] = self.rarity_map.get(armor_rarity_str, 0.0)
+        # (else: permanece 0.0, como inicializado)
         
         return obs
 
@@ -415,16 +459,17 @@ class BuriedBrainsEnv(gym.Env):
             # Este é agora o ÚNICO ponto de retorno da função
             return observation, reward, terminated, truncated, info
 
-    # VERSÃO SIMPLIFICADA DA FUNÇÃO DE EXPLORAÇÃO, SEM AÇÃO DE SOLTAR/PEGAR ARTEFATO
+    # Versão revisada do handler de exploração com lógica de recompensa de equipamento inteligente
     def _handle_exploration_turn(self, action: int):
             """
             Processa uma ação em modo de exploração, incluindo a poda do mapa.
+            REVISADO com lógica de recompensa de equipamento inteligente.
             Retorna (recompensa, episodio_terminou).
             """
             reward = 0
             terminated = False
             
-            # Ações 5 e 6: Movimento
+            # Ações 5 e 6: Movimento 
             if 4 < action < 7:
                 successors = list(self.graph.successors(self.current_node))
                 action_index = action - 5  # Mapeia ação 5 para índice 0, 6 para 1
@@ -432,60 +477,86 @@ class BuriedBrainsEnv(gym.Env):
                 self._log(f"[AÇÃO] {self.agent_name} na sala '{self.current_node}'. Tentando Ação de Movimento {action_index}.")
                 if len(successors) > action_index:
                     # --- LÓGICA DE PODA E GERAÇÃO ---
-                    # 1. Agente escolhe um caminho
                     chosen_node = successors[action_index]
-                    
                     self._log(f"[AÇÃO] Movimento VÁLIDO para '{chosen_node}'.")
-                                        # 2. PODA: Identifica e remove os caminhos não escolhidos
-                    nodes_to_remove = [succ for i, succ in enumerate(successors) if i != action_index]
-                    self.graph.remove_nodes_from(nodes_to_remove) # Isso remove os nós e todas as suas sub-árvores
-
-                    # 3. GERAÇÃO: Move o agente e gera os próximos caminhos
-                    self.current_node = chosen_node
                     
+                    nodes_to_remove = [succ for i, succ in enumerate(successors) if i != action_index]
+                    self.graph.remove_nodes_from(nodes_to_remove) 
+
+                    self.current_node = chosen_node
                     self.current_floor = self.graph.nodes[self.current_node].get('floor', self.current_floor)
-                    self._generate_successors_for_node(self.current_node) # Gera os filhos do novo nó
+                    self._generate_successors_for_node(self.current_node)
                     
                     reward = 5  # Recompensa por explorar
 
                     # --- FIM DA LÓGICA DE PODA ---
 
-                    # Após mover, verifica se a nova sala inicia um combate
                     room_content = self.graph.nodes[self.current_node].get('content', {})
                     enemy_names = room_content.get('enemies', [])
                     if enemy_names:                        
                         self._log(f"[AÇÃO] >>> COMBATE INICIADO com {enemy_names[0]} <<<")
                         self._start_combat(enemy_names[0])
-                        reward += 10  # Recompensa bônus por encontrar um desafio
+                        reward += 10
 
                 else:                    
                     self._log(f"[AÇÃO] Movimento INVÁLIDO. (Sem sala no índice {action_index})")
                     self.invalid_action_count += 1
                     reward = -5
             
-            # Ação 7: Equipar Item do Chão
+            # --- MUDANÇA AQUI: Ação 7 (Equipar Item) com Lógica de Recompensa Inteligente ---
             elif action == 7:                
                 self._log(f"[AÇÃO] {self.agent_name} tentou Ação 7 (Equipar Item).")
                 room_items = self.graph.nodes[self.current_node].get('content', {}).setdefault('items', [])
-                equip_on_floor = next(
-                    (item for item in room_items if self.catalogs['equipment'].get(item, {}).get('type') in ['Weapon', 'Armor']),
-                    None
-                )
+                
+                # 1. Encontrar o melhor item (Wep/Arm) no chão
+                best_item_on_floor = None
+                best_rarity_on_floor = -1.0 # Começa abaixo de 0
+                item_type = None
 
-                if equip_on_floor:
-                    details = self.catalogs['equipment'][equip_on_floor]
-                    item_type = details['type']
-                    self.agent_state['equipment'][item_type] = equip_on_floor
-                    room_items.remove(equip_on_floor)
+                for item_name in room_items:
+                    details = self.catalogs['equipment'].get(item_name, {})
+                    current_type = details.get('type')
+                    if current_type in ['Weapon', 'Armor']:
+                        current_rarity = self.rarity_map.get(details.get('rarity'), 0.0)
+                        # Salva apenas o item de maior raridade no chão
+                        if current_rarity > best_rarity_on_floor:
+                            best_rarity_on_floor = current_rarity
+                            best_item_on_floor = item_name
+                            item_type = current_type
+
+                # 2. Verificar se um item válido foi encontrado
+                if best_item_on_floor:
+                    # 3. Comparar com o item equipado atualmente
+                    equipped_item_name = self.agent_state['equipment'].get(item_type)
+                    equipped_rarity = 0.0
+                    if equipped_item_name:
+                        rarity_str = self.catalogs['equipment'].get(equipped_item_name, {}).get('rarity')
+                        equipped_rarity = self.rarity_map.get(rarity_str, 0.0)
                     
-                    self._log(f"[AÇÃO] {self.agent_name} equipou '{equip_on_floor}' ({item_type}).")
-                    reward = 50
+                    # Calcula a diferença de "valor"
+                    rarity_difference = best_rarity_on_floor - equipped_rarity
+
+                    # 4. Aplicar Recompensa com base na Lógica
+                    if rarity_difference > 0:
+                        # RECOMPENSA POSITIVA: É um upgrade!
+                        # Recompensa base + bônus pela melhoria de raridade
+                        reward = 50 + (rarity_difference * 100) # Ex: Pular de Comum (0.25) para Raro (0.5) dá +25 de bônus
+                        
+                        self.agent_state['equipment'][item_type] = best_item_on_floor
+                        room_items.remove(best_item_on_floor)
+                        self._log(f"[AÇÃO] {self.agent_name} equipou um UPGRADE: '{best_item_on_floor}' ({item_type}). Raridade: {best_rarity_on_floor:.2f} (era {equipped_rarity:.2f})")
+                    else:
+                        # PENALIDADE: É um downgrade ou igual
+                        reward = -10 # Penalidade por tentar equipar item pior/igual
+                        self.invalid_action_count += 1 # Conta como uma "má decisão"
+                        self._log(f"[AÇÃO] {self.agent_name} ignorou '{best_item_on_floor}' (Não era um upgrade. Equipado: {equipped_rarity:.2f}, Chão: {best_rarity_on_floor:.2f})")
+                        # Não equipa o item, mas a ação foi "usada"
                 else:
+                    # Ação inválida (sem item no chão)
                     self.invalid_action_count += 1                    
                     self._log(f"[AÇÃO] {self.agent_name} tentou equipar, mas não havia itens (Weapon/Armor) no chão.")
-                    reward = -1
+                    reward = -1            
 
-            
             # Ações de Combate (0 a 4) ou Ação Inválida (antiga 7)
             else:                
                 self._log(f"[AÇÃO] {self.agent_name} usou Ação {action} (Combate/Inválida) fora de combate.")
