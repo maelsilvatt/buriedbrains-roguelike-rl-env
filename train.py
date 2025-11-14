@@ -8,7 +8,7 @@ import time
 import gymnasium as gym
 import numpy as np
 import torch
-import argparse # para automao
+import argparse # para automatizar argumentos de linha de comando
 
 from stable_baselines3 import PPO
 from sb3_contrib import RecurrentPPO
@@ -19,135 +19,161 @@ from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback,
 # Importa o ambiente personalizado
 from buriedbrains.env import BuriedBrainsEnv
 
+# Salva as métricas detalhadas e histórias do Hall da Fama
 class LoggingCallback(BaseCallback):
-  """
-  Callback customizado para registrar mtricas detalhadas do BuriedBrains
-  E salvar as "melhores histrias" (Hall da Fama).
-    (Cdigo original [cite: 27-216])
-  """
-  def __init__(self, log_interval: int = 10, verbose: int = 1, top_n: int = 10):
-    super().__init__(verbose)
-    self.log_interval = log_interval
-    self.top_n = top_n 
-    self.episode_rewards = []
-    self.episode_wins = []
-    self.episode_levels = []
-    self.episode_floors = []
-    self.episode_lengths = []
-    self.episode_enemies_defeated = []
-    self.episode_invalid_actions = []
-    self.episode_total_actions = []
-    self.hall_of_fame_level = [] 
-    self.hall_of_fame_floor = [] 
-    self.hall_of_fame_enemies = [] 
-    self.episode_count = 0
-    self.max_floor_ever = 0
+    """
+    Callback customizado para registrar métricas detalhadas do BuriedBrains
+    E salvar as "melhores histórias" (Hall da Fama).
+    """
+    def __init__(self, log_interval: int = 10, verbose: int = 1, top_n: int = 10):
+        super().__init__(verbose)
+        self.log_interval = log_interval
+        self.top_n = top_n 
+        self.episode_rewards = []
+        self.episode_wins = []
+        self.episode_levels = []
+        self.episode_floors = []
+        self.episode_lengths = []
+        self.episode_enemies_defeated = []
+        self.episode_invalid_actions = []
+        self.episode_total_actions = []
+        self.hall_of_fame_level = [] 
+        self.hall_of_fame_floor = [] 
+        self.hall_of_fame_enemies = [] 
+        self.episode_count = 0
+        self.max_floor_ever = 0
 
-  def _update_hall_of_fame(self, story: dict, hall_of_fame: list, metric_key: str):    
-      new_score = story.get(metric_key, 0)
-      if len(hall_of_fame) < self.top_n:
-        hall_of_fame.append(story)
-        hall_of_fame.sort(key=lambda s: s[metric_key], reverse=True)
-        return 
-      worst_score = hall_of_fame[-1].get(metric_key, 0)
-      if new_score > worst_score:
-        hall_of_fame.pop() 
-        hall_of_fame.append(story) 
-        hall_of_fame.sort(key=lambda s: s[metric_key], reverse=True) 
+    def _update_hall_of_fame(self, story: dict, hall_of_fame: list, metric_key: str): 
+        # (Esta função [cite: 32-47] permanece idêntica)
+        new_score = story.get(metric_key, 0)
+        if len(hall_of_fame) < self.top_n:
+            hall_of_fame.append(story)
+            hall_of_fame.sort(key=lambda s: s[metric_key], reverse=True)
+            return 
+        worst_score = hall_of_fame[-1].get(metric_key, 0)
+        if new_score > worst_score:
+            hall_of_fame.pop() 
+            hall_of_fame.append(story) 
+            hall_of_fame.sort(key=lambda s: s[metric_key], reverse=True) 
 
-  def _on_step(self) -> bool:    
-    dones = self.locals.get("dones", [])
-    for i, done in enumerate(dones):
-      if not done:
-        continue
-      self.episode_count += 1
-      info = self.locals["infos"][i]
-      final_info = info.get("final_info", info)
-      if not isinstance(final_info, dict): continue 
-      final_status = final_info.get("final_status")
-      if not final_status: continue 
-      self.episode_rewards.append(self.locals["rewards"][i])
-      self.episode_wins.append(1 if final_status.get("win") else 0)
-      self.episode_levels.append(final_status.get("level", 0))
-      current_floor = final_status.get("floor", 0)
-      self.episode_floors.append(current_floor)
-      self.episode_lengths.append(final_status.get("steps", 0))
-      self.episode_enemies_defeated.append(final_status.get("enemies_defeated", 0))
-      self.episode_invalid_actions.append(final_status.get("invalid_actions", 0))
-      self.episode_total_actions.append(final_status.get("steps", 1))
-      self.max_floor_ever = max(self.max_floor_ever, current_floor)
-      agent_name = final_status.get('agent_name', 'Agente_Desconhecido')
-      full_log = final_status.get('full_log', ['Log no capturado.'])
-      story = {
-        'agent_name': agent_name,
-        'level': final_status.get('level', 0),
-        'floor': current_floor,
-        'enemies_defeated': final_status.get('enemies_defeated', 0),
-        'log_content': full_log 
-      }
-      self._update_hall_of_fame(story, self.hall_of_fame_level, 'level')
-      self._update_hall_of_fame(story, self.hall_of_fame_floor, 'floor')
-      self._update_hall_of_fame(story, self.hall_of_fame_enemies, 'enemies_defeated')
-      if self.episode_count % self.log_interval == 0:
-        mean_reward = np.mean(self.episode_rewards) if self.episode_rewards else 0
-        win_rate = np.mean(self.episode_wins) if self.episode_wins else 0
-        avg_level = np.mean(self.episode_levels) if self.episode_levels else 0
-        avg_floor = np.mean(self.episode_floors) if self.episode_floors else 0
-        max_floor_interval = np.max(self.episode_floors) if self.episode_floors else 0
-        avg_length = np.mean(self.episode_lengths) if self.episode_lengths else 0
-        avg_enemies = np.mean(self.episode_enemies_defeated) if self.episode_enemies_defeated else 0
-        total_invalid = sum(self.episode_invalid_actions)
-        total_actions = sum(self.episode_total_actions)
-        invalid_rate = total_invalid / total_actions if total_actions > 0 else 0
-        self.logger.record("rollout/ep_rew_mean", mean_reward)
-        self.logger.record("custom/win_rate", win_rate)
-        self.logger.record("custom/avg_level", avg_level)
-        self.logger.record("custom/avg_floor_reached", avg_floor)
-        self.logger.record("custom/max_floor_reached_interval", max_floor_interval)
-        self.logger.record("custom/max_floor_reached_ever", self.max_floor_ever)
-        self.logger.record("custom/avg_episode_length", avg_length)
-        self.logger.record("custom/avg_enemies_defeated", avg_enemies)
-        self.logger.record("custom/rate_invalid_actions", invalid_rate)
-        self.logger.dump(step=self.num_timesteps)
+    def _on_step(self) -> bool:    
+        dones = self.locals.get("dones", [])
+        for i, done in enumerate(dones):
+            if not done:
+                continue
+            self.episode_count += 1
+            info = self.locals["infos"][i]
+            final_info = info.get("final_info", info)
+            if not isinstance(final_info, dict): continue 
+            final_status = final_info.get("final_status")
+            if not final_status: continue 
+            
+            # (Coleta de métricas [cite: 72-78] permanece idêntica)
+            self.episode_rewards.append(self.locals["rewards"][i])
+            self.episode_wins.append(1 if final_status.get("win") else 0)
+            self.episode_levels.append(final_status.get("level", 0))
+            current_floor = final_status.get("floor", 0)
+            self.episode_floors.append(current_floor)
+            self.episode_lengths.append(final_status.get("steps", 0))
+            self.episode_enemies_defeated.append(final_status.get("enemies_defeated", 0))
+            self.episode_invalid_actions.append(final_status.get("invalid_actions", 0))
+            self.episode_total_actions.append(final_status.get("steps", 1))
+            self.max_floor_ever = max(self.max_floor_ever, current_floor)
+
+            # --- MUDANÇA 1: Coletar o equipamento ---
+            agent_name = final_status.get('agent_name', 'Agente_Desconhecido')
+            full_log = final_status.get('full_log', ['Log não capturado.'])
+            # Pega o dicionário de equipamento do final_status
+            equipment = final_status.get('equipment', {}) 
+            
+            story = {
+                'agent_name': agent_name,
+                'level': final_status.get('level', 0),
+                'floor': current_floor,
+                'enemies_defeated': final_status.get('enemies_defeated', 0),
+                'equipment': equipment,
+                'log_content': full_log 
+            }            
+            
+            self._update_hall_of_fame(story, self.hall_of_fame_level, 'level')
+            self._update_hall_of_fame(story, self.hall_of_fame_floor, 'floor')
+            self._update_hall_of_fame(story, self.hall_of_fame_enemies, 'enemies_defeated')
+            
+            if self.episode_count % self.log_interval == 0:                
+                mean_reward = np.mean(self.episode_rewards) if self.episode_rewards else 0
+                win_rate = np.mean(self.episode_wins) if self.episode_wins else 0
+                avg_level = np.mean(self.episode_levels) if self.episode_levels else 0
+                avg_floor = np.mean(self.episode_floors) if self.episode_floors else 0
+                max_floor_interval = np.max(self.episode_floors) if self.episode_floors else 0
+                avg_length = np.mean(self.episode_lengths) if self.episode_lengths else 0
+                avg_enemies = np.mean(self.episode_enemies_defeated) if self.episode_enemies_defeated else 0
+                total_invalid = sum(self.episode_invalid_actions)
+                total_actions = sum(self.episode_total_actions)
+                invalid_rate = total_invalid / total_actions if total_actions > 0 else 0
+                self.logger.record("rollout/ep_rew_mean", mean_reward)
+                self.logger.record("custom/win_rate", win_rate)
+                self.logger.record("custom/avg_level", avg_level)
+                self.logger.record("custom/avg_floor_reached", avg_floor)
+                self.logger.record("custom/max_floor_reached_interval", max_floor_interval)
+                self.logger.record("custom/max_floor_reached_ever", self.max_floor_ever)
+                self.logger.record("custom/avg_episode_length", avg_length)
+                self.logger.record("custom/avg_enemies_defeated", avg_enemies)
+                self.logger.record("custom/rate_invalid_actions", invalid_rate)
+                self.logger.dump(step=self.num_timesteps)
+                if self.verbose > 0:
+                    print(f"--- Intervalo Episódios {self.episode_count - self.log_interval + 1}-{self.episode_count} (Timestep {self.num_timesteps}) ---")
+                self.episode_rewards.clear()
+                self.episode_wins.clear()
+                self.episode_levels.clear()
+                self.episode_floors.clear()
+                self.episode_lengths.clear()
+                self.episode_enemies_defeated.clear()
+                self.episode_invalid_actions.clear()
+                self.episode_total_actions.clear()
+        return True
+
+    def save_hall_of_fame(self, save_dir: str):    
         if self.verbose > 0:
-          print(f"--- Intervalo Episdios {self.episode_count - self.log_interval + 1}-{self.episode_count} (Timestep {self.num_timesteps}) ---")          
-        self.episode_rewards.clear()
-        self.episode_wins.clear()
-        self.episode_levels.clear()
-        self.episode_floors.clear()
-        self.episode_lengths.clear()
-        self.episode_enemies_defeated.clear()
-        self.episode_invalid_actions.clear()
-        self.episode_total_actions.clear()
-    return True
-
-  def save_hall_of_fame(self, save_dir: str):    
-    if self.verbose > 0:
-      print(f"\nSalvando Hall da Fama em {save_dir}...")
-    def _save_list(hall_list: list, sub_folder: str, metric_key: str):
-      path = os.path.join(save_dir, sub_folder)
-      os.makedirs(path, exist_ok=True)
-      for i, story in enumerate(hall_list):
-        metric_val = story[metric_key]
-        name = story['agent_name']
-        filename = f"Rank_{i+1:02d}__{metric_key}_{metric_val}__{name}.txt"
-        try:
-          with open(os.path.join(path, filename), "w", encoding="utf-8") as f:
-            f.write(f"AGENTE: {name}\n")
-            f.write(f"MTRICA: {metric_key.upper()} = {metric_val}\n")
-            f.write(f"ANDAR FINAL: {story['floor']}\n")
-            f.write(f"NVEL FINAL: {story['level']}\n")
-            f.write(f"INIMIGOS DERROTADOS: {story['enemies_defeated']}\n")
-            f.write("="*50 + "\n\nHISTRIA DO AGENTE:\n" + "="*50 + "\n")
-            f.writelines(story['log_content'])
-        except Exception as e:
-          if self.verbose > 0:
-            print(f" [Callback ERROR] Falha ao salvar histria: {filename}. Erro: {e}")
-    _save_list(self.hall_of_fame_level, "top_por_nivel", "level")
-    _save_list(self.hall_of_fame_floor, "top_por_andar", "floor")
-    _save_list(self.hall_of_fame_enemies, "top_por_inimigos", "enemies_defeated")
-    if self.verbose > 0:
-      print("Hall da Fama salvo com sucesso.")
+            print(f"\nSalvando Hall da Fama em {save_dir}...")
+        
+        def _save_list(hall_list: list, sub_folder: str, metric_key: str):
+            path = os.path.join(save_dir, sub_folder)
+            os.makedirs(path, exist_ok=True)
+            for i, story in enumerate(hall_list):
+                metric_val = story[metric_key]
+                name = story['agent_name']
+                filename = f"Rank_{i+1:02d}__{metric_key}_{metric_val}__{name}.txt"
+                try:
+                    with open(os.path.join(path, filename), "w", encoding="utf-8") as f:
+                        f.write(f"AGENTE: {name}\n")
+                        f.write(f"MÉTRICA: {metric_key.upper()} = {metric_val}\n")
+                        f.write(f"ANDAR FINAL: {story['floor']}\n")
+                        f.write(f"NÍVEL FINAL: {story['level']}\n")
+                        f.write(f"INIMIGOS DERROTADOS: {story['enemies_defeated']}\n")
+                        
+                        # ---  Escrever o equipamento no arquivo ---
+                        f.write("\nEQUIPAMENTOS:\n")
+                        equipment = story.get('equipment', {})
+                        weapon = equipment.get('Weapon', 'Nenhum')
+                        armor = equipment.get('Armor', 'Nenhum')
+                        artifact = equipment.get('Artifact', 'Nenhum') 
+                        
+                        f.write(f"  - ARMA: {weapon}\n")
+                        f.write(f"  - ARMADURA: {armor}\n")
+                        f.write(f"  - ARTEFATO: {artifact}\n")                        
+                        
+                        f.write("="*50 + "\n\nHISTÓRIA DO AGENTE:\n" + "="*50 + "\n")
+                        f.writelines(story['log_content'])
+                except Exception as e:
+                    if self.verbose > 0:
+                        print(f" [Callback ERROR] Falha ao salvar história: {filename}. Erro: {e}")
+        
+        _save_list(self.hall_of_fame_level, "top_por_nivel", "level")
+        _save_list(self.hall_of_fame_floor, "top_por_andar", "floor")
+        _save_list(self.hall_of_fame_enemies, "top_por_inimigos", "enemies_defeated")
+        
+        if self.verbose > 0:
+            print("Hall da Fama salvo com sucesso.")
 
 def main():
   """

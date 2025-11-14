@@ -451,7 +451,8 @@ class BuriedBrainsEnv(gym.Env):
                     'enemies_defeated': self.enemies_defeated_this_episode,
                     'invalid_actions': self.invalid_action_count,
                     'agent_name': self.agent_name,
-                    'full_log': self.current_episode_log # Passa a história inteira
+                    'full_log': self.current_episode_log, # Passa a história inteira
+                    'equipment': self.agent_state.get('equipment', {})
                 }
                 
             observation = self._get_observation()        
