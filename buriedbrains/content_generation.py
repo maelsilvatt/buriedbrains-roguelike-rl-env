@@ -105,18 +105,31 @@ def generate_room_content(
                     # Processa o evento escolhido SOMENTE se couber no budget restante (B_res1)
                     # OU se o custo for não-positivo (recompensa/neutro)
                     if event_cost <= 0 or current_budget >= event_cost:
-
                         if event_name == 'Treasure':
                             # Filtra equipamentos Comuns ou Raros
                             eligible_items = [
                                 name for name, data in equipment_catalog.items()
                                 if isinstance(data, dict) and data.get('rarity') in ['Common', 'Rare']
                             ]
+                            
                             if eligible_items:
-                                found_item = random.choice(eligible_items)
-                                selected_content['items'].append(found_item)
-                            # Deduz o custo do EVENTO Tesouro (negativo)
-                            current_budget -= event_cost # Atualiza B_res2
+                                # --- MUDANÇA: CHANCE DE MULTI-LOOT ---
+                                # Garante 1 item, mas pode gerar até 3
+                                num_items_to_drop = 1
+                                
+                                # 20% de chance de ter um segundo item
+                                if random.random() < 0.20: 
+                                    num_items_to_drop += 1
+                                    # Se tiver o segundo, 10% de chance de ter um terceiro (total 2% chance)
+                                    if random.random() < 0.10: 
+                                        num_items_to_drop += 1
+                                
+                                for _ in range(num_items_to_drop):
+                                    found_item = random.choice(eligible_items)
+                                    selected_content['items'].append(found_item)                                
+
+                            # Deduz o custo (apenas uma vez, para não punir o budget demais)
+                            current_budget -= event_cost
 
                         elif event_name == 'Morbid Treasure':
                             # Filtra equipamentos Épicos ou Lendários
