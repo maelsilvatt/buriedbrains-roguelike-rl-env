@@ -727,28 +727,44 @@ class BuriedBrainsEnv(gym.Env):
         
         # 2. Verificar se *todos* os agentes estão em self.agents_in_arena
         if all(aid in self.agents_in_arena for aid in self.agent_ids):
-            self._log(agent_id, "[ZONA K] Ambos os agentes estão presentes. Iniciando Arena PvP!")
+            self._log(agent_id, "[ZONA K] Ambos os agentes presentes. Iniciando Arena PvP!")
             self.env_state = 'ARENA_INTERACTION'
             
-            # 3. Chamar map_generation para criar o grafo da arena
-            # (Usando o andar do agente atual como referência)
+            # 1. Gera a Topologia 
             self.arena_graph = map_generation.generate_k_zone_topology(
-                floor_level=self.current_floors[agent_id] 
-                # TODO: Adicionar outros parâmetros (nós, probabilidade, poda) se desejar
+                floor_level=self.current_floors[agent_id],
+                num_nodes=9,        # Fixo: Pequeno
+                connectivity_prob=0.4 
             )
             
-            # 4. Mover ambos os agentes para os pontos de entrada da arena
-            # (Exemplo: mover para os nós com menor/maior grau)
-            entry_nodes = sorted(list(self.arena_graph.nodes()))
-            if len(entry_nodes) >= 2:
-                self.current_nodes['a1'] = entry_nodes[0]
-                self.current_nodes['a2'] = entry_nodes[-1]
-            else:
-                # Fallback se o grafo for muito pequeno
-                self.current_nodes['a1'] = entry_nodes[0]
-                self.current_nodes['a2'] = entry_nodes[0]
+            # 2. POPULAR A ARENA 
+            # Iteramos por todas as salas criadas para dar conteúdo a elas
+            for node in self.arena_graph.nodes():            
+                # Usamos o budget baseado no andar atual dos agentes
+                budget = (100 + (self.current_floors[agent_id] * 10)) * self.budget_multiplier
+                
+                # Garante inimigos na arena
+                content = content_generation.generate_room_content(
+                    self.catalogs, 
+                    budget=budget, 
+                    current_floor=self.current_floors[agent_id],
+                    guarantee_enemy=False # Deixa o RNG decidir, ou True se quiser caos total
+                )
+
+                # Força salas vazias (sem inimigos) a permanecerem vazias para validar a hipótese social
+                content['enemies'] = []
+
+                self.arena_graph.nodes[node]['content'] = content
+
+            # 3. Mover Agentes (Posiciona em extremos opostos)
+            nodes_list = sorted(list(self.arena_graph.nodes()))
+            self.current_nodes['a1'] = nodes_list[0]
+            self.current_nodes['a2'] = nodes_list[-1] # Última sala
+            
+            self._log('a1', f"[ZONA K] Entrou na Arena em {self.current_nodes['a1']}")
+            self._log('a2', f"[ZONA K] Entrou na Arena em {self.current_nodes['a2']}")
+
         else:
-            # Se o outro agente ainda não chegou, entra em modo de espera
             self.env_state = 'ARENA_SYNC'
 
     def _process_pve_step(self, agent_id: str, action: int, global_truncated: bool, infos: dict) -> tuple[float, bool]:
@@ -1158,7 +1174,7 @@ class BuriedBrainsEnv(gym.Env):
                 # --- Cálculo de Recompensa ---
                 # Se for um artefato pego na Arena, é uma ação social (mesmo que seja downgrade)
                 if best_item_type == 'Artifact' and self.env_state == 'ARENA_INTERACTION':
-                     reward = 10 # Recompensa fixa para incentivar a interação
+                     reward = 0.0 # Recompensa neutra para artefatos sociais
                 else:
                      # Recompensa padrão de upgrade PvE
                      reward = 50 + (max_rarity_diff * 100)
@@ -1193,8 +1209,7 @@ class BuriedBrainsEnv(gym.Env):
                     
                     self.social_flags[agent_id]['just_dropped'] = True
                     
-                    self._log(agent_id, f"[AÇÃO-ARENA] {self.agent_names[agent_id]} dropou '{equipped_artifact_name}' (iniciando barganha).")
-                    reward = 10 
+                    self._log(agent_id, f"[AÇÃO-ARENA] {self.agent_names[agent_id]} dropou '{equipped_artifact_name}' (iniciando barganha).")                     
                 else:
                     self._log(agent_id, f"[AÇÃO-ARENA] Ação 5 falhou. Nenhum artefato para dropar.")
                     self.invalid_action_counts[agent_id] += 1
@@ -1252,7 +1267,7 @@ class BuriedBrainsEnv(gym.Env):
             self._log(agent_id, f"[AÇÃO-ARENA] Movimento válido para '{chosen_node}'.")
             
             # Recompensa pequena por movimento na arena
-            return 1.0 
+            return -0.1
         
         else:
             # --- Movimento INVÁLIDO ---

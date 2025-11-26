@@ -105,47 +105,39 @@ def _prune_graph_by_centrality(G: nx.Graph, alpha=0.5, beta=0.3, gamma=0.2) -> n
 
 def generate_k_zone_topology(
     floor_level: int,
-    num_nodes: int = 15,
-    connectivity_prob: float = 0.25,
-    pruning_params: Dict[str, float] = None,
+    num_nodes: int = 9,     # Pequeno (3x3 equivalente)
+    connectivity_prob: float = 0.4, # Alta conectividade (ciclos)
     seed: int = None
 ) -> nx.Graph:
     """
-    Gera a topologia para uma Zona do Karma usando um modelo Erdős-Rényi podado.
-    Como descrito no memorial. 
-    
-    :param floor_level: O andar atual (para nomear as salas).
+    Gera a topologia para uma Zona do Karma (Arena PvP).
+    Simples, conectado e cíclico (Erdős-Rényi).
     """
     if seed is not None:
         random.seed(seed)
         
-    G = nx.Graph() # Começa vazio
+    G = nx.Graph()
     
     # Tenta gerar um grafo conectado
-    for _ in range(10): # Tenta 10 vezes garantir conectividade
+    # Com p=0.4 e n=9, é quase garantido ser conectado, mas prevenimos.
+    for _ in range(20): 
         G = nx.erdos_renyi_graph(num_nodes, connectivity_prob)
         if nx.is_connected(G):
             break
     else:
-        # Se falhar 10x, força a conectividade (sua lógica original)
-        components = list(nx.connected_components(G))
-        for i in range(len(components) - 1):
-            node1 = random.choice(list(components[i]))
-            node2 = random.choice(list(components[i+1]))
-            G.add_edge(node1, node2)
-            
-    # 3. Poda o grafo para complexidade estratégica 
-    if pruning_params:
-        G_pruned = G.copy()
-        G_pruned = _prune_graph_by_centrality(G_pruned, **pruning_params)
-        # Garante a conectividade novamente após a poda
-        if nx.is_connected(G_pruned):
-            G = G_pruned
-        # Se a poda desconectou, silenciosamente usa o grafo original (não podado)
+        # Fallback: Gera um Ciclo simples (garante que não tem beco sem saída)
+        G = nx.cycle_graph(num_nodes)
+        # Adiciona algumas arestas aleatórias para "cortar caminho"
+        for _ in range(num_nodes // 2):
+            u, v = random.sample(list(G.nodes()), 2)
+            if not G.has_edge(u, v):
+                G.add_edge(u, v)
 
-    # 4. Renomeia os nós e adiciona atributos de andar
+    # Renomeia os nós para o padrão do ambiente
     mapping = {old_node: f"k_{floor_level}_{old_node}" for old_node in G.nodes()}
     G = nx.relabel_nodes(G, mapping)
+    
+    # Adiciona atributo de andar
     nx.set_node_attributes(G, floor_level, 'floor')
 
     return G
