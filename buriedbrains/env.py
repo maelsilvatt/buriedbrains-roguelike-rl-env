@@ -84,7 +84,7 @@ class BuriedBrainsEnv(gym.Env):
         self.arena_interaction_state = {
             'a1': {'offered_peace': False},
             'a2': {'offered_peace': False}
-        }
+        }#
 
         # --- 4. ESPAÇOS DE AÇÃO E OBSERVAÇÃO (Refatorados para MAE) ---
         
@@ -398,7 +398,11 @@ class BuriedBrainsEnv(gym.Env):
         # Limpa os agentes do sistema de reputação da run anterior
         self.reputation_system.agent_karma = {}
         # Inicializa as flags sociais de 1 turno
-        self.social_flags = {agent_id: {} for agent_id in self.agent_ids}        
+        self.social_flags = {agent_id: {} for agent_id in self.agent_ids}     
+        self.arena_interaction_state = {
+            'a1': {'offered_peace': False},
+            'a2': {'offered_peace': False}
+        }   
 
         # Dicionários de retorno para a API MAE
         observations = {}
@@ -613,11 +617,15 @@ class BuriedBrainsEnv(gym.Env):
             combat_over = True
             winner = 'a1'
             loser = 'a2'
-                        
-            # 1. Dropar o Loot do Perdedor
+                           
+            # 1. Resolve Karma
+            self._resolve_pvp_end_karma(winner, loser)
+            
+            # 2. Dropar o Loot
             self._drop_pvp_loot(loser_id=loser, winner_id=winner)
-            # 2. Respawnar o Perdedor
-            self._respawn_agent(loser)            
+            
+            # 3. Respawnar 
+            self._respawn_agent(loser)     
 
         # --- 4. Agente 'a2' Age (Se o combate NÃO terminou) ---
         if not combat_over:
@@ -635,10 +643,14 @@ class BuriedBrainsEnv(gym.Env):
                 winner = 'a2'
                 loser = 'a1'
                                 
-                # 1. Dropar o Loot do Perdedor
+                # 1. Resolve Karma
+                self._resolve_pvp_end_karma(winner, loser)
+                
+                # 2. Dropar o Loot
                 self._drop_pvp_loot(loser_id=loser, winner_id=winner)
-                # 2. Respawnar o Perdedor
-                self._respawn_agent(loser)                
+                
+                # 3. Respawnar 
+                self._respawn_agent(loser)                 
                 
         # --- 6. Fim do Turno (Se o combate NÃO terminou) ---
         if not combat_over:
@@ -878,96 +890,126 @@ class BuriedBrainsEnv(gym.Env):
                     terminateds[agent_id] = agent_terminated
             
         elif self.env_state == 'ARENA_INTERACTION':
-            # --- MODO ARENA (Lógica Social/PvP) ---            
+            # --- MODO ARENA (Lógica Social/PvP) ---
+            
+            # 1. Limpeza de flags VOLÁTEIS (apenas as que duram 1 turno)
+            # IMPORTANTE: NÃO limpamos 'offered_peace' aqui! Ela é persistente.
+            # Apenas limpamos 'just_picked_up' para saber o que aconteceu NESTE turno.
+            for agent_id in self.agent_ids:
+                self.social_flags[agent_id]['just_picked_up'] = False                
 
-            # --- 1. PROCESSAR TURNO DE COMBATE PVP (Se já estiver ativo) ---
+            # 2. Captura Intenções (para verificar Traição antes do combate)
+            action_a1 = actions['a1']
+            action_a2 = actions['a2']
+            is_a1_attacking = (0 <= action_a1 <= 3)
+            is_a2_attacking = (0 <= action_a2 <= 3)
+            
+            # --- LÓGICA DE TRAIÇÃO (Baseada em Estado Persistente) ---
+            # Cenário: Alguém ofereceu paz (estado True) e o outro ataca AGORA.
+            
+            # Traição de A2 contra A1
+            if self.arena_interaction_state['a1']['offered_peace'] and is_a2_attacking:
+                self._log('a2', f"[KARMA] TRAIÇÃO! {self.agent_names['a2']} atacou após oferta de paz. (--)")
+                self.reputation_system.update_karma('a2', 'bad') 
+                self.reputation_system.update_karma('a2', 'bad') # Penalidade dupla
+                self.reputation_system.update_karma('a1', 'bad') # A1 aprende a desconfiar
+                rewards['a2'] -= 50 # Penalidade imediata
+                # A oferta foi traída, então ela é cancelada
+                self.arena_interaction_state['a1']['offered_peace'] = False
+
+            # Traição de A1 contra A2
+            if self.arena_interaction_state['a2']['offered_peace'] and is_a1_attacking:
+                self._log('a1', f"[KARMA] TRAIÇÃO! {self.agent_names['a1']} atacou após oferta de paz. (--)")
+                self.reputation_system.update_karma('a1', 'bad')
+                self.reputation_system.update_karma('a1', 'bad')
+                self.reputation_system.update_karma('a2', 'bad')
+                rewards['a1'] -= 50
+                # A oferta foi traída, cancela
+                self.arena_interaction_state['a2']['offered_peace'] = False
+
+            # --- 3. PROCESSAR COMBATE (Se ativo ou iniciado agora) ---
+            start_combat_now = False
+            if not self.pvp_state and self.current_nodes['a1'] == self.current_nodes['a2']:
+                if is_a1_attacking or is_a2_attacking:
+                    attacker = 'a1' if is_a1_attacking else 'a2'
+                    defender = 'a2' if attacker == 'a1' else 'a1'
+                    
+                    # Só inicia se o defensor estiver vivo
+                    if not terminateds.get(defender, False):
+                        self._log(attacker, f"[PVP] Combate iniciado!")
+                        self._initiate_pvp_combat(attacker, defender)
+                        rewards[attacker] += 20 
+                        start_combat_now = True
+                        # Se combate começou, qualquer oferta de paz é esquecida
+                        self.arena_interaction_state['a1']['offered_peace'] = False
+                        self.arena_interaction_state['a2']['offered_peace'] = False
+
             if self.pvp_state:
-                combat_action_a1 = self.agent_skill_names[actions['a1']] if 0 <= actions['a1'] <= 3 else "Wait"
-                combat_action_a2 = self.agent_skill_names[actions['a2']] if 0 <= actions['a2'] <= 3 else "Wait"
+                # Resolve o turno de combate
+                c_act_a1 = self.agent_skill_names[action_a1] if is_a1_attacking else "Wait"
+                c_act_a2 = self.agent_skill_names[action_a2] if is_a2_attacking else "Wait"
                 
-                rew_a1, rew_a2, combat_over, winner, loser = self._handle_pvp_combat_turn(combat_action_a1, combat_action_a2)
+                rew_a1, rew_a2, combat_over, winner, loser = self._handle_pvp_combat_turn(c_act_a1, c_act_a2)
                 rewards['a1'] += rew_a1
                 rewards['a2'] += rew_a2
 
                 if combat_over:
-                    self._log(winner, f"[PVP] VITORIA! {self.agent_names[winner]} derrotou {self.agent_names[loser]}.")
-                    self._log(loser, f"[PVP] DERROTA! {self.agent_names[loser]} foi derrotado.")
+                    self._log(winner, f"[PVP] VITORIA de {self.agent_names[winner]}!")                    
                     
-                    self._resolve_pvp_end_karma(winner, loser) # Atualiza o karma
-                    
-                    # TODO: Lógica de drop de loot (Artefato + Equipamento)
-                    
-                    terminateds[loser] = True
-                    self.pvp_state = None # Limpa o estado de combate
-                    self._end_arena_encounter(winner) # Move o vencedor de volta para a P-Zone
-                    # O perdedor não é movido, seu episódio termina
+                    terminateds[loser] = False # O perdedor respawnou, não terminou
+                    self.pvp_state = None
+                    self._end_arena_encounter(winner)
 
-            # --- 2. PROCESSAR AÇÕES FORA DE COMBATE (Movimento, Social, Início de Combate) ---
+            # --- 4. PROCESSAR AÇÕES FORA DE COMBATE ---
             else:
-                # Processa as ações de ambos os agentes
                 for agent_id in self.agent_ids:
                     if terminateds.get(agent_id, False): continue
-                    
                     action = actions[agent_id]
                     
-                    if 0 <= action <= 3: # Ação de Skill (Tentativa de Iniciar Combate)
-                        other_agent_id = 'a2' if agent_id == 'a1' else 'a1'
-                        # Só pode iniciar combate se o outro agente também não estiver morto
-                        if not terminateds.get(other_agent_id, False) and \
-                           self.current_nodes[agent_id] == self.current_nodes[other_agent_id]:
-                            
-                            self._log(agent_id, f"[PVP] {self.agent_names[agent_id]} iniciou combate com {self.agent_names[other_agent_id]}!")
-                            self._initiate_pvp_combat(agent_id, other_agent_id)
-                            rewards[agent_id] += 20 # Recompensa por iniciativa
-                            
-                            # Processa esta primeira ação de ataque
-                            if agent_id == 'a1':
-                                rew_a1, rew_a2, combat_over, winner, loser = self._handle_pvp_combat_turn(self.agent_skill_names[action], "Wait")
-                            else:
-                                rew_a1, rew_a2, combat_over, winner, loser = self._handle_pvp_combat_turn("Wait", self.agent_skill_names[action])
-                            
-                            rewards['a1'] += rew_a1
-                            rewards['a2'] += rew_a2
-                            # (A lógica de 'combat_over' será tratada no *próximo* step)
+                    # Ações de Exploração (Equipar, Social, Mover)
+                    if 4 <= action <= 9:
+                        # Chama a _handle_exploration_turn
+                        # Ela seta 'just_picked_up' se equipar Artefato (Ação 4)
+                        r_explore, _ = self._handle_exploration_turn(agent_id, action)
+                        rewards[agent_id] += r_explore
                         
-                        else: # Atacou no ar ou em agente morto
-                            self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} usou Ação {action} (Skill) no ar.")
-                            self.invalid_action_counts[agent_id] += 1
-                            rewards[agent_id] -= 5
-                            
-                    elif 4 <= action <= 9: # Ações de Exploração (Equipar, Social, Mover)                        
-                        # Chama a _handle_exploration_turn, que já sabe lidar
-                        # com Ações 4, 5, e 6-9 no contexto da arena.
-                        reward_explore, _ = self._handle_exploration_turn(agent_id, action)
-                        rewards[agent_id] += reward_explore
+                        # ATUALIZAÇÃO DO ESTADO DE PAZ (Se dropar Artefato - Ação 5)
+                        if action == 5 and r_explore > 0: # Se dropou com sucesso
+                             self.arena_interaction_state[agent_id]['offered_peace'] = True
                     
-                    else: # Ação inválida (> 9)
-                         self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} usou Ação {action} (INVÁLIDA).")
+                    elif not (0 <= action <= 3): # Inválida
                          self.invalid_action_counts[agent_id] += 1
                          rewards[agent_id] -= 5
 
-                # --- 3. RESOLVER INTERAÇÕES SOCIAIS (Pós-Ação) ---                
+                # --- 5. RESOLVER BARGANHA (Baseado em Estado Persistente + Ação Atual) ---
                 if not self.pvp_state and self.current_nodes['a1'] == self.current_nodes['a2']:
-                    # Verifica BARGANHA (Ex: A1 dropou, A2 pegou)
-                    if (self.social_flags['a1'].get('just_dropped') and self.social_flags['a2'].get('just_picked_up')):
-                        self._log('a1', "[KARMA] Barganha aceita! (A1 dropou, A2 pegou) (+)")
-                        self._log('a2', "[KARMA] Barganha aceita! (+)")
-                        self.reputation_system.update_karma('a1', 'good')
-                        self.reputation_system.update_karma('a2', 'good')
-                        rewards['a1'] += 200 # Recompensa por cooperação
-                        rewards['a2'] += 200
-                        self._end_arena_encounter('a1')
-                        self._end_arena_encounter('a2')
+                    
+                    # Verifica se alguém pegou um item (Ação 4) NESTE turno
+                    a1_picked_up = self.social_flags['a1'].get('just_picked_up', False)
+                    a2_picked_up = self.social_flags['a2'].get('just_picked_up', False)
 
-                    elif (self.social_flags['a2'].get('just_dropped') and self.social_flags['a1'].get('just_picked_up')):
-                        self._log('a1', "[KARMA] Barganha aceita! (A2 dropou, A1 pegou) (+)")
+                    # Cenário 1: A1 ofereceu paz (estado persistente) E A2 pegou (ação agora)
+                    bargain_1 = self.arena_interaction_state['a1']['offered_peace'] and a2_picked_up
+                    
+                    # Cenário 2: A2 ofereceu paz (estado persistente) E A1 pegou (ação agora)
+                    bargain_2 = self.arena_interaction_state['a2']['offered_peace'] and a1_picked_up
+
+                    if bargain_1 or bargain_2:
+                        self._log('a1', "[KARMA] Barganha aceita! (+)")
                         self._log('a2', "[KARMA] Barganha aceita! (+)")
+                        
                         self.reputation_system.update_karma('a1', 'good')
                         self.reputation_system.update_karma('a2', 'good')
+                        
                         rewards['a1'] += 200
                         rewards['a2'] += 200
+                        
+                        # Reseta estados de paz
+                        self.arena_interaction_state['a1']['offered_peace'] = False
+                        self.arena_interaction_state['a2']['offered_peace'] = False
+                        
                         self._end_arena_encounter('a1')
-                        self._end_arena_encounter('a2')                                        
+                        self._end_arena_encounter('a2')                                    
 
         # --- 3. Finalização do Passo ---
         
@@ -1088,20 +1130,38 @@ class BuriedBrainsEnv(gym.Env):
                     # Calcula o ganho
                     diff = floor_rarity - equipped_rarity
                     
-                    # Se esse ganho for maior que o melhor ganho encontrado até agora
-                    if diff > max_rarity_diff:
-                        max_rarity_diff = diff
+                    # Se for um Artefato E estivermos na Arena, consideramos "interessante"
+                    # independente da raridade (para permitir aceitar barganha)
+                    is_social_artifact = (item_type == 'Artifact' and self.env_state == 'ARENA_INTERACTION')
+                    
+                    # Se esse ganho for maior... OU se for um artefato social
+                    if diff > max_rarity_diff or (is_social_artifact and max_rarity_diff == 0.0):
+                        # Nota: max_rarity_diff == 0.0 garante que pegamos o primeiro artefato social
+                        # se não houver um upgrade real de stats.
+                        max_rarity_diff = diff # Pode ficar negativo, não tem problema aqui
                         best_item_to_equip = item_name
                         best_item_type = item_type
 
             # 2. Executar a troca se houver um upgrade
             if best_item_to_equip:
-                # Remove item anterior (se houver) e coloca no chão?
+                # Equipar o item no slot correto
                 self.agent_states[agent_id]['equipment'][best_item_type] = best_item_to_equip
                 room_items.remove(best_item_to_equip) # Remove do chão
                 
-                self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} equipou UPGRADE: '{best_item_to_equip}' ({best_item_type}). Ganho: +{max_rarity_diff:.2f}")
-                reward = 50 + (max_rarity_diff * 100) # Recompensa proporcional ao upgrade
+                self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} equipou: '{best_item_to_equip}' ({best_item_type}). Ganho Raridade: {max_rarity_diff:.2f}")
+                
+                # --- Lógica Social (Barganha) ---
+                if best_item_type == 'Artifact':
+                    # Avisa o sistema que pegamos um artefato (para o step detectar barganha)
+                    self.social_flags[agent_id]['just_picked_up'] = True
+
+                # --- Cálculo de Recompensa ---
+                # Se for um artefato pego na Arena, é uma ação social (mesmo que seja downgrade)
+                if best_item_type == 'Artifact' and self.env_state == 'ARENA_INTERACTION':
+                     reward = 10 # Recompensa fixa para incentivar a interação
+                else:
+                     # Recompensa padrão de upgrade PvE
+                     reward = 50 + (max_rarity_diff * 100)
             else:
                 # Se não achou upgrade
                 if room_items:
