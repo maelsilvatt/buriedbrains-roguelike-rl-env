@@ -175,7 +175,9 @@ class BuriedBrainsEnv(gym.Env):
         self.arena_graph = None
         self.agents_in_arena = set()
 
-        # --- 7. SISTEMA DE REPUTAÇÃO (NOVO) ---
+        self.arena_meet_occurred = False # Trava a saída até o encontro
+
+        # --- 7. SISTEMA DE REPUTAÇÃO ---
         # Define os parâmetros para o potencial
         potential_params = {
             'z_saint': 0.95 + 0j,  # Polo "santo" 
@@ -963,6 +965,19 @@ class BuriedBrainsEnv(gym.Env):
         elif self.env_state == 'ARENA_INTERACTION':
             # --- MODO ARENA (Lógica Social/PvP) ---
             
+            # --- 0. VERIFICAR RITO DE PASSAGEM (Encontro) ---
+            # Se ainda não se encontraram, verifica se estão na mesma sala agora
+            if not self.arena_meet_occurred:
+                if self.current_nodes['a1'] == self.current_nodes['a2']:
+                    self.arena_meet_occurred = True
+                    
+                    self._log('a1', "[ZONA K] Encontro realizado! A saída foi destrancada.")
+                    self._log('a2', "[ZONA K] Encontro realizado! A saída foi destrancada.")
+                    
+                    # Recompensa pelo "Rito de Passagem" (objetivo cumprido)
+                    rewards['a1'] += 100
+                    rewards['a2'] += 100
+
             # 1. Limpeza de flags VOLÁTEIS (apenas as que duram 1 turno)
             # IMPORTANTE: NÃO limpamos 'offered_peace' aqui! Ela é persistente.
             # Apenas limpamos 'just_picked_up' para saber o que aconteceu NESTE turno.
@@ -1105,6 +1120,36 @@ class BuriedBrainsEnv(gym.Env):
                 z = self.reputation_system.get_karma_state(agent_id)
                 # Salva como dict
                 self.karma_history[agent_id].append({'real': z.real, 'imag': z.imag})
+
+        # Salva o 'final_status' se truncou globalmente
+        if global_truncated:
+            for agent_id in self.agent_ids:
+                # Só preenche se ainda não tiver sido preenchido (ex: por morte no PvE)
+                if 'final_status' not in infos[agent_id]:
+                    infos[agent_id]['final_status'] = {
+                        'level': self.agent_states[agent_id]['level'],
+                        'hp': self.agent_states[agent_id]['hp'],
+                        'floor': self.current_floors[agent_id],
+                        'win': False, # Se truncou pelo tempo, não venceu
+                        'steps': self.current_step,
+                        'enemies_defeated': self.enemies_defeated_this_episode[agent_id],
+                        'invalid_actions': self.invalid_action_counts[agent_id],
+                        'agent_name': self.agent_names[agent_id],
+                        'full_log': self.current_episode_logs[agent_id],
+                        'equipment': self.agent_states[agent_id].get('equipment', {}),
+                        'exp': self.agent_states[agent_id]['exp'],
+                        'damage_dealt': self.damage_dealt_this_episode[agent_id],
+                        'equipment_swaps': self.equipment_swaps_this_episode[agent_id],
+                        'death_cause': self.death_cause[agent_id],
+                        'pve_durations': self.pve_combat_durations[agent_id],
+                        'pvp_durations': self.pvp_combat_durations[agent_id],
+                        'arena_encounters': self.arena_encounters_this_episode[agent_id],
+                        'pvp_combats': self.pvp_combats_this_episode[agent_id],
+                        'bargains_succeeded': self.bargains_succeeded_this_episode[agent_id],
+                        'cowardice_kills': self.cowardice_kills_this_episode[agent_id],
+                        'karma_history': self.karma_history[agent_id],
+                        'karma': self.agent_states[agent_id]['karma'] 
+                    }
         
         # Retorna os dicionários no formato MAE completo
         return observations, rewards, terminateds, truncateds, infos
@@ -1338,7 +1383,25 @@ class BuriedBrainsEnv(gym.Env):
         # 4. Verificar se a ação é válida
         if 0 <= neighbor_index < len(neighbors):
             # --- Movimento VÁLIDO ---
+
+            # Verifica se o nó escolhido é uma saída
             chosen_node = neighbors[neighbor_index]
+
+            # Se o nó é uma saída...
+            if node_data.get('is_exit', False):
+                # mas o encontro AINDA NÃO ACONTECEU
+                if not self.arena_meet_occurred:
+                    self._log(agent_id, f"[AÇÃO-ARENA] A saída em '{chosen_node}' está TRANCADA. Encontre o outro agente primeiro!")
+                    # Não penalizamos como inválida, mas impedimos o movimento (choque na porta)
+                    return -1.0 
+                
+                # Se o encontro JÁ aconteceu, permite sair
+                self._log(agent_id, f"[ZONA K] {self.agent_names[agent_id]} saiu da Arena!")
+                self._end_arena_encounter(agent_id)
+                return 50.0 # Recompensa por sair
+            
+            node_data = self.arena_graph.nodes[chosen_node]
+
             self.current_nodes[agent_id] = chosen_node # Move o agente
             
             # Atualiza o andar (embora na arena deva ser o mesmo)
