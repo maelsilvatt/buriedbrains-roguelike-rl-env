@@ -158,6 +158,16 @@ class BuriedBrainsEnv(gym.Env):
         self.enemies_defeated_this_episode = {}
         self.invalid_action_counts = {}
         self.last_milestone_floors = {}
+        self.damage_dealt_this_episode = {}
+        self.equipment_swaps_this_episode = {}
+        self.death_cause = {}
+        self.arena_encounters_this_episode = {}
+        self.pvp_combats_this_episode = {}
+        self.bargains_succeeded_this_episode = {}
+        self.cowardice_kills_this_episode = {}
+        self.pve_combat_durations = {}
+        self.pvp_combat_durations = {}
+
 
         # --- 6. ESTADO GLOBAL DO AMBIENTE (Novo para MAE) ---
         self.env_state = 'PROGRESSION'
@@ -432,6 +442,19 @@ class BuriedBrainsEnv(gym.Env):
             self.invalid_action_counts[agent_id] = 0
             self.last_milestone_floors[agent_id] = 0
             self.combat_states[agent_id] = None
+            self.damage_dealt_this_episode[agent_id] = 0.0
+            self.equipment_swaps_this_episode[agent_id] = 0
+            self.death_cause[agent_id] = "Sobreviveu (Time Limit)" # Padrão
+
+            # Sociais / PvP
+            self.arena_encounters_this_episode[agent_id] = 0
+            self.pvp_combats_this_episode[agent_id] = 0
+            self.bargains_succeeded_this_episode[agent_id] = 0
+            self.cowardice_kills_this_episode[agent_id] = 0
+            
+            # Duração de Combate (Listas para guardar a duração de CADA luta)
+            self.pve_combat_durations[agent_id] = [] 
+            self.pvp_combat_durations[agent_id] = []
 
             # --- ADIÇÃO AO SISTEMA DE KARMA ---
             # O karma (0+0j) já é criado pelo create_initial_agent
@@ -511,6 +534,10 @@ class BuriedBrainsEnv(gym.Env):
         damage_dealt = hp_before_enemy - enemy['hp']
         reward += damage_dealt * 0.6
 
+        # Registra o dano causado na métrica do episódio
+        if damage_dealt > 0:
+            self.damage_dealt_this_episode[agent_id] += damage_dealt
+
         # --- 2. VERIFICA MORTE DO INIMIGO, ADICIONA EXP E FAZ O LEVEL UP ---
         if combat.check_for_death_and_revive(enemy, self.catalogs):
             # PASSO 1: Dar a recompensa pela vitória e adicionar a EXP
@@ -553,6 +580,11 @@ class BuriedBrainsEnv(gym.Env):
                 agent['cooldowns'] = agent_main_state['cooldowns'].copy()
 
             # PASSO 3: AGORA combate pode ser encerrado
+
+            # Registra a duração do combate para esta luta
+            duration = self.current_step - self.combat_states[agent_id]['start_step']
+            self.pve_combat_durations[agent_id].append(duration)
+
             self.combat_states[agent_id] = None # Limpa o estado de combate deste agente
             combat_over = True
         
@@ -573,6 +605,9 @@ class BuriedBrainsEnv(gym.Env):
             # 4. VERIFICA MORTE DO AGENTE
             if combat.check_for_death_and_revive(agent, self.catalogs):
                 combat_over = True # O loop principal do step() aplicará a penalidade final
+
+                # Registra a causa da morte para logs e análises
+                self.death_cause[agent_id] = f"PvE: {enemy['name']} (Lvl {enemy['level']})"
 
         # --- 5. FIM DO TURNO: RESOLVE EFEITOS E COOLDOWNS ---
         
@@ -732,6 +767,10 @@ class BuriedBrainsEnv(gym.Env):
         if all(aid in self.agents_in_arena for aid in self.agent_ids):
             self._log(agent_id, "[ZONA K] Ambos os agentes presentes. Iniciando Arena PvP!")
             self.env_state = 'ARENA_INTERACTION'
+
+            # Incrementa o contador de encontros na arena para ambos os agentes
+            self.arena_encounters_this_episode['a1'] += 1
+            self.arena_encounters_this_episode['a2'] += 1
             
             # 1. Gera a Topologia 
             self.arena_graph = map_generation.generate_k_zone_topology(
@@ -830,15 +869,15 @@ class BuriedBrainsEnv(gym.Env):
             self._log(agent_id, f"[MARCO] {self.agent_names[agent_id]} alcançou o Andar {self.current_floors[agent_id]}! Bônus de +400.")
             self.last_milestone_floors[agent_id] = self.current_floors[agent_id]
 
-        # 5. Verifica Transição para Arena (Lógica da Parte 2) [cite: 54-59]
+        # 5. Verifica Transição para Arena
         # (O 'current_floor' será 0 após o respawn, então a checagem '... > 0' previne transição imediata)
         if not agent_terminated and self.current_floors[agent_id] > 0 and \
            self.current_floors[agent_id] % 20 == 0: # Ex: Andares 20, 40, 60...
             
             if agent_id not in self.agents_in_arena:
-                 self._transition_to_arena(agent_id) # Esta função mudará o self.env_state
+                 self._transition_to_arena(agent_id) 
 
-        # 7. Cria 'final_status' se o episódio terminou para este agente (Venceu ou Truncou) [cite: 61-79]
+        # 7. Cria 'final_status' se o episódio terminou para este agente
         if agent_terminated or global_truncated:
             infos[agent_id]['final_status'] = {
                 'level': self.agent_states[agent_id]['level'],
@@ -849,7 +888,17 @@ class BuriedBrainsEnv(gym.Env):
                 'enemies_defeated': self.enemies_defeated_this_episode[agent_id],
                 'invalid_actions': self.invalid_action_counts[agent_id],
                 'agent_name': self.agent_names[agent_id],
-                'full_log': self.current_episode_logs[agent_id]
+                'full_log': self.current_episode_logs[agent_id],
+                'exp': self.agent_states[agent_id]['exp'],
+                'damage_dealt': self.damage_dealt_this_episode[agent_id],
+                'equipment_swaps': self.equipment_swaps_this_episode[agent_id],
+                'death_cause': self.death_cause[agent_id],
+                'pve_durations': self.pve_combat_durations[agent_id],
+                'pvp_durations': self.pvp_combat_durations[agent_id],
+                'arena_encounters': self.arena_encounters_this_episode[agent_id],
+                'pvp_combats': self.pvp_combats_this_episode[agent_id],
+                'bargains_succeeded': self.bargains_succeeded_this_episode[agent_id],
+                'cowardice_kills': self.cowardice_kills_this_episode[agent_id],
             }
             
         return agent_reward, agent_terminated
@@ -1028,7 +1077,11 @@ class BuriedBrainsEnv(gym.Env):
                         self.arena_interaction_state['a2']['offered_peace'] = False
                         
                         self._end_arena_encounter('a1')
-                        self._end_arena_encounter('a2')                                    
+                        self._end_arena_encounter('a2')
+
+                        # Registra a barganha sucedida
+                        self.bargains_succeeded_this_episode['a1'] += 1
+                        self.bargains_succeeded_this_episode['a2'] += 1                                    
 
         # --- 3. Finalização do Passo ---
         
@@ -1180,6 +1233,9 @@ class BuriedBrainsEnv(gym.Env):
                 self.agent_states[agent_id]['equipment'][best_item_type] = best_item_to_equip
                 room_items.remove(best_item_to_equip)
                 
+                # Registra a troca no log e estatísticas
+                self.equipment_swaps_this_episode[agent_id] += 1
+
                 self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} equipou: '{best_item_to_equip}' ({best_item_type}).")
                 
                 if best_item_type == 'Artifact':
@@ -1392,6 +1448,7 @@ class BuriedBrainsEnv(gym.Env):
         self.combat_states[agent_id] = {
             'agent': agent_combatant,
             'enemy': enemy_combatant,
+            'start_step': self.current_step
         }
         
         # Loga o início do combate, usando o agent_id
@@ -1404,7 +1461,7 @@ class BuriedBrainsEnv(gym.Env):
     def _initiate_pvp_combat(self, attacker_id: str, defender_id: str):
         """
         Inicializa o estado de combate PvP entre dois agentes.
-        Cria cópias 'combatant' de ambos os agentes e armazena em self.pvp_state.
+        Cria cópias 'combatant' de ambos e armazena em self.pvp_state.        
         """
         
         # 1. Pega os estados mestres de ambos os agentes
@@ -1420,7 +1477,6 @@ class BuriedBrainsEnv(gym.Env):
             team=1, 
             catalogs=self.catalogs
         )
-        # Copia os cooldowns atuais do atacante
         attacker_combatant['cooldowns'] = attacker_main_state.get('cooldowns', {s: 0 for s in self.agent_skill_names}).copy()
 
         # 3. Inicializa o 'combatant' para o Defensor (team=2)
@@ -1429,26 +1485,23 @@ class BuriedBrainsEnv(gym.Env):
             hp=defender_main_state['hp'], 
             equipment=list(defender_main_state.get('equipment', {}).values()), 
             skills=self.agent_skill_names, 
-            team=2, # Time diferente
+            team=2, 
             catalogs=self.catalogs
         )
-        # Copia os cooldowns atuais do defensor
         defender_combatant['cooldowns'] = defender_main_state.get('cooldowns', {s: 0 for s in self.agent_skill_names}).copy()
 
         # 4. Armazena os combatants no estado de PvP global
         # Garante que as chaves sejam 'a1' e 'a2' para consistência
-        if attacker_id == 'a1':
-            self.pvp_state = {
-                'a1': attacker_combatant,
-                'a2': defender_combatant
-            }
-        else:
-            self.pvp_state = {
-                'a1': defender_combatant,
-                'a2': attacker_combatant
-            }
+        self.pvp_state = {
+            'a1': attacker_combatant if attacker_id == 'a1' else defender_combatant,
+            'a2': defender_combatant if attacker_id == 'a1' else attacker_combatant,            
+            'start_step': self.current_step             
+        }
+                
+        self.pvp_combats_this_episode[attacker_id] += 1
+        self.pvp_combats_this_episode[defender_id] += 1        
         
-        # Loga o início do combate (para ambos os agentes)
+        # Loga o início do combate
         log_message = (
             f"[PVP] Combate iniciado! "
             f"{attacker_combatant['name']} (Nível {attacker_main_state['level']}, HP {attacker_combatant['hp']}) "
@@ -1485,6 +1538,9 @@ class BuriedBrainsEnv(gym.Env):
             # O vencedor estava 10+ níveis *acima* do perdedor.
             self._log(winner_id, f"[KARMA] Covardia! (Nível {winner_level} vs {loser_level}). Karma (-)")
             action_type = 'bad'
+
+            # Registra a covardia nas estatísticas do episódio
+            self.cowardice_kills_this_episode[winner_id] += 1
             
         elif level_difference < -COWARDICE_THRESHOLD:
             # --- Regra "Davi vs. Golias" ---
@@ -1594,9 +1650,10 @@ class BuriedBrainsEnv(gym.Env):
         self.agent_states[agent_id]['karma']['imag'] = preserved_karma_z.imag
         
         # 5. Resetar Métricas da Run
-        self.current_episode_logs[agent_id] = [] # Limpa o log para a nova "vida"
-        self.enemies_defeated_this_episode[agent_id] = 0
-        self.invalid_action_counts[agent_id] = 0
+        # Apenas adicionamos um marcador visual no log
+        self.current_episode_logs[agent_id].append(f"\n{'='*20} RESPAWN {'='*20}\n")
+        
+        # Resetamos APENAS o que é específico da "vida" atual e afetaria a lógica
         self.last_milestone_floors[agent_id] = 0
 
         # 6. Limpar Estados Ativos
