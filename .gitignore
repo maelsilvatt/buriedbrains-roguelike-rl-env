@@ -20,6 +20,8 @@
 *.db
 \corevenv
 \logs
+\logs_marl
 \models
+\models_marl
 \tests
 \__pycache__

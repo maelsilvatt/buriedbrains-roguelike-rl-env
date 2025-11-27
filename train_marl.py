@@ -14,14 +14,12 @@ from buriedbrains.wrappers import SymmetricSelfPlayWrapper
 
 def transfer_weights(old_model_path, new_model, verbose=1):
     """
-    Transplanta os pesos do modelo PvE (16 inputs) para o modelo MARL (38 inputs).
-    Os 16 primeiros inputs são copiados. Os 22 novos são mantidos com inicialização aleatória.
+    Transplanta os pesos do modelo PvE para o modelo MARL (38 inputs).
+    Suporta modelos antigos (14 inputs) e modelos revamp (16 inputs).
     """
     print(f"\n--- INICIANDO TRANSFER LEARNING ---")
     print(f"Carregando pesos de: {old_model_path}")
     
-    # Carrega o modelo antigo (apenas para extrair pesos)
-    # O SB3 salva os parâmetros em 'policy.pth' dentro do zip, ou 'parameters' no objeto
     temp_model = RecurrentPPO.load(old_model_path, device='cpu')
     old_state_dict = temp_model.policy.state_dict()
     new_state_dict = new_model.policy.state_dict()
@@ -32,20 +30,24 @@ def transfer_weights(old_model_path, new_model, verbose=1):
                 old_param = old_state_dict[key]
                 new_param = new_state_dict[key]
 
-                # Verifica se os shapes batem
+                # Verifica se os shapes batem (Cópia Direta - Camadas Ocultas/Internas)
                 if old_param.shape == new_param.shape:
-                    # Cópia direta (camadas ocultas, saídas compatíveis)
                     new_param.copy_(old_param)
-                    if verbose: print(f"Copiado: {key}")
+                    # if verbose: print(f"Copiado: {key}") # Comentei para limpar o log
                 
-                # Verifica se é a camada de entrada (Shape Mismatch!)
-                # O peso da primeira camada linear geralmente tem shape [hidden_size, input_size]
-                elif len(old_param.shape) == 2 and old_param.shape[1] == 16 and new_param.shape[1] == 38:
-                    # Transplante Cirúrgico: Copia as primeiras 16 colunas
-                    # As colunas 16-37 (novos inputs) mantêm os valores aleatórios iniciais
-                    new_param[:, :16].copy_(old_param)
-                    print(f"TRANSFERÊNCIA PARCIAL (Input Layer): {key} | {old_param.shape} -> {new_param.shape}")
-                
+                # Verifica Transplante da Camada de Entrada (Input Layer)
+                # O peso tem shape [hidden_size, input_size]
+                elif len(old_param.shape) == 2 and new_param.shape[1] == 38:
+                    input_size_old = old_param.shape[1]
+                    
+                    # Aceita tanto 14 (Antigo) quanto 16 (Revamp Equipamento)
+                    if input_size_old in [14, 16]:
+                        # Copia as colunas que existem no modelo antigo
+                        new_param[:, :input_size_old].copy_(old_param)
+                        print(f"TRANSFERÊNCIA PARCIAL (Input Layer): {key} | Copiado {input_size_old} colunas para as primeiras {input_size_old} de 38.")
+                    else:
+                        print(f"IGNORADO (Input Size Desconhecido): {key} | Old: {old_param.shape}")
+
                 else:
                     print(f"IGNORADO (Shape Incompatível): {key} | Old: {old_param.shape} vs New: {new_param.shape}")
     
@@ -70,7 +72,7 @@ def main():
     # --- 1. Cria o Ambiente MAE com Wrapper ---
     # Função lambda para criar o env envelopado
     def make_env():
-        env = BuriedBrainsEnv(max_episode_steps=50000, budget_multiplier=1.0) # Dificuldade normal
+        env = BuriedBrainsEnv(max_episode_steps=50000, budget_multiplier=1.0, verbose=1) # Dificuldade normal
         env = SymmetricSelfPlayWrapper(env) # Transforma em Single-Agent para o SB3
         return env
 
@@ -97,7 +99,7 @@ def main():
     new_model = RecurrentPPO(
         "MlpLstmPolicy",
         vec_env,
-        verbose=1,
+        verbose=0,
         tensorboard_log=base_logdir,
         **lstm_params
     )
@@ -111,7 +113,7 @@ def main():
 
     # --- 5. Callbacks ---
     checkpoint_callback = CheckpointCallback(save_freq=200_000, save_path=model_path, name_prefix="marl_model")
-    logging_callback = LoggingCallback(verbose=1, log_interval=10)
+    logging_callback = LoggingCallback(verbose=0, log_interval=10)
 
     # --- 6. Treino ---
     print(f"Iniciando Treino MARL (Self-Play) por {args.total_timesteps} passos...")
