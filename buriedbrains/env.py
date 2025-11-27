@@ -99,8 +99,8 @@ class BuriedBrainsEnv(gym.Env):
         # 9: Mover Vizinho 3
         ACTION_SHAPE = 10 
                 
-        # 14 PvE + 11 Social + 12 Vizinhos + 2 Self-Equip = 38
-        OBS_SHAPE = (39,)
+        # 14 PvE + 13 Social + 12 Vizinhos + 2 Self-Equip = 38
+        OBS_SHAPE = (41,)
         
         # --- Detalhamento do Espaço de Observação (36 estados) ---
         # Bloco Próprio (7 estados):
@@ -139,6 +139,10 @@ class BuriedBrainsEnv(gym.Env):
         # 36: Self: Raridade da Arma *Equipada* (0.0 a 1.0)
         # 37: Self: Raridade da Armadura *Equipada* (0.0 a 1.0)
         # 38: Social: Score de equipamentos do outro agente (0.0 a 1.0)
+        #
+        # Flags Sociais Adicionais (2 estados):
+        # 39: Flag: Oponente acabou de dropar item? (1.0 se sim)
+        # 40: Flag: Oponente "pulou" ataque (estava na sala e não atacou)? (1.0 se sim)
 
         self.action_space = spaces.Dict({
             agent_id: spaces.Discrete(ACTION_SHAPE) for agent_id in self.agent_ids
@@ -335,6 +339,16 @@ class BuriedBrainsEnv(gym.Env):
                     
                     # Normaliza (Média de raridade: 0.0 a 1.0)
                     obs[38] = total_rarity / 3.0 
+
+                    # Intenções Sociais do Oponente (obs 39, 40)
+                    # Lê as flags do OUTRO agente
+                    opp_flags = self.social_flags.get(other_agent_id, {})
+                    
+                    # Obs 39: Oponente dropou item neste turno?
+                    obs[39] = 1.0 if opp_flags.get('just_dropped', False) else -1.0
+                    
+                    # Obs 40: Oponente podia atacar e não atacou?
+                    obs[40] = 1.0 if opp_flags.get('skipped_attack', False) else -1.0                
 
         # Artefatos (20-21)
         best_artifact_rarity = 0.0
@@ -985,17 +999,40 @@ class BuriedBrainsEnv(gym.Env):
                     rewards['a1'] += 100
                     rewards['a2'] += 100
 
-            # 1. Limpeza de flags VOLÁTEIS (apenas as que duram 1 turno)
-            # IMPORTANTE: NÃO limpamos 'offered_peace' aqui! Ela é persistente.
-            # Apenas limpamos 'just_picked_up' para saber o que aconteceu NESTE turno.
+            # 1. Limpeza e Inicialização de Flags
+            # Guardamos o passado para verificar traição 
+            prev_social_flags = {
+                agent_id: self.social_flags[agent_id].copy() 
+                for agent_id in self.agent_ids
+            }
+            
+            # Reseta flags do turno atual
             for agent_id in self.agent_ids:
-                self.social_flags[agent_id]['just_picked_up'] = False                
+                self.social_flags[agent_id]['just_picked_up'] = False
+                # Drop Flag
+                self.social_flags[agent_id]['just_dropped'] = False 
+                # Nova Flag
+                self.social_flags[agent_id]['skipped_attack'] = False 
 
-            # 2. Captura Intenções (para verificar Traição antes do combate)
+            # 2. Captura Intenções
             action_a1 = actions['a1']
             action_a2 = actions['a2']
+            
+            # Verifica se estão na mesma sala para considerar "oportunidade de ataque"
+            in_same_room = (self.current_nodes['a1'] == self.current_nodes['a2'])
+            
             is_a1_attacking = (0 <= action_a1 <= 3)
             is_a2_attacking = (0 <= action_a2 <= 3)
+            
+            # Verifica se um dos agentes "pulou" o ataque
+            if in_same_room:
+                # Se A1 NÃO atacou (usou ação > 3), ele "pulou" o ataque
+                if not is_a1_attacking:
+                    self.social_flags['a1']['skipped_attack'] = True
+                
+                # Se A2 NÃO atacou
+                if not is_a2_attacking:
+                    self.social_flags['a2']['skipped_attack'] = True            
             
             # --- LÓGICA DE TRAIÇÃO (Baseada em Estado Persistente) ---
             # Cenário: Alguém ofereceu paz (estado True) e o outro ataca AGORA.
