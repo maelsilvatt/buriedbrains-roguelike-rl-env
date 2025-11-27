@@ -66,6 +66,7 @@ class BuriedBrainsEnv(gym.Env):
         self.guarantee_enemy = guarantee_enemy
         self.pool_costs = content_generation._calculate_costs(enemy_data['pools'])
         self.rarity_map = {'Common': 0.25, 'Rare': 0.5, 'Epic': 0.75, 'Legendary': 1.0}
+        self.sanctum_floor = 50  # Andar em que ocorre a transição para a arena
         
         for catalog_name, catalog_data in self.catalogs.items():
             if isinstance(catalog_data, dict):
@@ -98,8 +99,8 @@ class BuriedBrainsEnv(gym.Env):
         # 9: Mover Vizinho 3
         ACTION_SHAPE = 10 
                 
-        # 14 PvE + 10 Social + 12 Vizinhos + 2 Self-Equip = 38
-        OBS_SHAPE = (38,)
+        # 14 PvE + 11 Social + 12 Vizinhos + 2 Self-Equip = 38
+        OBS_SHAPE = (39,)
         
         # --- Detalhamento do Espaço de Observação (36 estados) ---
         # Bloco Próprio (7 estados):
@@ -137,6 +138,7 @@ class BuriedBrainsEnv(gym.Env):
         # Bloco Contexto Self-Equip (2 estados):
         # 36: Self: Raridade da Arma *Equipada* (0.0 a 1.0)
         # 37: Self: Raridade da Armadura *Equipada* (0.0 a 1.0)
+        # 38: Social: Score de equipamentos do outro agente (0.0 a 1.0)
 
         self.action_space = spaces.Dict({
             agent_id: spaces.Discrete(ACTION_SHAPE) for agent_id in self.agent_ids
@@ -244,8 +246,7 @@ class BuriedBrainsEnv(gym.Env):
 
     def _get_observation(self, agent_id: str) -> np.ndarray:
         """
-        Coleta e retorna a observação de 38 estados para o agente especificado.
-        Inclui agora a raridade dos equipamentos equipados.
+        Coleta e retorna a observação de 39 estados para o agente especificado.        
         """
         # Começa com -1.0 (default)
         obs = np.full(self.observation_space[agent_id].shape, -1.0, dtype=np.float32) 
@@ -257,12 +258,9 @@ class BuriedBrainsEnv(gym.Env):
         current_node_id = self.current_nodes[agent_id]
         current_graph = self.graphs[agent_id]
         
-        # Se estiver na arena E A ARENA JÁ EXISTIR (Interação), usa o grafo da arena.
-        # Se estiver apenas em SYNC (esperando), arena_graph é None, então continua no grafo antigo.
-        if self.env_state != 'PROGRESSION' and \
-           agent_id in self.agents_in_arena and \
-           self.arena_graph is not None:
+        if self.env_state != 'PROGRESSION' and agent_id in self.agents_in_arena:
             current_graph = self.arena_graph
+
         if not current_graph.has_node(current_node_id):
              return obs
              
@@ -307,17 +305,19 @@ class BuriedBrainsEnv(gym.Env):
             obs[12] = 1.0
             obs[13] = best_wep_arm_rarity
 
-        # --- Bloco Contexto Social/PvP (14-23) ---
+        # --- Bloco Contexto Social/PvP (14-19 + 38) ---
         obs[14] = 1.0 if self.env_state != 'PROGRESSION' else -1.0
         
         other_agent_id = next((aid for aid in self.agent_ids if aid != agent_id), None)
         
         if other_agent_id and (self.env_state != 'PROGRESSION'):
-            # Lógica simplificada: assume visibilidade se estiverem na mesma sala
-            if self.current_nodes[agent_id] == self.current_nodes[other_agent_id]:
+            # Verifica se estão na mesma sala
+            is_in_same_room = (self.current_nodes[agent_id] == self.current_nodes[other_agent_id])
+
+            if is_in_same_room:
                 other_agent_state = self.agent_states.get(other_agent_id)
                 if other_agent_state:
-                    obs[15] = 1.0
+                    obs[15] = 1.0 # Flag: Outro Agente na sala
                     obs[16] = (other_agent_state['hp'] / other_agent_state['max_hp']) * 2 - 1
                     obs[17] = (agent['level'] - other_agent_state['level']) / 100.0
                     
@@ -325,7 +325,18 @@ class BuriedBrainsEnv(gym.Env):
                     obs[18] = opponent_karma_z.real 
                     obs[19] = opponent_karma_z.imag
 
-        # Artefatos
+                    # Gear Score do Oponente (obs 38)
+                    opp_equip = other_agent_state.get('equipment', {})
+                    total_rarity = 0.0
+                    for item in opp_equip.values():
+                        if item:
+                            r_str = self.catalogs['equipment'].get(item, {}).get('rarity')
+                            total_rarity += self.rarity_map.get(r_str, 0.0)
+                    
+                    # Normaliza (Média de raridade: 0.0 a 1.0)
+                    obs[38] = total_rarity / 3.0 
+
+        # Artefatos (20-21)
         best_artifact_rarity = 0.0
         found_artifact_floor = False
         for item_name in items_on_floor:
@@ -339,10 +350,11 @@ class BuriedBrainsEnv(gym.Env):
             obs[20] = 1.0
             obs[21] = best_artifact_rarity
 
-        # Meu Artefato Equipado
+        # Meu Artefato Equipado (22)
         my_equipped_artifact_name = agent['equipment'].get('Artifact')
         obs[22] = self.rarity_map.get(self.catalogs['equipment'][my_equipped_artifact_name].get('rarity'), 0.0) if my_equipped_artifact_name else 0.0
 
+        # Em Combate PvP (23)
         if self.pvp_state and agent_id in self.pvp_state:
             obs[23] = 1.0
 
@@ -361,23 +373,18 @@ class BuriedBrainsEnv(gym.Env):
                 
                 obs[24 + i*3 + 0] = 1.0 # Válido
                 if neighbor_content.get('enemies') or (other_agent_id and self.current_nodes.get(other_agent_id) == neighbor_node_id):
-                    obs[24 + i*3 + 1] = 1.0 # Inimigo
+                    obs[24 + i*3 + 1] = 1.0 # Inimigo (PvE ou PvP)
                 if neighbor_content.get('items') or any(evt in neighbor_content.get('events', []) for evt in ['Treasure', 'Morbid Treasure', 'Fountain of Life']):
                     obs[24 + i*3 + 2] = 1.0 # Recompensa
         
-        # --- NOVOS ESTADOS: Equipamento Atual (36-37) ---
-        # Permite ao agente comparar o que tem com o que está no chão (obs 13)
-        
-        # obs[36]: Raridade da Arma Equipada
+        # --- Equipamento Atual (36-37) ---
         equipped_weapon = agent['equipment'].get('Weapon')
         obs[36] = self.rarity_map.get(self.catalogs['equipment'][equipped_weapon].get('rarity'), 0.0) if equipped_weapon else 0.0
             
-        # obs[37]: Raridade da Armadura Equipada
         equipped_armor = agent['equipment'].get('Armor')
         obs[37] = self.rarity_map.get(self.catalogs['equipment'][equipped_armor].get('rarity'), 0.0) if equipped_armor else 0.0
-        # ------------------------------------------------
 
-        return obs  
+        return obs
     
     def reset(self, seed=None, options=None):
         """
@@ -876,7 +883,7 @@ class BuriedBrainsEnv(gym.Env):
         # 5. Verifica Transição para Arena
         # (O 'current_floor' será 0 após o respawn, então a checagem '... > 0' previne transição imediata)
         if not agent_terminated and self.current_floors[agent_id] > 0 and \
-           self.current_floors[agent_id] % 20 == 0: # Ex: Andares 20, 40, 60...
+           self.current_floors[agent_id] % self.sanctum_floor == 0: # Ex: Andares 20, 40, 60...
             
             if agent_id not in self.agents_in_arena:
                  self._transition_to_arena(agent_id) 
