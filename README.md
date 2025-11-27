@@ -1,60 +1,69 @@
-# BuriedBrains: A Roguelike-Inspired Single-Agent RL Environment
+# BuriedBrains: A Roguelike-Inspired Multi-Agent RL Environment (Hybrid SAE/MAE)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) 
 
 ## 📜 Visão Geral
 
-**BuriedBrains** é um ambiente de simulação procedural, parcialmente observável (POMDP) e de alto risco, projetado como um benchmark para pesquisa em Aprendizado por Reforço (RL), com foco no estudo de agentes com memória e na emergência de comportamentos complexos. Inspirado em jogos do gênero roguelike, o ambiente utiliza mecânicas como morte permanente (`permadeath`) e geração procedural de níveis para criar cenários desafiadores que exigem planejamento estratégico, gerenciamento de risco e adaptação sob incerteza.
+**BuriedBrains** é um ambiente de simulação procedural, parcialmente observável (POMDP) e de alto risco, projetado como um benchmark para pesquisa em Aprendizado por Reforço (RL). O projeto evoluiu de um ambiente *Single-Agent* (Fase 1) para uma arquitetura **Multi-Agent (Fase 2)** completa, capaz de suportar interações sociais complexas, combate PvP e dilemas de cooperação versus traição.
 
-Esta versão do repositório (`buriedbrains-roguelike-sae`) foca na **Parte 1** do projeto: o **Ambiente Single-Agent PvE (Player versus Environment)**. O objetivo desta fase é validar o core do ambiente, testar a capacidade de aprendizado de agentes RL (PPO, LSTM) e investigar a necessidade de memória em um POMDP complexo.
+Inspirado em jogos do gênero roguelike, o ambiente utiliza mecânicas como morte permanente (com respawn estratégico), geração procedural de níveis baseada em grafos e um sistema de **Karma** persistente.
+
+Este repositório contém a implementação completa do ambiente (`env.py` refatorado para MAE), os scripts de treinamento e as ferramentas de validação utilizadas no Trabalho de Conclusão de Curso (TCC) em Engenharia da Computação na Universidade Federal do Ceará (UFC) - Campus Sobral.
 
 ## 🎮 Inspiração
 
-O projeto **BuriedBrains** foi inspirado diretamente no jogo mobile *Buriedbornes*, desenvolvido pela Nussygame. Este jogo combina elementos clássicos de roguelikes com combate tático por turnos, progressão baseada em risco e morte permanente — características que influenciaram fortemente o design do ambiente. A simplicidade visual aliada à profundidade estratégica de *Buriedbornes* serviu como base conceitual para criar um ambiente de RL desafiador, parcialmente observável e com geração procedural, ideal para investigar agentes com memória e tomada de decisão sob incerteza.
+O projeto **BuriedBrains** foi inspirado diretamente no jogo mobile *Buriedbornes* (Nussygame). A simplicidade visual aliada à profundidade estratégica desse jogo serviu como base para criar um ambiente onde agentes devem gerenciar cooldowns, equipamentos e riscos. Na Fase 2, o projeto expande esse conceito introduzindo "Zonas de Encontro" (Santuários), inspiradas em lobbies multiplayer e dilemas sociais da Teoria dos Jogos.
 
-Este projeto foi desenvolvido como parte de um Trabalho de Conclusão de Curso (TCC) em Engenharia da Computação na Universidade Federal do Ceará (UFC) - Campus Sobral.
+## ✨ Funcionalidades Principais
 
-## ✨ Funcionalidades Principais (Parte 1 - PvE)
+### Fase 1: Core PvE (Validado)
+* **Geração Procedural via Grafos:** Níveis de progressão modelados como Grafos Acíclicos Dirigidos (DAGs) com poda dinâmica de ramos não escolhidos.
+* **Parcial Observabilidade (POMDP):** O agente opera com um vetor de observação limitado (38 estados), exigindo memória (LSTM) para inferir contextos táticos.
+* **Combate Tático:** Sistema de turnos com skills, cooldowns, efeitos de status (Stun, DoT, Buffs) e escalonamento de dificuldade.
+* **Sistema de Equipamentos:** Loot com raridade (Comum a Lendário) e lógica de decisão estratégica para upgrades.
 
-* **Ambiente Gymnasium-Compatível:** Interface padrão para fácil integração com frameworks de RL como Stable Baselines3.
-* **Geração Procedural Baseada em Grafos:** Os níveis (andares de progressão) são modelados como Grafos Acíclicos Dirigidos (DAGs) gerados dinamicamente, com poda de ramos não escolhidos.
-* **Parcial Observabilidade (POMDP):** O agente possui uma visão limitada do ambiente, necessitando de memória ou inferência para tomar decisões ótimas.
-* **Combate Tático:** Sistema de combate por turnos com habilidades, cooldowns, efeitos de status e gerenciamento de HP.
-* **Progressão e Risco:** Mecânica de morte permanente (`permadeath`) e sistema de níveis/experiência.
-* **Conteúdo Configurável via YAML:** Inimigos, habilidades, equipamentos, eventos e efeitos de sala são definidos em arquivos YAML, permitindo fácil balanceamento e extensão.
-* **Geração de Conteúdo Baseada em Budget:** A dificuldade e variedade das salas são controladas por um sistema de "orçamento" e regras condicionais.
-* **Logging Detalhado e Hall da Fama:** Callback customizado para Stable Baselines3 que registra métricas detalhadas e salva os logs completos das runs mais bem-sucedidas.
+### Fase 2: Arquitetura Social & Multiagente (Implementada)
+* **Estrutura MAE (Multi-Agent Environment):** O ambiente gerencia múltiplos agentes simultâneos com espaços de ação/observação independentes (`gym.spaces.Dict`).
+* **Máquina de Estados Híbrida:** * `PROGRESSION`: Agentes exploram seus próprios mundos PvE isolados.
+    * `ARENA_SYNC`: Mecânica de sincronização temporal para aguardar oponentes.
+    * `ARENA_INTERACTION`: Transição para grafos cíclicos (`Erdős-Rényi`) onde agentes interagem fisicamente.
+* **Mecânicas Sociais:**
+    * **Barganha Inferida:** Detecção de intenção cooperativa através de ações de "Dropar/Pegar Artefato".
+    * **Traição:** Detecção de ataques após ofertas de paz, com penalidades severas de Karma.
+    * **Sistema de Karma:** Modelo de reputação persistente que sobrevive à morte do agente, permitindo consequências de longo prazo em jogos iterados.
+    * **Morte e Respawn:** Agentes derrotados reiniciam sua progressão (Nível 1), mas mantêm sua identidade e histórico social (Karma).
 
-## 🎯 Motivação e Objetivos
+## 🎯 Objetivos Científicos
 
-O objetivo central desta fase do BuriedBrains é fornecer um benchmark robusto para investigar questões fundamentais em IA:
+Este projeto foi desenhado para testar hipóteses específicas sobre Inteligência Artificial:
 
-* **Necessidade de Memória:** Testar experimentalmente como a capacidade de memória (e.g., LSTM) impacta o desempenho em ambientes POMDP com desafios sequenciais e mecânicas complexas (Hipótese H1).
-* **Tomada de Decisão sob Risco:** Analisar como a mecânica de `permadeath` influencia o desenvolvimento de estratégias prudentes versus agressivas (Hipótese H2).
-* **Generalização:** Avaliar se os agentes aprendem políticas generalizáveis que funcionam em níveis gerados proceduralmente, em vez de memorizar soluções específicas (Hipótese H4).
+1.  **Relevância da Memória (H1):** Validada. Experimentos demonstraram que agentes com memória (LSTM) superam significativamente agentes reativos (PPO) em cenários com chefes e mecânicas temporais complexas.
+2.  **Tomada de Decisão sob Risco (H2):** Validada. Agentes aprendem a evitar ações inválidas e gerenciar equipamentos para maximizar a sobrevivência.
+3.  **Emergência de Comportamento Social (H3):** Arquitetura implementada para permitir que estratégias de cooperação ou traição surjam organicamente em função do Karma e do contexto (diferença de poder).
 
-## 📊 Status Atual e Resultados Principais
+## 📊 Resultados (Fase 1)
 
-* O ambiente PvE single-agent está funcional e passou por vários ciclos de balanceamento.
-* Experimentos comparando PPO (sem memória) e RecurrentPPO (LSTM) demonstraram que, **no ambiente atual com chefes e mecânicas complexas, a memória (LSTM) é crucial para o aprendizado e a sobrevivência**, validando a Hipótese H1 para este cenário.
-* O agente LSTM é capaz de aprender políticas para sobreviver e progredir no ambiente, embora a duração longa dos combates contra chefes seja um gargalo para completar o jogo consistentemente dentro do limite de tempo padrão (30k passos).
+* **Validação do Ambiente:** O ambiente provou-se desafiador, com agentes "médios" morrendo no mid-game (andares 100-150) devido ao escalonamento de dificuldade.
+* **Memória vs. Reativo:** Agentes LSTM demonstraram estabilidade de aprendizado (`explained_variance` ~0.7), enquanto agentes PPO sofreram colapso de política em cenários complexos.
+* **Estratégia de Equipamento:** Logs comprovam que o agente aprendeu a comparar a raridade de itens no chão com os equipados, realizando apenas trocas vantajosas.
 
-## 🛠️ Arquitetura e Tecnologias
+## 🛠️ Tecnologias
 
 * **Linguagem:** Python 3.x
-* **Core RL:** Gymnasium, Stable Baselines3
-* **Computação Numérica:** NumPy, PyTorch (via Stable Baselines3)
-* **Grafos:** NetworkX (para modelagem e manipulação da topologia)
+* **Core RL:** Gymnasium, Stable Baselines3, SB3-Contrib (RecurrentPPO)
+* **Otimização:** Optuna (Hyperparameter Optimization)
+* **Grafos:** NetworkX (Modelagem topológica de Dungeons e Arenas)
 * **Configuração:** PyYAML
+* **Dados:** NumPy, PyTorch
 
 ## 🚀 Instalação
 
 1.  **Clone o repositório:**
     ```bash
-    git clone [https://github.com/maelsilvatt/buriedbrains-roguelike-rl-env.git](https://github.com/maelsilvatt/buriedbrains-roguelike-rl-env.git)
-    cd buriedbrains-roguelike-rl-env
+    git clone [https://github.com/maelsilvatt/buriedbrains-roguelike-sae.git](https://github.com/maelsilvatt/buriedbrains-roguelike-sae.git)
+    cd buriedbrains-roguelike-sae
     ```
-2.  **Crie um ambiente virtual (recomendado):**
+2.  **Crie o ambiente virtual:**
     ```bash
     python -m venv venv
     source venv/bin/activate  # Linux/macOS
@@ -68,7 +77,7 @@ O objetivo central desta fase do BuriedBrains é fornecer um benchmark robusto p
 
 ## ▶️ Uso (Treinamento)
 
-O script principal para treinar um agente é `train.py`. Ele aceita argumentos de linha de comando para configurar o experimento:
+O script `train.py` suporta treinamento de longa duração, checkpoints e continuação de treino (resume).
 
 ```bash
 python train.py [opções]
@@ -76,44 +85,36 @@ python train.py [opções]
 
 **Opções Principais:**
 
-  * `--no_lstm`: Usa PPO padrão (MlpPolicy) em vez de RecurrentPPO (MlpLstmPolicy).
-  * `--total_timesteps <int>`: Número total de passos de treinamento (padrão: 5,000,000).
-  * `--max_episode_steps <int>`: Limite de passos por episódio no ambiente (padrão: 30,000).
-  * `--budget_multiplier <float>`: Multiplicador de dificuldade (padrão: 1.0). Afeta o "orçamento" para geração de conteúdo.
-  * `--suffix <str>`: Adiciona um sufixo customizado ao nome da pasta de log/modelo.
+  * `--total_timesteps <int>`: Total de passos de treino (ex: 5000000).
+  * `--max_episode_steps <int>`: Duração máxima do episódio/vida (recomendado: 50000 para Fase 2).
+  * `--budget_multiplier <float>`: Dificuldade do gerador de conteúdo (1.0 = Normal).
+  * `--load_path <str>`: Caminho para um arquivo `.zip` de modelo para **continuar o treinamento**.
+  * `--suffix <str>`: Nome identificador da run (para logs e salvamento).
 
-**Exemplos:**
+**Exemplo de Maratona (Resume):**
 
-  * **Treinar LSTM (padrão) por 1M de passos:**
-    ```bash
-    python train.py --total_timesteps 1000000 --suffix "LSTM_Test_1M"
-    ```
-  * **Treinar PPO (sem LSTM) por 5M de passos com limite de 50k por episódio:**
-    ```bash
-    python train.py --no_lstm --total_timesteps 5000000 --max_episode_steps 50000 --suffix "PPO_Baseline_5M_50kSteps"
-    ```
+```bash
+# Dia 1
+python train.py --total_timesteps 5000000 --suffix "LSTM_Expert"
 
-Os logs do TensorBoard serão salvos na pasta `logs/` e os modelos e Hall da Fama na subpasta correspondente dentro de `models/` e `logs/`.
+# Dia 2 (Continuando o treino anterior)
+python train.py --total_timesteps 5000000 --suffix "LSTM_Expert" --load_path "models/RecurrentPPO_LSTM_Expert/model_5000000_steps.zip"
+```
 
-## 🔮 Trabalhos Futuros
+## 🔮 Próximos Passos (Fase 3 - Experimentos Sociais)
 
-Embora este repositório foque na Parte 1 (PvE), o design completo do BuriedBrains prevê uma **Parte 2** focada em interações **Multiagente (MAE)** e **Comportamento Social Emergente**:
+Com a arquitetura MAE implementada no `env.py`, os próximos passos da pesquisa envolvem:
 
-  * Implementação das "Zonas K" com topologia de grafo não-direcionado para encontros PvP.
-  * Introdução de ações sociais (e.g., Soltar/Pegar Artefato para barganha inferida).
-  * Implementação do sistema de Karma para rastrear reputação e influenciar interações.
-  * Refatoração do ambiente para a API multiagente.
-  * Desenvolvimento de um loop de treinamento MARL (provavelmente Self-Play)
-  * Validação da Hipótese sobre a emergência de comportamentos sociais contextuais.
-  * Desenvolvimento completo do Visualizador externo em Unity.
+  * **Treinamento Self-Play:** Implementar um loop de treino customizado para alimentar a rede neural com as experiências de ambos os agentes (`a1`, `a2`) simultaneamente.
+  * **Análise de Karma:** Executar simulações de longa duração para observar se o Karma acumulado influencia a taxa de agressão em encontros futuros (vingança/cooperação).
+  * **Visualização:** Conectar o simulador a uma interface gráfica (Unity) via sockets para demonstrar as interações em tempo real.
 
 ## 📄 Citação
 
-Se usar este ambiente em sua pesquisa, por favor, cite o trabalho
 ```bibtex
 @misc{silva2025buriedbrains,
   author = {Silva, Ismael Soares da},
-  title = {BuriedBrains: BuriedBrains: Um Ambiente Roguelike Parcialmente Observável para Benchmark de Agentes RL com Memória},
+  title = {BuriedBrains: Um Ambiente Roguelike Parcialmente Observável para Benchmark de Agentes RL com Memória},
   year = {2025},
   howpublished = {Trabalho de Conclusão de Curso (Engenharia da Computação), Universidade Federal do Ceará, Campus Sobral},
   note = {Orientador: Prof. Dr. Thiago Iachiley Araújo de Souza}
@@ -123,3 +124,5 @@ Se usar este ambiente em sua pesquisa, por favor, cite o trabalho
 ## ⚖️ Licença
 
 Este projeto é licenciado sob a Licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
+
+```
