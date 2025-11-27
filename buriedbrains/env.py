@@ -25,7 +25,8 @@ class BuriedBrainsEnv(gym.Env):
                  max_level: int = 400,
                  budget_multiplier: float = 1.0,
                  guarantee_enemy: bool = False, 
-                 verbose: int = 0):
+                 verbose: int = 0,
+                 sanctum_floor: int = 20):
         super().__init__()        
         
         # --- 1. CARREGAMENTO DE CATÁLOGOS (Sem Mudanças) ---
@@ -66,7 +67,7 @@ class BuriedBrainsEnv(gym.Env):
         self.guarantee_enemy = guarantee_enemy
         self.pool_costs = content_generation._calculate_costs(enemy_data['pools'])
         self.rarity_map = {'Common': 0.25, 'Rare': 0.5, 'Epic': 0.75, 'Legendary': 1.0}
-        self.sanctum_floor = 50  # Andar em que ocorre a transição para a arena
+        self.sanctum_floor = sanctum_floor  # Andar em que ocorre a transição para a arena
         
         for catalog_name, catalog_data in self.catalogs.items():
             if isinstance(catalog_data, dict):

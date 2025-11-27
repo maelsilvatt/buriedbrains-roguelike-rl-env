@@ -59,17 +59,55 @@ class LoggingCallback(BaseCallback):
         return info  # fallback seguro
 
     def _update_hall_of_fame(self, story, hall_list, key):
-        """Insere ordenadamente no Hall."""
+        """
+        Insere a história no Hall da Fama garantindo:
+        - no máximo top_n entradas
+        - ordenação estável por score
+        - remoção de duplicatas
+        """
+
+        # --- 1. Evita duplicatas reais ---
+        signature = (
+            story.get("agent_name"),
+            story.get("level"),
+            story.get("floor"),
+            story.get("enemies_defeated"),
+            story.get("damage_dealt"),
+            story.get("death_cause")
+        )
+
+        existing_signatures = {
+            (
+                s.get("agent_name"),
+                s.get("level"),
+                s.get("floor"),
+                s.get("enemies_defeated"),
+                s.get("damage_dealt"),
+                s.get("death_cause")
+            )
+            for s in hall_list
+        }
+
+        if signature in existing_signatures:
+            return  # Já existe, não adiciona outra cópia
+
+        # --- 2. Insere se houver espaço ou se score for maior ---
         new_score = story.get(key, 0)
 
         if len(hall_list) < self.top_n:
             hall_list.append(story)
         else:
+            # Se for melhor que o pior, substitui
             if new_score > hall_list[-1].get(key, 0):
-                hall_list.pop()
-                hall_list.append(story)
+                hall_list[-1] = story
+            else:
+                return  # Não entra no top N
 
+        # --- 3. Reordena ---
         hall_list.sort(key=lambda s: s[key], reverse=True)
+
+        # --- 4. Garante tamanho máximo (pode cortar empates excessivos) ---
+        hall_list[:] = hall_list[:self.top_n]
         
     def _on_step(self) -> bool:
         dones = self.locals.get("dones", [])

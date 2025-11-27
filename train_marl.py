@@ -95,7 +95,7 @@ def main():
     # Função lambda para criar o env envelopado
     max_episode_steps = args.max_episode_steps
     def make_env():
-        env = BuriedBrainsEnv(max_episode_steps) # Dificuldade normal
+        env = BuriedBrainsEnv(max_episode_steps, sanctum_floor=20) # Dificuldade normal
         env = SymmetricSelfPlayWrapper(env) # Transforma em Single-Agent para o SB3
         return env
 
