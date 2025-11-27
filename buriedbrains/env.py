@@ -146,7 +146,7 @@ class BuriedBrainsEnv(gym.Env):
             for agent_id in self.agent_ids
         })
 
-        # --- 5. VARIÁVEIS DE ESTADO (Dicionarizadas para MAE) ---
+        # --- 5. VARIÁVEIS DE ESTADO ---
         self.agent_states = {}
         self.agent_names = {}
         self.graphs = {}
@@ -167,6 +167,7 @@ class BuriedBrainsEnv(gym.Env):
         self.cowardice_kills_this_episode = {}
         self.pve_combat_durations = {}
         self.pvp_combat_durations = {}
+        self.karma_history = {}
 
 
         # --- 6. ESTADO GLOBAL DO AMBIENTE (Novo para MAE) ---
@@ -451,6 +452,7 @@ class BuriedBrainsEnv(gym.Env):
             self.pvp_combats_this_episode[agent_id] = 0
             self.bargains_succeeded_this_episode[agent_id] = 0
             self.cowardice_kills_this_episode[agent_id] = 0
+            self.karma_history[agent_id] = []
             
             # Duração de Combate (Listas para guardar a duração de CADA luta)
             self.pve_combat_durations[agent_id] = [] 
@@ -899,6 +901,7 @@ class BuriedBrainsEnv(gym.Env):
                 'pvp_combats': self.pvp_combats_this_episode[agent_id],
                 'bargains_succeeded': self.bargains_succeeded_this_episode[agent_id],
                 'cowardice_kills': self.cowardice_kills_this_episode[agent_id],
+                'karma_history': self.karma_history[agent_id],
             }
             
         return agent_reward, agent_terminated
@@ -1094,6 +1097,14 @@ class BuriedBrainsEnv(gym.Env):
         observations = {
             agent_id: self._get_observation(agent_id) for agent_id in self.agent_ids
         }
+
+        # Coleta de Histórico de Karma (Amostra a cada 100 steps)
+        if self.current_step % 100 == 0:
+            for agent_id in self.agent_ids:
+                # Pega do sistema de reputação (número complexo)
+                z = self.reputation_system.get_karma_state(agent_id)
+                # Salva como dict
+                self.karma_history[agent_id].append({'real': z.real, 'imag': z.imag})
         
         # Retorna os dicionários no formato MAE completo
         return observations, rewards, terminateds, truncateds, infos

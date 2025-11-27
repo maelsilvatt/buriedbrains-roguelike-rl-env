@@ -72,7 +72,7 @@ def main():
     # --- 1. Cria o Ambiente MAE com Wrapper ---
     # Função lambda para criar o env envelopado
     def make_env():
-        env = BuriedBrainsEnv(max_episode_steps=50000, budget_multiplier=1.0, verbose=1) # Dificuldade normal
+        env = BuriedBrainsEnv(max_episode_steps=50000, budget_multiplier=1.0, verbose=0) # Dificuldade normal
         env = SymmetricSelfPlayWrapper(env) # Transforma em Single-Agent para o SB3
         return env
 

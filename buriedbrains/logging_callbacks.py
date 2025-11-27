@@ -1,6 +1,8 @@
+# buriedbrains/logging_callbacks.py
 import os
 import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
+from buriedbrains.plot_utils import save_poincare_plot
 
 class LoggingCallback(BaseCallback):
     """
@@ -22,17 +24,24 @@ class LoggingCallback(BaseCallback):
         self.episode_floors = []
         self.episode_total_exp = [] 
         
-        # --- 3. Métricas de Estilo de Jogo (Novas!) ---
-        self.episode_damage_dealt = []      # Agressividade
-        self.episode_equipment_swaps = []   # Inteligência Estratégica
-        self.episode_exploration_steps = [] # Passos gastos explorando vs lutando
+        # --- 3. Métricas de Estilo de Jogo ---
+        self.episode_damage_dealt = []      
+        self.episode_equipment_swaps = []   
         
         # --- 4. Métricas de Combate/Erro ---
         self.episode_enemies_defeated = []
         self.episode_invalid_actions = []
         self.episode_total_actions = []
+
+        # --- 5. NOVAS MÉTRICAS: Duração de Combate ---
+        self.episode_avg_pve_duration = [] # Média de turnos por luta PvE no episódio
+        self.episode_avg_pvp_duration = [] # Média de turnos por luta PvP no episódio
         
-        # --- 5. Métricas Sociais (Karma - Preparação Fase 2) ---
+        # --- 6. NOVAS MÉTRICAS: Social (MAE) ---
+        self.episode_arena_encounters = []
+        self.episode_pvp_combats = []
+        self.episode_bargains = []
+        self.episode_cowardice_kills = []
         self.episode_final_karma_real = []
         
         # --- Hall da Fama ---
@@ -73,7 +82,7 @@ class LoggingCallback(BaseCallback):
             final_status = final_info.get("final_status")
             if not final_status: continue 
             
-            # --- Coleta de Dados (Lendo do final_status) ---
+            # --- Coleta de Dados Básicos ---
             self.episode_rewards.append(self.locals["rewards"][i])
             self.episode_wins.append(1 if final_status.get("win") else 0)
             self.episode_levels.append(final_status.get("level", 0))
@@ -83,41 +92,40 @@ class LoggingCallback(BaseCallback):
             
             self.episode_enemies_defeated.append(final_status.get("enemies_defeated", 0))
             self.episode_invalid_actions.append(final_status.get("invalid_actions", 0))
-            self.episode_total_actions.append(final_status.get("steps", 1)) # Total steps = total actions                    
+            self.episode_total_actions.append(final_status.get("steps", 1))
+            
             self.episode_damage_dealt.append(final_status.get("damage_dealt", 0))
             self.episode_equipment_swaps.append(final_status.get("equipment_swaps", 0))
 
+            # --- Coleta de Duração de Combate ---
+            # O env envia uma LISTA de durações de cada luta do episódio
             pve_durs = final_status.get('pve_durations', [])
             pvp_durs = final_status.get('pvp_durations', [])
             
-            avg_pve_dur = np.mean(pve_durs) if pve_durs else 0
-            avg_pvp_dur = np.mean(pvp_durs) if pvp_durs else 0
+            # Calculamos a média DENTRO do episódio para ter um escalar
+            avg_pve = np.mean(pve_durs) if pve_durs else 0
+            avg_pvp = np.mean(pvp_durs) if pvp_durs else 0
             
-            # Salva em listas temporárias do callback para fazer média do intervalo
-            if not hasattr(self, 'episode_avg_pve_duration'): self.episode_avg_pve_duration = []
-            if not hasattr(self, 'episode_avg_pvp_duration'): self.episode_avg_pvp_duration = []
-            
-            self.episode_avg_pve_duration.append(avg_pve_dur)
-            self.episode_avg_pvp_duration.append(avg_pvp_dur)
-            
-            # --- Métricas Sociais ---
+            self.episode_avg_pve_duration.append(avg_pve)
+            self.episode_avg_pvp_duration.append(avg_pvp)
+
+            # --- Coleta de Métricas Sociais ---
             self.episode_arena_encounters.append(final_status.get('arena_encounters', 0))
             self.episode_pvp_combats.append(final_status.get('pvp_combats', 0))
             self.episode_bargains.append(final_status.get('bargains_succeeded', 0))
             self.episode_cowardice_kills.append(final_status.get('cowardice_kills', 0))
             
-            # Karma
             karma = final_status.get("karma", {'real': 0.0})
             self.episode_final_karma_real.append(karma.get('real', 0.0))
 
             current_floor = final_status.get("floor", 0)
             self.max_floor_ever = max(self.max_floor_ever, current_floor)
 
-            # --- Montagem da História para o Hall da Fama ---
+            # --- Hall da Fama ---
             agent_name = final_status.get('agent_name', 'Agente_Desconhecido')
             full_log = final_status.get('full_log', ['Log não capturado.'])
             equipment = final_status.get('equipment', {})
-            death_cause = final_status.get('death_cause', 'Desconhecida') # Vamos adicionar isso!
+            death_cause = final_status.get('death_cause', 'Desconhecida')
             
             story = {
                 'agent_name': agent_name,
@@ -136,58 +144,81 @@ class LoggingCallback(BaseCallback):
 
             # --- Logging no TensorBoard ---
             if self.episode_count % self.log_interval == 0:
-                # Cálculos de Médias
+                # Médias Básicas
                 mean_reward = np.mean(self.episode_rewards) if self.episode_rewards else 0
                 win_rate = np.mean(self.episode_wins) if self.episode_wins else 0
                 avg_level = np.mean(self.episode_levels) if self.episode_levels else 0
                 avg_floor = np.mean(self.episode_floors) if self.episode_floors else 0
+                
+                # Médias de Comportamento
                 avg_damage = np.mean(self.episode_damage_dealt) if self.episode_damage_dealt else 0
                 avg_swaps = np.mean(self.episode_equipment_swaps) if self.episode_equipment_swaps else 0
-                
                 total_invalid = sum(self.episode_invalid_actions)
                 total_actions = sum(self.episode_total_actions)
                 invalid_rate = total_invalid / total_actions if total_actions > 0 else 0
 
-                # Calcula médias de duração de combate
+                # Médias de Duração (Média das Médias)
                 avg_pve_dur_interval = np.mean(self.episode_avg_pve_duration) if self.episode_avg_pve_duration else 0
                 avg_pvp_dur_interval = np.mean(self.episode_avg_pvp_duration) if self.episode_avg_pvp_duration else 0
 
-                # Registro
+                # Totais Sociais (Soma no intervalo)
+                total_arena = np.sum(self.episode_arena_encounters)
+                total_pvp = np.sum(self.episode_pvp_combats)
+                total_bargains = np.sum(self.episode_bargains)
+                total_cowardice = np.sum(self.episode_cowardice_kills)
+                avg_karma = np.mean(self.episode_final_karma_real) if self.episode_final_karma_real else 0
+
+                # Registro TensorBoard
                 self.logger.record("rollout/ep_rew_mean", mean_reward)
                 self.logger.record("custom/win_rate", win_rate)
                 self.logger.record("custom/avg_level", avg_level)
                 self.logger.record("custom/avg_floor_reached", avg_floor)
-                self.logger.record("custom/avg_damage_dealt", avg_damage)     
-                self.logger.record("custom/avg_equipment_swaps", avg_swaps)   
+                self.logger.record("custom/avg_damage_dealt", avg_damage)
+                self.logger.record("custom/avg_equipment_swaps", avg_swaps)
                 self.logger.record("custom/rate_invalid_actions", invalid_rate)
+                
+                # Novos Registros
                 self.logger.record("combat/avg_pve_duration", avg_pve_dur_interval)
-                self.logger.record("combat/avg_pvp_duration", avg_pvp_dur_interval)            
-                self.logger.record("social/total_arena_encounters", np.sum(self.episode_arena_encounters))
-                self.logger.record("social/total_pvp_combats", np.sum(self.episode_pvp_combats))
-                self.logger.record("social/total_bargains", np.sum(self.episode_bargains))
+                self.logger.record("combat/avg_pvp_duration", avg_pvp_dur_interval)
+                self.logger.record("social/total_arena_encounters", total_arena)
+                self.logger.record("social/total_pvp_combats", total_pvp)
+                self.logger.record("social/total_bargains", total_bargains)
+                self.logger.record("social/total_cowardice_kills", total_cowardice)
+                self.logger.record("social/avg_final_karma", avg_karma)
                 
                 self.logger.dump(step=self.num_timesteps)
 
-                # Limpeza das listas
+                if self.verbose > 0:
+                    print(f"--- Intervalo Episódios {self.episode_count - self.log_interval + 1}-{self.episode_count} (Timestep {self.num_timesteps}) ---")
+                    print(f"  Avg Floor: {avg_floor:.2f} | Max Ever: {self.max_floor_ever}")
+                    print(f"  Avg PvE Turns: {avg_pve_dur_interval:.1f}")
+                    print(f"  Social Interactions: {total_arena} Encounters, {total_bargains} Bargains")
+                    print("-" * 30)
+
+                # Limpeza Geral
                 self.episode_rewards.clear()
                 self.episode_wins.clear()
                 self.episode_levels.clear()
                 self.episode_floors.clear()
                 self.episode_lengths.clear()
                 self.episode_total_exp.clear()
-                self.episode_damage_dealt.clear()
-                self.episode_equipment_swaps.clear()
                 self.episode_enemies_defeated.clear()
                 self.episode_invalid_actions.clear()
                 self.episode_total_actions.clear()
-                self.episode_final_karma_real.clear()
+                self.episode_damage_dealt.clear()
+                self.episode_equipment_swaps.clear()
                 self.episode_avg_pve_duration.clear()
                 self.episode_avg_pvp_duration.clear()
+                self.episode_arena_encounters.clear()
+                self.episode_pvp_combats.clear()
+                self.episode_bargains.clear()
+                self.episode_cowardice_kills.clear()
+                self.episode_final_karma_real.clear()
 
         return True
 
     def save_hall_of_fame(self, save_dir: str):
-        """Salva as histórias com detalhes extras (Equipamento, Causa da Morte)."""
+        """Salva as histórias com detalhes extras."""
         if self.verbose > 0:
             print(f"\nSalvando Hall da Fama em {save_dir}...")
         
@@ -208,8 +239,8 @@ class LoggingCallback(BaseCallback):
                         f.write(f"ANDAR FINAL: {story['floor']}\n")
                         f.write(f"NÍVEL FINAL: {story['level']}\n")
                         f.write(f"INIMIGOS DERROTADOS: {story['enemies_defeated']}\n")
-                        f.write(f"DANO TOTAL CAUSADO: {story['damage_dealt']:.1f}\n") # Novo
-                        f.write(f"CAUSA DA MORTE: {story['death_cause']}\n")       # Novo
+                        f.write(f"DANO TOTAL: {story.get('damage_dealt', 0):.1f}\n")
+                        f.write(f"CAUSA MORTE: {story.get('death_cause', 'N/A')}\n")
                         
                         f.write("\n--- EQUIPAMENTOS FINAIS ---\n")
                         equipment = story.get('equipment', {})
@@ -221,6 +252,15 @@ class LoggingCallback(BaseCallback):
 
                         f.write("\n" + "="*50 + "\n\nHISTÓRIA DO AGENTE:\n" + "="*50 + "\n")
                         f.writelines(story['log_content'])
+
+                        # Gera o gráfico de Karma no Disco de Poincaré
+                        karma_hist = story.get('karma_history', [])
+                        if karma_hist:
+                            # Nome do arquivo de imagem (mesmo prefixo do txt)
+                            plot_filename = f"Rank_{i+1:02d}__{metric_key}_{metric_val}__{name}_Karma.png"
+                            plot_path = os.path.join(path, plot_filename)
+                            
+                            save_poincare_plot(karma_hist, name, plot_path)
                 except Exception as e:
                     if self.verbose > 0:
                         print(f"  [Callback ERROR] Falha ao salvar: {e}")
