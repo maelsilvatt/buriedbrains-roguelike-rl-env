@@ -250,7 +250,7 @@ class BuriedBrainsEnv(gym.Env):
 
     def _get_observation(self, agent_id: str) -> np.ndarray:
         """
-        Coleta e retorna a observação de 39 estados para o agente especificado.        
+        Coleta e retorna a observação de 41 estados para o agente especificado.        
         """
         # Começa com -1.0 (default)
         obs = np.full(self.observation_space[agent_id].shape, -1.0, dtype=np.float32) 
@@ -260,10 +260,22 @@ class BuriedBrainsEnv(gym.Env):
 
         agent = self.agent_states[agent_id]
         current_node_id = self.current_nodes[agent_id]
+                
+        # Usa o grafo de progressão individual
         current_graph = self.graphs[agent_id]
         
-        if self.env_state != 'PROGRESSION' and agent_id in self.agents_in_arena:
-            current_graph = self.arena_graph
+        # Só muda para o grafo da arena SE:
+        # 1. Não estamos em PROGRESSION
+        # 2. O agente já entrou na arena
+        # 3. O GRAFO DA ARENA JÁ EXISTE (Não é None)
+        if self.env_state != 'PROGRESSION' and \
+           agent_id in self.agents_in_arena and \
+           self.arena_graph is not None:
+            current_graph = self.arena_graph        
+
+        # se por algum milagre ainda for None, retorna obs vazia para não crashar
+        if current_graph is None:
+             return obs
 
         if not current_graph.has_node(current_node_id):
              return obs
@@ -309,13 +321,12 @@ class BuriedBrainsEnv(gym.Env):
             obs[12] = 1.0
             obs[13] = best_wep_arm_rarity
 
-        # --- Bloco Contexto Social/PvP (14-19 + 38) ---
+        # --- Bloco Contexto Social/PvP (14-19 + 38-40) ---
         obs[14] = 1.0 if self.env_state != 'PROGRESSION' else -1.0
         
         other_agent_id = next((aid for aid in self.agent_ids if aid != agent_id), None)
         
         if other_agent_id and (self.env_state != 'PROGRESSION'):
-            # Verifica se estão na mesma sala
             is_in_same_room = (self.current_nodes[agent_id] == self.current_nodes[other_agent_id])
 
             if is_in_same_room:
@@ -376,7 +387,15 @@ class BuriedBrainsEnv(gym.Env):
         if self.env_state == 'PROGRESSION':
             neighbors = list(current_graph.successors(current_node_id))
         else:
-            neighbors = list(current_graph.neighbors(current_node_id))
+            # Na arena, se o grafo existir
+            if current_graph:
+                try:
+                    neighbors = list(current_graph.neighbors(current_node_id))
+                except:
+                    neighbors = []
+            else:
+                neighbors = []
+                
         neighbors.sort() 
 
         for i in range(self.MAX_NEIGHBORS):
@@ -387,7 +406,7 @@ class BuriedBrainsEnv(gym.Env):
                 
                 obs[24 + i*3 + 0] = 1.0 # Válido
                 if neighbor_content.get('enemies') or (other_agent_id and self.current_nodes.get(other_agent_id) == neighbor_node_id):
-                    obs[24 + i*3 + 1] = 1.0 # Inimigo (PvE ou PvP)
+                    obs[24 + i*3 + 1] = 1.0 # Inimigo
                 if neighbor_content.get('items') or any(evt in neighbor_content.get('events', []) for evt in ['Treasure', 'Morbid Treasure', 'Fountain of Life']):
                     obs[24 + i*3 + 2] = 1.0 # Recompensa
         

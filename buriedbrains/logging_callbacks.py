@@ -4,11 +4,10 @@ import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
 from buriedbrains.plot_utils import save_poincare_plot
 
-
 class LoggingCallback(BaseCallback):
     """
-    Callback para registrar métricas detalhadas do BuriedBrains (SAE/MAE)
-    e salvar as "melhores histórias" (Hall da Fama).
+    Callback avançado para registrar métricas detalhadas do BuriedBrains (SAE/MAE)
+    e salvar as "melhores histórias" (Hall da Fama) periodicamente.
     """
     def __init__(self, log_interval: int = 10, verbose: int = 1, top_n: int = 10):
         super().__init__(verbose)
@@ -53,7 +52,6 @@ class LoggingCallback(BaseCallback):
     def _extract_final_info(self, info):
         """Retorna o final_info real do SB3, sem quebrar."""
         raw = info.get("final_info", None)
-
         if isinstance(raw, list) and len(raw) > 0:
             return raw[0]
         if isinstance(raw, dict):
@@ -87,7 +85,6 @@ class LoggingCallback(BaseCallback):
             final_info = self._extract_final_info(infos[i])
             final_status = final_info.get("final_status", None)
 
-            # Se o env resetou sem mandar final_status (Arena etc.)
             if not isinstance(final_status, dict):
                 continue
 
@@ -140,7 +137,7 @@ class LoggingCallback(BaseCallback):
             self._update_hall_of_fame(story, self.hall_of_fame_floor, 'floor')
             self._update_hall_of_fame(story, self.hall_of_fame_enemies, 'enemies_defeated')
 
-            # Logging do TensorBoard
+            # Logging do TensorBoard E SALVAMENTO PERIÓDICO
             if self.episode_count % self.log_interval == 0:
 
                 # básicos
@@ -154,7 +151,8 @@ class LoggingCallback(BaseCallback):
                 self.logger.record("custom/avg_equipment_swaps", np.mean(self.episode_equipment_swaps))
                 total_invalid = sum(self.episode_invalid_actions)
                 total_actions = sum(self.episode_total_actions)
-                self.logger.record("custom/rate_invalid_actions", total_invalid / total_actions)
+                invalid_rate = total_invalid / total_actions if total_actions > 0 else 0
+                self.logger.record("custom/rate_invalid_actions", invalid_rate)
 
                 # duração
                 self.logger.record("combat/avg_pve_duration", np.mean(self.episode_avg_pve_duration))
@@ -172,9 +170,19 @@ class LoggingCallback(BaseCallback):
                 if self.verbose:
                     print(f"--- Intervalo Episódios {self.episode_count - self.log_interval + 1}-{self.episode_count} (Timestep {self.num_timesteps}) ---")
                     print(f"  Avg Floor: {np.mean(self.episode_floors):.2f} | Max Ever: {self.max_floor_ever}")
-                    print(f"  Avg PvE Turns: {np.mean(self.episode_avg_pve_duration):.1f}")
-                    print(f"  Social Interactions: {np.sum(self.episode_arena_encounters)} Encounters, {np.sum(self.episode_bargains)} Bargains")
+                    print(f"  Social: {np.sum(self.episode_arena_encounters)} Encounters, {np.sum(self.episode_bargains)} Bargains")
                     print("-" * 40)
+                
+                # --- SALVAMENTO AUTOMÁTICO DO HALL DA FAMA ---
+                # Salva sempre que logar no TensorBoard, para garantir que não percamos dados
+                try:
+                    log_dir = self.logger.get_dir()
+                    if log_dir:
+                        hof_path = os.path.join(log_dir, "hall_of_fame")
+                        self.save_hall_of_fame(hof_path)
+                except Exception as e:
+                    if self.verbose: print(f"[Logger WARN] Falha ao salvar Hall da Fama automático: {e}")
+                # ---------------------------------------------
 
                 self._reset_interval_buffers()
 
@@ -193,28 +201,32 @@ class LoggingCallback(BaseCallback):
                 fname = f"Rank_{i+1:02d}__{key}_{story[key]}__{story['agent_name']}.txt"
                 fpath = os.path.join(path, fname)
 
-                with open(fpath, "w", encoding="utf-8") as f:
-                    f.write(f"AGENTE: {story['agent_name']}\n")
-                    f.write(f"RANK: {i+1}\n")
-                    f.write(f"{key.upper()}: {story[key]}\n")
-                    f.write(f"FLOOR: {story['floor']}\n")
-                    f.write(f"LEVEL: {story['level']}\n")
-                    f.write(f"INIMIGOS DERROTADOS: {story['enemies_defeated']}\n")
-                    f.write(f"DANO TOTAL: {story['damage_dealt']}\n")
-                    f.write(f"CAUSA DA MORTE: {story['death_cause']}\n")
+                try:
+                    with open(fpath, "w", encoding="utf-8") as f:
+                        f.write(f"AGENTE: {story['agent_name']}\n")
+                        f.write(f"RANK: {i+1}\n")
+                        f.write(f"{key.upper()}: {story[key]}\n")
+                        f.write(f"FLOOR: {story['floor']}\n")
+                        f.write(f"LEVEL: {story['level']}\n")
+                        f.write(f"INIMIGOS DERROTADOS: {story['enemies_defeated']}\n")
+                        f.write(f"DANO TOTAL: {story['damage_dealt']}\n")
+                        f.write(f"CAUSA DA MORTE: {story['death_cause']}\n")
 
-                    f.write("\n--- EQUIPAMENTO FINAL ---\n")
-                    for slot, item in story['equipment'].items():
-                        f.write(f"  {slot}: {item}\n")
+                        f.write("\n--- EQUIPAMENTO FINAL ---\n")
+                        for slot, item in story['equipment'].items():
+                            f.write(f"  {slot}: {item}\n")
 
-                    f.write("\n--- LOG ---\n")
-                    for line in story['log_content']:
-                        f.write(line + "\n")
+                        f.write("\n--- LOG ---\n")
+                        # Usa writelines para ser mais eficiente e evitar linhas em branco extras
+                        # (Assumindo que o log já vem com \n do env.py)
+                        f.writelines(story['log_content'])
 
-                # karma plot
-                if story.get("karma_history"):
-                    plot_path = fpath.replace(".txt", "_Karma.png")
-                    save_poincare_plot(story["karma_history"], story["agent_name"], plot_path)
+                    # karma plot
+                    if story.get("karma_history"):
+                        plot_path = fpath.replace(".txt", "_Karma.png")
+                        save_poincare_plot(story["karma_history"], story["agent_name"], plot_path)
+                except Exception as e:
+                    if self.verbose: print(f"[Logger ERROR] Erro ao salvar arquivo: {e}")
 
         save_list(self.hall_of_fame_level, "top_por_nivel", "level")
         save_list(self.hall_of_fame_floor, "top_por_andar", "floor")

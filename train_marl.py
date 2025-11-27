@@ -135,7 +135,7 @@ def main():
 
     # --- 5. Callbacks ---
     checkpoint_callback = CheckpointCallback(save_freq=200_000, save_path=model_path, name_prefix="marl_model")
-    logging_callback = LoggingCallback(verbose=1, log_interval=2)
+    logging_callback = LoggingCallback(verbose=1, log_interval=1)
 
     # --- 6. Treino ---
     print(f"Iniciando Treino MARL (Self-Play) por {args.total_timesteps} passos...")
@@ -146,7 +146,7 @@ def main():
         progress_bar=True
     )
     
-    new_model.save(f"{model_path}/final_marl_model")
+    new_model.save(f"{model_path}/final_marl_model_{args.total_timesteps}_steps")
     print("Treinamento Concluído!")
 
 if __name__ == "__main__":
