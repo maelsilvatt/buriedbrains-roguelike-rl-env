@@ -88,3 +88,4 @@ class HyperbolicReputationSystem:
             z_new = z_new / np.abs(z_new) * 0.9999 # Projeta de volta para a borda
             
         self.agent_karma[agent_id] = z_new
+

@@ -244,9 +244,12 @@ class BuriedBrainsEnv(gym.Env):
         current_node_id = self.current_nodes[agent_id]
         current_graph = self.graphs[agent_id]
         
-        if self.env_state != 'PROGRESSION' and agent_id in self.agents_in_arena:
+        # Se estiver na arena E A ARENA JÁ EXISTIR (Interação), usa o grafo da arena.
+        # Se estiver apenas em SYNC (esperando), arena_graph é None, então continua no grafo antigo.
+        if self.env_state != 'PROGRESSION' and \
+           agent_id in self.agents_in_arena and \
+           self.arena_graph is not None:
             current_graph = self.arena_graph
-
         if not current_graph.has_node(current_node_id):
              return obs
              
@@ -1046,26 +1049,43 @@ class BuriedBrainsEnv(gym.Env):
     def _handle_exploration_turn(self, agent_id: str, action: int):
         """
         Processa uma ação em modo de exploração (fora de combate).
-        REVISADO: Ação 4 (Equipar) agora usa lógica de recompensa inteligente.
-        Retorna (recompensa, episodio_terminou).
+        Versão ROBUSTA: Define variáveis comuns no início para evitar UnboundLocalError.
         """
         reward = 0
         terminated = False
         
+        # --- 1. Definições Comuns (Segurança) ---
+        # Garante que estas variáveis existam para todos os blocos abaixo
+        current_node_id = self.current_nodes[agent_id]
+        
+        # Seleção do Grafo (P-Zone ou K-Zone)
+        current_graph = self.graphs[agent_id] # Padrão: Grafo de Progressão
+        
+        # Se estiver num estado de Arena E o agente já estiver lá dentro
+        if self.env_state != 'PROGRESSION' and agent_id in self.agents_in_arena:
+            current_graph = self.arena_graph
+            
+        # Verificação Crítica de Integridade
+        if current_graph is None:
+            # Isso protege contra o erro 'AttributeError: NoneType'
+            # Pode acontecer em estados transitórios de sincronização
+            self._log(agent_id, f"[ERRO CRÍTICO] current_graph é None na ação {action}. Ignorando.")
+            return -5.0, terminated
+
+        # --- 2. Lógica das Ações ---
+
         # --- Ações de Movimento (6, 7, 8, 9) ---        
         if 6 <= action <= 9:
             neighbor_index = action - 6
             
-            current_node_id = self.current_nodes[agent_id]
-            current_graph = self.graphs[agent_id] # Padrão é grafo de progressão
-            
-            if self.env_state != 'PROGRESSION' and agent_id in self.agents_in_arena:
-                current_graph = self.arena_graph
-                
+            # (Pega vizinhos baseado no tipo de grafo)
             if self.env_state == 'PROGRESSION':
                 neighbors = list(current_graph.successors(current_node_id))
             else: # Arena
-                neighbors = list(current_graph.neighbors(current_node_id))
+                try:
+                    neighbors = list(current_graph.neighbors(current_node_id))
+                except nx.NetworkXError:
+                    neighbors = [] # Proteção se o nó não estiver no grafo
             
             neighbors.sort() 
 
@@ -1087,8 +1107,14 @@ class BuriedBrainsEnv(gym.Env):
                 
                 # Move o Agente
                 self.current_nodes[agent_id] = chosen_node
+                # Atualiza o andar (seguro, pois pega do nó destino)
                 self.current_floors[agent_id] = current_graph.nodes[chosen_node].get('floor', self.current_floors[agent_id])
-                reward = 5 
+                
+                # Recompensa e Custo
+                if self.env_state == 'PROGRESSION':
+                    reward = 5 
+                else:
+                    reward = -0.1 # Custo de movimento na Arena
 
                 # Gera novos sucessores (Apenas na P-Zone)
                 if self.env_state == 'PROGRESSION':
@@ -1110,13 +1136,11 @@ class BuriedBrainsEnv(gym.Env):
                 self.invalid_action_counts[agent_id] += 1
                 reward = -5 
 
-        # --- Ação 4: Equipar Item (AGORA COM INTELIGÊNCIA) ---        
+        # --- Ação 4: Equipar Item (Universal) ---        
         elif action == 4:
             self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} tentou Ação 4 (Equipar Item).")
             
-            current_node_id = self.current_nodes[agent_id]
-            current_graph = self.graphs[agent_id] if self.env_state == 'PROGRESSION' else self.arena_graph
-            
+            # Verificação de segurança do nó
             if not current_graph.has_node(current_node_id) or 'content' not in current_graph.nodes[current_node_id]:
                  self._log(agent_id, "[AÇÃO] Tentou equipar em nó/sala inválida.")
                  self.invalid_action_counts[agent_id] += 1
@@ -1126,68 +1150,50 @@ class BuriedBrainsEnv(gym.Env):
             
             # 1. Encontrar o item que oferece o MAIOR UPGRADE
             best_item_to_equip = None
-            max_rarity_diff = 0.0 # Só considera se a diferença for positiva (> 0)
+            max_rarity_diff = 0.0 
             best_item_type = None
 
             for item_name in room_items:
                 details = self.catalogs['equipment'].get(item_name)
-                # Verifica Weapon, Armor E Artifact
                 if details and details.get('type') in ['Weapon', 'Armor', 'Artifact']:
                     item_type = details.get('type')
                     floor_rarity = self.rarity_map.get(details.get('rarity'), 0.0)
                     
-                    # Verifica o que temos equipado nesse slot
                     equipped_name = self.agent_states[agent_id]['equipment'].get(item_type)
                     equipped_rarity = 0.0
                     if equipped_name:
                         r_str = self.catalogs['equipment'].get(equipped_name, {}).get('rarity')
                         equipped_rarity = self.rarity_map.get(r_str, 0.0)
                     
-                    # Calcula o ganho
                     diff = floor_rarity - equipped_rarity
                     
-                    # Se for um Artefato E estivermos na Arena, consideramos "interessante"
-                    # independente da raridade (para permitir aceitar barganha)
+                    # Lógica Social: Aceita qualquer artefato na Arena
                     is_social_artifact = (item_type == 'Artifact' and self.env_state == 'ARENA_INTERACTION')
                     
-                    # Se esse ganho for maior... OU se for um artefato social
                     if diff > max_rarity_diff or (is_social_artifact and max_rarity_diff == 0.0):
-                        # Nota: max_rarity_diff == 0.0 garante que pegamos o primeiro artefato social
-                        # se não houver um upgrade real de stats.
-                        max_rarity_diff = diff # Pode ficar negativo, não tem problema aqui
+                        max_rarity_diff = diff
                         best_item_to_equip = item_name
                         best_item_type = item_type
 
-            # 2. Executar a troca se houver um upgrade
+            # 2. Executar a troca se houver um upgrade ou item social
             if best_item_to_equip:
-                # Equipar o item no slot correto
                 self.agent_states[agent_id]['equipment'][best_item_type] = best_item_to_equip
-                room_items.remove(best_item_to_equip) # Remove do chão
+                room_items.remove(best_item_to_equip)
                 
-                self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} equipou: '{best_item_to_equip}' ({best_item_type}). Ganho Raridade: {max_rarity_diff:.2f}")
+                self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} equipou: '{best_item_to_equip}' ({best_item_type}).")
                 
-                # --- Lógica Social (Barganha) ---
                 if best_item_type == 'Artifact':
-                    # Avisa o sistema que pegamos um artefato (para o step detectar barganha)
                     self.social_flags[agent_id]['just_picked_up'] = True
 
-                # --- Cálculo de Recompensa ---
-                # Se for um artefato pego na Arena, é uma ação social (mesmo que seja downgrade)
                 if best_item_type == 'Artifact' and self.env_state == 'ARENA_INTERACTION':
-                     reward = 0.0 # Recompensa neutra para artefatos sociais
+                     reward = 10 
                 else:
-                     # Recompensa padrão de upgrade PvE
                      reward = 50 + (max_rarity_diff * 100)
             else:
-                # Se não achou upgrade
                 if room_items:
-                    # Havia itens, mas eram piores ou iguais
-                    self._log(agent_id, f"[AÇÃO] Itens ignorados (nenhum era upgrade).")
-                    reward = -2 # Penalidade pequena para desincentivar spam
+                    reward = -2
                 else:
-                    # Chão vazio
                     self.invalid_action_counts[agent_id] += 1                    
-                    self._log(agent_id, f"[AÇÃO] Falha ao equipar: Chão vazio.")
                     reward = -5
 
         # --- Ação 5: Ação Social (Dropar Artefato) ---        
@@ -1203,13 +1209,20 @@ class BuriedBrainsEnv(gym.Env):
                 
                 if equipped_artifact_name:
                     del self.agent_states[agent_id]['equipment']['Artifact']
-                    current_node_id = self.current_nodes[agent_id]
-                    room_items = self.arena_graph.nodes[current_node_id]['content'].setdefault('items', [])
+                    
+                    # Aqui também usamos o current_graph e current_node_id definidos no topo
+                    if not current_graph.has_node(current_node_id):
+                        # Fallback de segurança
+                        self._log(agent_id, "[ERRO] Nó inválido ao tentar dropar.")
+                        return -5.0, terminated
+
+                    room_items = current_graph.nodes[current_node_id]['content'].setdefault('items', [])
                     room_items.append(equipped_artifact_name)
                     
                     self.social_flags[agent_id]['just_dropped'] = True
                     
-                    self._log(agent_id, f"[AÇÃO-ARENA] {self.agent_names[agent_id]} dropou '{equipped_artifact_name}' (iniciando barganha).")                     
+                    self._log(agent_id, f"[AÇÃO-ARENA] {self.agent_names[agent_id]} dropou '{equipped_artifact_name}'.")
+                    reward = 0.0 # Sem recompensa imediata (anti-exploit)
                 else:
                     self._log(agent_id, f"[AÇÃO-ARENA] Ação 5 falhou. Nenhum artefato para dropar.")
                     self.invalid_action_counts[agent_id] += 1
@@ -1569,6 +1582,7 @@ class BuriedBrainsEnv(gym.Env):
         # 3. Resetar o Estado Mestre do Agente
         # Chama create_initial_agent para resetar Nível, HP, EXP, Equip, Artefato
         self.agent_states[agent_id] = agent_rules.create_initial_agent(agent_name)
+        
         # Re-aplica as skills base
         self.agent_states[agent_id]['skills'] = self.agent_skill_names
         # Atribui um artefato comum inicial para validar H3

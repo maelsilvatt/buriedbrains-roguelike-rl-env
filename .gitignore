@@ -21,4 +21,5 @@
 \corevenv
 \logs
 \models
+\tests
 \__pycache__
