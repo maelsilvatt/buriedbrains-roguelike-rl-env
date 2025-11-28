@@ -1120,26 +1120,6 @@ class BuriedBrainsEnv(gym.Env):
                 if not is_a2_attacking:
                     self.social_flags['a2']['skipped_attack'] = True       
 
-                elif is_a1_attacking or is_a2_attacking:
-                    # Verifica se um dos agentes está vulnerável (HP baixo)
-                    a1_hp = self.agent_states['a1']['hp']
-                    a2_hp = self.agent_states['a2']['hp']
-                    a1_vulnerable = a1_hp <= (0.3 * self.agent_states['a1']['max_hp'])
-                    a2_vulnerable = a2_hp <= (0.3 * self.agent_states['a2']['max_hp'])
-                    if a1_vulnerable or a2_vulnerable:
-                        # Recompensa por "Covardia" se o agente atacou um oponente vulnerável
-                        if a2_vulnerable:
-                            self._log('a1', f"[KARMA] COVARDIA! {self.agent_names['a1']} atacou {self.agent_names['a2']} vulnerável. (--)")
-                            self.reputation_system.update_karma('a1', 'bad')
-                            rewards['a1'] -= 80
-                            self.cowardice_kills_this_episode['a1'] += 1
-                        
-                        if a1_vulnerable:
-                            self._log('a2', f"[KARMA] COVARDIA! {self.agent_names['a2']} atacou {self.agent_names['a1']} vulnerável. (--)")
-                            self.reputation_system.update_karma('a2', 'bad')
-                            rewards['a2'] -= 80
-                            self.cowardice_kills_this_episode['a2'] += 1
-
             # --- LÓGICA DE TRAIÇÃO (Baseada em Estado Persistente) ---
             # Cenário: Alguém ofereceu paz (estado True) e o outro ataca AGORA.
             
@@ -1180,6 +1160,20 @@ class BuriedBrainsEnv(gym.Env):
                     
                     # Só inicia se o defensor estiver vivo
                     if not terminateds.get(defender, False):
+                        # Verifica se o defensor está vulnerável (30% ou menos de HP)
+                        defender_state = self.agent_states[defender]
+                        max_hp = defender_state['max_hp']
+                        current_hp = defender_state['hp']
+                        
+                        # Vulnerável se tiver 30% ou menos de HP
+                        is_vulnerable = current_hp <= (0.3 * max_hp)
+                        
+                        if is_vulnerable:
+                            self._log(attacker, f"[KARMA] COVARDIA! {self.agent_names[attacker]} iniciou combate contra {self.agent_names[defender]} vulnerável ({current_hp}/{max_hp} HP). (--)")
+                            self.reputation_system.update_karma(attacker, 'bad')
+                            rewards[attacker] -= 80
+                            self.cowardice_kills_this_episode[attacker] += 1                        
+
                         self._log(attacker, f"[PVP] Combate iniciado!")
                         self._initiate_pvp_combat(attacker, defender)
                         rewards[attacker] += 20 
