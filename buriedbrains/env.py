@@ -829,10 +829,11 @@ class BuriedBrainsEnv(gym.Env):
         floor_diff = abs(my_floor - other_floor)
         
         # Define a Janela de Tolerância (K/2 é uma boa medida. Se K=20, Janela=10)
-        MATCH_WINDOW = self.sanctum_floor // 1.5
+        MATCH_WINDOW = self.sanctum_floor // 2
+        TESTE_SOCIAL = True  # Modo de teste para forçar PvP/Social sempre que possível
         
         # --- CENÁRIO 1: FORA DA JANELA (SKIP) ---
-        if floor_diff > MATCH_WINDOW:
+        if floor_diff > MATCH_WINDOW and not TESTE_SOCIAL:
             self._log(agent_id, f"[MATCHMAKING] Oponente muito distante (Diff {floor_diff} > {MATCH_WINDOW}). Pulando Arena.")
             
             # Lógica de Skip Manual (Simula o _end_arena_encounter sem ter entrado na arena)
@@ -1120,36 +1121,68 @@ class BuriedBrainsEnv(gym.Env):
                 if not is_a2_attacking:
                     self.social_flags['a2']['skipped_attack'] = True       
 
-            # --- LÓGICA DE TRAIÇÃO (Baseada em Estado Persistente) ---
-            # Cenário: Alguém ofereceu paz (estado True) e o outro ataca AGORA.
-            
-            # Traição de A2 contra A1
+            # --- [DEBUG SOCIAL] ---
+            # Logs para entender o estado mental dos agentes antes da resolução
+            if self.arena_interaction_state['a1']['offered_peace']:
+                self._log('a1', "[DEBUG] Minha oferta de paz está ATIVA na mesa.")
+            if self.arena_interaction_state['a2']['offered_peace']:
+                self._log('a2', "[DEBUG] Minha oferta de paz está ATIVA na mesa.")
+
+            # --- LÓGICA DE TRAIÇÃO E PERFÍDIA (Quebra de Contrato Social) ---
+            # Perfídia: Ataque enquanto segura a oferta de paz.
+            # Traição: Ataque contra quem ofereceu paz.            
+            # 1. TRAIÇÃO CLÁSSICA (O outro ataca quem ofereceu paz)
+            # Cenário: A1 ofereceu paz, A2 ataca.
             if self.arena_interaction_state['a1']['offered_peace'] and is_a2_attacking:
-                self._log('a2', f"[KARMA] TRAIÇÃO! {self.agent_names['a2']} atacou após oferta de paz. (--)")
+                self._log('a2', f"[KARMA] TRAIÇÃO! {self.agent_names['a2']} atacou a oferta de paz de {self.agent_names['a1']}! (--)")
                 self.reputation_system.update_karma('a2', 'bad') 
                 self.reputation_system.update_karma('a2', 'bad') # Penalidade dupla
-                self.reputation_system.update_karma('a1', 'bad') # A1 aprende a desconfiar
-                rewards['a2'] -= 50 # Penalidade imediata
+                self.reputation_system.update_karma('a1', 'bad') # A1 aprende que o mundo é perigoso
+                rewards['a2'] -= 50
+                self.arena_interaction_state['a1']['offered_peace'] = False # Oferta cancelada pela violência
 
-                # Registra a traição na métrica do episódio
+                # Conta a traição para estatísticas
                 self.betrayals_this_episode['a2'] += 1
 
-                # A oferta foi traída, então ela é cancelada
-                self.arena_interaction_state['a1']['offered_peace'] = False
-
-            # Traição de A1 contra A2
+            # Cenário: A2 ofereceu paz, A1 ataca.
             if self.arena_interaction_state['a2']['offered_peace'] and is_a1_attacking:
-                self._log('a1', f"[KARMA] TRAIÇÃO! {self.agent_names['a1']} atacou após oferta de paz. (--)")
+                self._log('a1', f"[KARMA] TRAIÇÃO! {self.agent_names['a1']} atacou a oferta de paz de {self.agent_names['a2']}! (--)")
                 self.reputation_system.update_karma('a1', 'bad')
                 self.reputation_system.update_karma('a1', 'bad')
                 self.reputation_system.update_karma('a2', 'bad')
                 rewards['a1'] -= 50
-
-                # Registra a traição na métrica do episódio
-                self.betrayals_this_episode['a2'] += 1
-
-                # A oferta foi traída, cancela
                 self.arena_interaction_state['a2']['offered_peace'] = False
+
+                # Conta a traição para estatísticas
+                self.betrayals_this_episode['a1'] += 1
+                
+
+            # 2. PERFÍDIA (Trair a própria oferta de paz / Falsa Bandeira)
+            # Cenário: A1 ofereceu paz (no passado) e AGORA ataca.
+            # "Dropar para bater depois"
+            if self.arena_interaction_state['a1']['offered_peace'] and is_a1_attacking:
+                self._log('a1', f"[KARMA] PERFÍDIA! {self.agent_names['a1']} atacou enquanto segurava a bandeira branca! (---)")
+                # Penalidade TRIPLA: Isso é pior que traição comum, pois engana a sinalização social
+                self.reputation_system.update_karma('a1', 'bad')
+                self.reputation_system.update_karma('a1', 'bad')
+                self.reputation_system.update_karma('a1', 'bad')
+                rewards['a1'] -= 200 # Penalidade imediata maior
+                self.arena_interaction_state['a1']['offered_peace'] = False # Oferta era falsa
+                
+                # Conta a traição para estatísticas
+                self.betrayals_this_episode['a1'] += 1                
+
+            # Cenário: A2 comete perfídia
+            if self.arena_interaction_state['a2']['offered_peace'] and is_a2_attacking:
+                self._log('a2', f"[KARMA] PERFÍDIA! {self.agent_names['a2']} atacou enquanto segurava a bandeira branca! (---)")
+                self.reputation_system.update_karma('a2', 'bad')
+                self.reputation_system.update_karma('a2', 'bad')
+                self.reputation_system.update_karma('a2', 'bad')
+                rewards['a2'] -= 200
+                self.arena_interaction_state['a2']['offered_peace'] = False
+
+                # Conta a traição para estatísticas
+                self.betrayals_this_episode['a2'] += 1
 
             # --- 3. PROCESSAR COMBATE (Se ativo ou iniciado agora) ---
             start_combat_now = False
@@ -1220,9 +1253,10 @@ class BuriedBrainsEnv(gym.Env):
                         r_explore, _ = self._handle_exploration_turn(agent_id, action)
                         rewards[agent_id] += r_explore
                         
-                        # ATUALIZAÇÃO DO ESTADO DE PAZ (Se dropar Artefato - Ação 5)
-                        if action == 5 and r_explore > 0: # Se dropou com sucesso
+                        # Verifica se o agente "ofereceu paz" (pegou um item)
+                        if self.social_flags[agent_id].get('just_dropped', False):
                              self.arena_interaction_state[agent_id]['offered_peace'] = True
+                             self._log(agent_id, "[DEBUG] Oferta de Paz ativada (offered_peace = True).")
                     
                     elif not (0 <= action <= 3): # Inválida
                          self.invalid_action_counts[agent_id] += 1
