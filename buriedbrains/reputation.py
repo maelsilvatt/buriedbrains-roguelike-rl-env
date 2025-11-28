@@ -16,13 +16,13 @@ def saint_villain_drift(z: complex, action_type: str, params: Dict[str, Any]) ->
     
     speed = params.get('speed', 1.0) # Intensidade do movimento
     
-    if action_type == 'good':
-        # Vetor: do ponto atual PARA o santo
+    if action_type == 'evil':
+        # Vetor: do ponto atual PARA o mal
         direction = z_saint - z 
         return speed * direction
         
-    elif action_type == 'bad':
-        # Vetor: do ponto atual PARA o vilão
+    elif action_type == 'good':
+        # Vetor: do ponto atual PARA o bem
         direction = z_villain - z
         return speed * direction
         
