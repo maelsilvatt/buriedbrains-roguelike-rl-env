@@ -829,7 +829,7 @@ class BuriedBrainsEnv(gym.Env):
         floor_diff = abs(my_floor - other_floor)
         
         # Define a Janela de Tolerância (K/2 é uma boa medida. Se K=20, Janela=10)
-        MATCH_WINDOW = 10 
+        MATCH_WINDOW = self.sanctum_floor // 1.5
         
         # --- CENÁRIO 1: FORA DA JANELA (SKIP) ---
         if floor_diff > MATCH_WINDOW:
@@ -878,11 +878,12 @@ class BuriedBrainsEnv(gym.Env):
                 
                 self.env_state = 'ARENA_INTERACTION'
 
+                # Contabiliza o encontro para estatísticas (Correção do Bug do Gráfico)
                 self.arena_encounters_this_episode['a1'] += 1
                 self.arena_encounters_this_episode['a2'] += 1
                 
                 # --- Gera a Arena Compartilhada ---
-                # Usa o andar do agente 1 como base para a dificuldade (já que são próximos)
+                # Usa o andar do agente 1 como base para a dificuldade
                 base_floor = self.current_floors['a1']
                 
                 self.arena_graph = map_generation.generate_k_zone_topology(
@@ -891,13 +892,23 @@ class BuriedBrainsEnv(gym.Env):
                     connectivity_prob=0.4 
                 )
                 
-                # Popula Arena (Sem inimigos, para foco social)
+                # Popula Arena (Laboratório Limpo para Social)
                 for node in self.arena_graph.nodes():            
                     budget = (100 + (base_floor * 10)) * self.budget_multiplier
+                    
+                    # Gera conteúdo base
                     content = content_generation.generate_room_content(
                         self.catalogs, budget=budget, current_floor=base_floor, guarantee_enemy=False 
                     )
-                    content['enemies'] = [] 
+                    
+                    # --- LIMPEZA DE RUÍDO ---
+                    content['enemies'] = [] # Sem monstros (foco no PvP/Social)
+                    content['items'] = []   # Sem loot aleatório (foco na troca entre agentes)
+                    content['events'] = []  # Sem baús/fontes (foco na interação)
+                    
+                    # Nota: 'room_effects' (neblina, terreno lento) são MANTIDOS 
+                    # para dar variedade tática ao mapa sem interferir na economia.
+                    
                     self.arena_graph.nodes[node]['content'] = content
 
                 # Posiciona Agentes
@@ -948,20 +959,18 @@ class BuriedBrainsEnv(gym.Env):
             reward_explore, _ = self._handle_exploration_turn(agent_id, action)
             agent_reward += reward_explore
         
-        # --- 3. Verifica Morte (LÓGICA DE RESPAWN) --- [cite: 43-46]
+        # 3. Verifica Morte do Agente
         if self.agent_states[agent_id]['hp'] <= 0:                        
             
             agent_reward = -300 # Penalidade de morte
             
-            # Chama a função de respawn que reseta o agente para o Nível 1
-            # (O log da morte já está dentro desta função)
+            # Chama a função de respawn que reseta o agente para o Nível 1            
             self._respawn_agent(agent_id)
             
             # O agente não está 'terminated', pois o episódio continua
-            # O 'agent_reward' (-300) será retornado
-        # --- FIM DA MUDANÇA ---
+            # O 'agent_reward' (-300) será retornado        
 
-        # 4. Recompensa de Marco (Milestone) [cite: 48-52]
+        # 4. Recompensa de Marco (Milestone)
         # (Adicionada verificação 'not agent_terminated' para não recompensar um agente vencedor)
         if not agent_terminated and self.current_floors[agent_id] % 10 == 0 and self.current_floors[agent_id] > self.last_milestone_floors[agent_id]:
             agent_reward += 400                
