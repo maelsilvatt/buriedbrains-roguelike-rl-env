@@ -1,34 +1,21 @@
 # buriedbrains/plot_utils.py
 import matplotlib
-
-# Força o backend 'Agg' (Anti-Grain Geometry).
-# Isso impede que o Matplotlib tente usar janelas (Tkinter),
-# evitando o erro "main thread is not in main loop".
+# Força o backend 'Agg' para evitar erros de GUI
 matplotlib.use('Agg') 
 
 import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
+from matplotlib.colors import LinearSegmentedColormap
 import numpy as np
-import os
 
 def save_poincare_plot(karma_history: list, agent_name: str, save_path: str):
     """
-    Gera e salva a trajetória de Karma no Disco de Poincaré.
+    Gera e salva a trajetória de Karma no Disco de Poincaré com visual aprimorado.
     """
     if not karma_history:
         return
 
-    # Cria a figura (sem exibi-la)
-    fig, ax = plt.subplots(figsize=(6, 6))
-    
-    # 1. Desenhar o Disco (Círculo Unitário)
-    theta = np.linspace(0, 2*np.pi, 200)
-    ax.plot(np.cos(theta), np.sin(theta), color='black', linestyle='--', linewidth=1, alpha=0.5)
-    
-    # 2. Desenhar os Polos (Saint vs Villain)
-    ax.scatter([0.95], [0], color='blue', marker='*', s=150, label='Santo', zorder=5)
-    ax.scatter([-0.95], [0], color='red', marker='X', s=120, label='Vilão', zorder=5)
-    
-    # 3. Plotar a Trajetória
+    # Extração de dados (suporta complex e dict)
     x = []
     y = []
     for k in karma_history:
@@ -38,29 +25,84 @@ def save_poincare_plot(karma_history: list, agent_name: str, save_path: str):
         elif isinstance(k, dict):
             x.append(k.get('real', 0))
             y.append(k.get('imag', 0))
-    
-    # Desenha a linha do tempo
-    ax.plot(x, y, color='purple', linewidth=1.5, alpha=0.7, label='Trajetória')
-    
-    # Marca o Início e o Fim
-    if x and y:
-        ax.scatter(x[0], y[0], color='white', edgecolor='black', s=60, marker='o', label='Início', zorder=6)
-        ax.scatter(x[-1], y[-1], color='purple', edgecolor='black', s=80, marker='o', label='Fim', zorder=6)
 
-    # Estilização
+    if not x or not y:
+        return
+
+    # --- Configuração da Figura ---
+    # Usamos um fundo levemente cinza no disco para destaque
+    fig, ax = plt.subplots(figsize=(7, 7), dpi=120)
+    
+    # --- 1. Desenhar o Disco e a Grid (Estilo Radar/Poincaré) ---
+    theta = np.linspace(0, 2*np.pi, 200)
+    
+    # Borda do limite (Círculo Unitário) - Linha grossa preta
+    ax.plot(np.cos(theta), np.sin(theta), color='#333333', linewidth=2, zorder=1)
+    # Preenchimento suave do disco
+    ax.fill(np.cos(theta), np.sin(theta), color='#f0f0f5', alpha=0.3, zorder=0)
+
+    # Círculos Concêntricos (Níveis de intensidade: 25%, 50%, 75%)
+    for r in [0.25, 0.5, 0.75]:
+        ax.plot(r * np.cos(theta), r * np.sin(theta), color='gray', linestyle=':', linewidth=0.8, alpha=0.5, zorder=1)
+
+    # Eixos Cruzados (Crux)
+    ax.plot([-1, 1], [0, 0], color='gray', linestyle='--', linewidth=1, alpha=0.6, zorder=1) # Eixo Real
+    ax.plot([0, 0], [-1, 1], color='gray', linestyle='--', linewidth=1, alpha=0.6, zorder=1) # Eixo Imag
+
+    # --- 2. Anotações dos Polos ---
+    # Definindo posições com um pequeno offset para o texto
+    style_text = dict(fontsize=9, fontweight='bold', ha='center', va='center')
+    
+    # Vilão (+Real)
+    ax.text(1.15, 0, "VILÃO", color='darkred', **style_text)
+    # Santo (-Real)
+    ax.text(-1.15, 0, "SANTO", color='darkblue', **style_text)
+    # Caos/Ordem (Eixo Imaginário - Opcional, dependendo da sua mecânica)
+    ax.text(0, 1.08, "+IMAG", color='gray', fontsize=7, ha='center')
+    ax.text(0, -1.08, "-IMAG", color='gray', fontsize=7, ha='center')
+
+    # --- 3. Trajetória com Gradiente de Cor (Tempo) ---
+    # Cria segmentos de linha para aplicar gradiente (Cool -> Hot)
+    points = np.array([x, y]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+    # Cria um colormap personalizado: Azul (Início) -> Roxo -> Vermelho (Fim)
+    cmap = LinearSegmentedColormap.from_list("time_gradient", ["#42a5f5", "#7e57c2", "#ef5350"])
+    
+    # Normaliza o tempo (0 a 1)
+    norm = plt.Normalize(0, len(x))
+    
+    lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=2, alpha=0.8, zorder=3)
+    lc.set_array(np.arange(len(x))) # Define a progressão para o colormap
+    ax.add_collection(lc)
+
+    # --- 4. Marcadores de Início e Fim ---
+    # Início (Ponto menor, cor fria)
+    ax.scatter(x[0], y[0], color='#42a5f5', edgecolor='black', s=50, marker='o', label='Início', zorder=4)
+    # Fim (Ponto maior, estrela, cor quente)
+    ax.scatter(x[-1], y[-1], color='#ef5350', edgecolor='black', s=100, marker='*', label='Fim', zorder=5)
+
+    # --- Estilização Final ---
     ax.set_aspect('equal')
-    ax.set_xlim(-1.1, 1.1)
-    ax.set_ylim(-1.1, 1.1)
-    ax.set_title(f"Trajetória de Karma: {agent_name}", fontsize=12)
-    ax.legend(loc='upper right', fontsize='small', framealpha=0.9)
+    # Margem extra para caber os textos fora do círculo
+    ax.set_xlim(-1.3, 1.3)
+    ax.set_ylim(-1.3, 1.3)
+    
+    # Título mais limpo
+    ax.set_title(f"Trajetória de Karma\nAgente: {agent_name}", fontsize=11, pad=15, color='#333333')
+    
+    # Remove a caixa quadrada padrão do matplotlib (eixos x/y cartesianos externos)
     ax.axis('off')
+
+    # Legenda minimalista
+    ax.legend(loc='lower right', fontsize='x-small', framealpha=0.8, edgecolor='gray')
 
     # Salvar e Fechar
     try:
+        # tight_layout ajusta para não cortar os textos laterais
         plt.tight_layout()
-        plt.savefig(save_path, dpi=100, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight', facecolor='white')
     except Exception as e:
         print(f"[Plot Error] Falha ao salvar imagem: {e}")
     finally:
-        # Fecha a figura explicitamente para liberar memória e evitar o erro do Tkinter
         plt.close(fig)

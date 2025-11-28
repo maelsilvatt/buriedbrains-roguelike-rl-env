@@ -57,6 +57,7 @@ def main():
     
     parser.add_argument('--suffix', type=str, default="MARL_Transfer")
     parser.add_argument('--max_episode_steps', type=int, default=10_000)
+    parser.add_argument('--sanctum_floor', type=int, default=20)
     args = parser.parse_args()
 
     # Validação básica
@@ -73,11 +74,12 @@ def main():
     
     # --- 1. Cria o Ambiente MAE com Wrapper ---
     max_episode_steps = args.max_episode_steps
+    sanctum_floor = args.sanctum_floor
         
     def make_env():        
         env = BuriedBrainsEnv(
             max_episode_steps=max_episode_steps, 
-            sanctum_floor=20
+            sanctum_floor=sanctum_floor
         ) 
         env = SymmetricSelfPlayWrapper(env) 
         return env

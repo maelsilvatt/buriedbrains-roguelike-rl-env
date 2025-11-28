@@ -175,11 +175,11 @@ class BuriedBrainsEnv(gym.Env):
         self.pvp_combats_this_episode = {}
         self.bargains_succeeded_this_episode = {}
         self.cowardice_kills_this_episode = {}
+        self.betrayals_this_episode = {}
         self.pve_combat_durations = {}
         self.pvp_combat_durations = {}
         self.karma_history = {}
-
-
+        
         # --- 6. ESTADO GLOBAL DO AMBIENTE (Novo para MAE) ---
         self.env_state = 'PROGRESSION'
         self.arena_graph = None
@@ -196,7 +196,7 @@ class BuriedBrainsEnv(gym.Env):
         }
         # Instancia o motor de Karma
         self.reputation_system = reputation.HyperbolicReputationSystem(
-            potential_func=reputation.saint_villain_potential,
+            potential_func=reputation.saint_villain_drift,
             potential_params=potential_params,
             dt=0.1, # "Passo" da atualização
             noise_scale=0.01 # Ruído
@@ -499,6 +499,7 @@ class BuriedBrainsEnv(gym.Env):
             self.bargains_succeeded_this_episode[agent_id] = 0
             self.cowardice_kills_this_episode[agent_id] = 0
             self.karma_history[agent_id] = []
+            self.betrayals_this_episode[agent_id] = 0
             
             # Duração de Combate (Listas para guardar a duração de CADA luta)
             self.pve_combat_durations[agent_id] = [] 
@@ -804,58 +805,102 @@ class BuriedBrainsEnv(gym.Env):
 
     def _transition_to_arena(self, agent_id: str):
         """
-        Lida com a transição de um agente para a Zona K (Santuário).
-        Esta função será o "portão" para a lógica de sincronização.
-        """        
-        # 1. Adicionar agent_id ao self.agents_in_arena
-        self.agents_in_arena.add(agent_id)
-        self._log(agent_id, f"[ZONA K] {self.agent_names[agent_id]} chegou à Zona K e está esperando.")
+        Lida com a transição para a Zona K.        
+        Aplica a lógica de 'Banda' ou 'Janela de Match'.
         
-        # 2. Verificar se *todos* os agentes estão em self.agents_in_arena
-        if all(aid in self.agents_in_arena for aid in self.agent_ids):
-            self._log(agent_id, "[ZONA K] Ambos os agentes presentes. Iniciando Arena PvP!")
-            self.env_state = 'ARENA_INTERACTION'
-
-            # Incrementa o contador de encontros na arena para ambos os agentes
-            self.arena_encounters_this_episode['a1'] += 1
-            self.arena_encounters_this_episode['a2'] += 1
+        Regra:
+        - O Agente entra na verificação se floor % 20 == 0.
+        - Se a diferença de andar para o oponente for <= 10: Ele entra na Arena (espera ou luta).
+        - Se a diferença for > 10: Ele PULA a Arena imediatamente (segue sua vida PvE).
+        """
+        
+        # 1. Identifica o oponente e os andares
+        other_agent_id = 'a2' if agent_id == 'a1' else 'a1'
+        
+        my_floor = self.current_floors[agent_id]
+        other_floor = self.current_floors[other_agent_id]
+        
+        floor_diff = abs(my_floor - other_floor)
+        
+        # Define a Janela de Tolerância (K/2 é uma boa medida. Se K=20, Janela=10)
+        MATCH_WINDOW = 10 
+        
+        # --- CENÁRIO 1: FORA DA JANELA (SKIP) ---
+        if floor_diff > MATCH_WINDOW:
+            self._log(agent_id, f"[MATCHMAKING] Oponente muito distante (Diff {floor_diff} > {MATCH_WINDOW}). Pulando Arena.")
             
-            # 1. Gera a Topologia 
-            self.arena_graph = map_generation.generate_k_zone_topology(
-                floor_level=self.current_floors[agent_id],
-                num_nodes=9,        # Fixo: Pequeno
-                connectivity_prob=0.4 
+            # Lógica de Skip Manual (Simula o _end_arena_encounter sem ter entrado na arena)
+            # 1. Calcula próximo andar (ex: 20 -> 21)
+            next_p_floor = my_floor + 1
+            
+            # 2. Garante contador
+            if next_p_floor not in self.nodes_per_floor_counters[agent_id]:
+                self.nodes_per_floor_counters[agent_id][next_p_floor] = 0
+            
+            # 3. Cria nó de entrada da próxima P-Zone
+            next_node_index = self.nodes_per_floor_counters[agent_id][next_p_floor]
+            next_p_node_id = f"p_{next_p_floor}_{next_node_index}"
+            
+            agent_graph = self.graphs[agent_id]
+            agent_graph.add_node(next_p_node_id, floor=next_p_floor)
+            self.nodes_per_floor_counters[agent_id][next_p_floor] += 1
+            
+            # 4. Move o agente
+            self.current_nodes[agent_id] = next_p_node_id
+            self.current_floors[agent_id] = next_p_floor
+            
+            # 5. Gera conteúdo
+            start_content = content_generation.generate_room_content(
+                self.catalogs, budget=0, current_floor=next_p_floor, guarantee_enemy=False
             )
+            agent_graph.nodes[next_p_node_id]['content'] = start_content
+            self._generate_and_populate_successors(agent_id, next_p_node_id)
             
-            # 2. POPULAR A ARENA 
-            # Iteramos por todas as salas criadas para dar conteúdo a elas
-            for node in self.arena_graph.nodes():            
-                # Usamos o budget baseado no andar atual dos agentes
-                budget = (100 + (self.current_floors[agent_id] * 10)) * self.budget_multiplier
-                
-                # Garante inimigos na arena
-                content = content_generation.generate_room_content(
-                    self.catalogs, 
-                    budget=budget, 
-                    current_floor=self.current_floors[agent_id],
-                    guarantee_enemy=False # Deixa o RNG decidir, ou True se quiser caos total
-                )
-
-                # Força salas vazias (sem inimigos) a permanecerem vazias para validar a hipótese social
-                content['enemies'] = []
-
-                self.arena_graph.nodes[node]['content'] = content
-
-            # 3. Mover Agentes (Posiciona em extremos opostos)
-            nodes_list = sorted(list(self.arena_graph.nodes()))
-            self.current_nodes['a1'] = nodes_list[0]
-            self.current_nodes['a2'] = nodes_list[-1] # Última sala
+            self._log(agent_id, f"[PROGRESSION] Skip realizado. Avançou para Andar {next_p_floor}.")
+            return # Sai da função, não entra na arena
             
-            self._log('a1', f"[ZONA K] Entrou na Arena em {self.current_nodes['a1']}")
-            self._log('a2', f"[ZONA K] Entrou na Arena em {self.current_nodes['a2']}")
-
+        # --- CENÁRIO 2: DENTRO DA JANELA (WAIT/ENTER) ---
         else:
-            self.env_state = 'ARENA_SYNC'
+            # Adiciona à lista de espera
+            self.agents_in_arena.add(agent_id)
+            self._log(agent_id, f"[ZONA K] Match possível (Diff {floor_diff}). Entrando na espera.")
+            
+            # Se TODOS os agentes (que estão na janela) chegaram
+            if all(aid in self.agents_in_arena for aid in self.agent_ids):
+                self._log('a1', f"[MATCHMAKING] Sincronização Concluída! Iniciando Arena PvP.")
+                self._log('a2', f"[MATCHMAKING] Sincronização Concluída! Iniciando Arena PvP.")
+                
+                self.env_state = 'ARENA_INTERACTION'
+
+                self.arena_encounters_this_episode['a1'] += 1
+                self.arena_encounters_this_episode['a2'] += 1
+                
+                # --- Gera a Arena Compartilhada ---
+                # Usa o andar do agente 1 como base para a dificuldade (já que são próximos)
+                base_floor = self.current_floors['a1']
+                
+                self.arena_graph = map_generation.generate_k_zone_topology(
+                    floor_level=base_floor,
+                    num_nodes=9,
+                    connectivity_prob=0.4 
+                )
+                
+                # Popula Arena (Sem inimigos, para foco social)
+                for node in self.arena_graph.nodes():            
+                    budget = (100 + (base_floor * 10)) * self.budget_multiplier
+                    content = content_generation.generate_room_content(
+                        self.catalogs, budget=budget, current_floor=base_floor, guarantee_enemy=False 
+                    )
+                    content['enemies'] = [] 
+                    self.arena_graph.nodes[node]['content'] = content
+
+                # Posiciona Agentes
+                nodes_list = sorted(list(self.arena_graph.nodes()))
+                self.current_nodes['a1'] = nodes_list[0]
+                self.current_nodes['a2'] = nodes_list[-1]
+                
+            else:
+                self.env_state = 'ARENA_SYNC'
 
     def _process_pve_step(self, agent_id: str, action: int, global_truncated: bool, infos: dict) -> tuple[float, bool]:
         """
@@ -937,6 +982,7 @@ class BuriedBrainsEnv(gym.Env):
                 'invalid_actions': self.invalid_action_counts[agent_id],
                 'agent_name': self.agent_names[agent_id],
                 'full_log': self.current_episode_logs[agent_id],
+                'equipment': self.agent_states[agent_id]['equipment'].copy(),
                 'exp': self.agent_states[agent_id]['exp'],
                 'damage_dealt': self.damage_dealt_this_episode[agent_id],
                 'equipment_swaps': self.equipment_swaps_this_episode[agent_id],
@@ -948,8 +994,10 @@ class BuriedBrainsEnv(gym.Env):
                 'bargains_succeeded': self.bargains_succeeded_this_episode[agent_id],
                 'cowardice_kills': self.cowardice_kills_this_episode[agent_id],
                 'karma_history': self.karma_history[agent_id],
+                'betrayals': self.betrayals_this_episode[agent_id],
+                'karma': self.agent_states[agent_id]['karma']
             }
-            
+        
         return agent_reward, agent_terminated
 
     def step(self, actions: dict):
@@ -1067,6 +1115,10 @@ class BuriedBrainsEnv(gym.Env):
                 self.reputation_system.update_karma('a2', 'bad') # Penalidade dupla
                 self.reputation_system.update_karma('a1', 'bad') # A1 aprende a desconfiar
                 rewards['a2'] -= 50 # Penalidade imediata
+
+                # Registra a traição na métrica do episódio
+                self.betrayals_this_episode['a2'] += 1
+
                 # A oferta foi traída, então ela é cancelada
                 self.arena_interaction_state['a1']['offered_peace'] = False
 
@@ -1077,6 +1129,10 @@ class BuriedBrainsEnv(gym.Env):
                 self.reputation_system.update_karma('a1', 'bad')
                 self.reputation_system.update_karma('a2', 'bad')
                 rewards['a1'] -= 50
+
+                # Registra a traição na métrica do episódio
+                self.betrayals_this_episode['a2'] += 1
+
                 # A oferta foi traída, cancela
                 self.arena_interaction_state['a2']['offered_peace'] = False
 
@@ -1197,13 +1253,13 @@ class BuriedBrainsEnv(gym.Env):
                         'level': self.agent_states[agent_id]['level'],
                         'hp': self.agent_states[agent_id]['hp'],
                         'floor': self.current_floors[agent_id],
-                        'win': False, # Se truncou pelo tempo, não venceu
+                        'win': game_won and self.agent_states[agent_id]['hp'] > 0,
                         'steps': self.current_step,
                         'enemies_defeated': self.enemies_defeated_this_episode[agent_id],
                         'invalid_actions': self.invalid_action_counts[agent_id],
                         'agent_name': self.agent_names[agent_id],
                         'full_log': self.current_episode_logs[agent_id],
-                        'equipment': self.agent_states[agent_id].get('equipment', {}),
+                        'equipment': self.agent_states[agent_id]['equipment'].copy(),
                         'exp': self.agent_states[agent_id]['exp'],
                         'damage_dealt': self.damage_dealt_this_episode[agent_id],
                         'equipment_swaps': self.equipment_swaps_this_episode[agent_id],
@@ -1215,7 +1271,8 @@ class BuriedBrainsEnv(gym.Env):
                         'bargains_succeeded': self.bargains_succeeded_this_episode[agent_id],
                         'cowardice_kills': self.cowardice_kills_this_episode[agent_id],
                         'karma_history': self.karma_history[agent_id],
-                        'karma': self.agent_states[agent_id]['karma'] 
+                        'betrayals': self.betrayals_this_episode[agent_id],
+                        'karma': self.agent_states[agent_id]['karma']
                     }
         
         # Retorna os dicionários no formato MAE completo
@@ -1247,9 +1304,11 @@ class BuriedBrainsEnv(gym.Env):
         # --- Ações de Movimento (6, 7, 8, 9) ---        
         if 6 <= action <= 9:
             neighbor_index = action - 6
-            
-            
-            neighbors = list(current_graph.successors(current_node_id))
+                        
+            if is_in_arena:
+                neighbors = list(current_graph.neighbors(current_node_id))
+            else:
+                neighbors = list(current_graph.successors(current_node_id))
             
             neighbors.sort() 
 
@@ -1388,64 +1447,59 @@ class BuriedBrainsEnv(gym.Env):
     def _handle_arena_movement(self, agent_id: str, action: int) -> float:
         """
         Processa uma ação de movimento (6-9) dentro da Zona K (Arena).
-        Usa o self.arena_graph (não-direcionado) e o MAX_NEIGHBORS.
+        Usa o self.arena_graph (não-direcionado).
         Retorna a recompensa pela ação.
         """
         
         # 1. Obter o índice do vizinho (Ação 6 -> 0, Ação 7 -> 1, etc.)
-        neighbor_index = action - 6 # Mapeia 6-9 para 0-3
+        neighbor_index = action - 6 
 
         # 2. Obter o estado atual da arena
         current_node_id = self.current_nodes[agent_id]
         
-        # Na arena, usamos .neighbors() pois o grafo não é direcionado
+        # Obter vizinhos do nó atual na arena
         try:
             neighbors = list(self.arena_graph.neighbors(current_node_id))
-        except nx.NetworkXError:
-             # Fallback caso o nó não esteja no grafo (não deve acontecer)
+        except Exception: # Captura genérica caso o grafo não esteja pronto
             neighbors = []
             
         # 3. Ordenar vizinhos para consistência
-        # Isso garante que a Ação 6 (Vizinho 0) sempre se refira ao mesmo nó
-        # (ex: 'k_20_1' sempre virá antes de 'k_20_2')
         neighbors.sort() 
         
         # 4. Verificar se a ação é válida
         if 0 <= neighbor_index < len(neighbors):
-            # --- Movimento VÁLIDO ---
-
-            # Verifica se o nó escolhido é uma saída
+            
             chosen_node = neighbors[neighbor_index]
+                        
+            node_data = self.arena_graph.nodes[chosen_node]        
 
+            # --- LÓGICA DE SAÍDA DA ARENA ---
             # Se o nó é uma saída...
             if node_data.get('is_exit', False):
-                # mas o encontro AINDA NÃO ACONTECEU
+                # ...mas o encontro AINDA NÃO ACONTECEU (Porta Trancada)
                 if not self.arena_meet_occurred:
                     self._log(agent_id, f"[AÇÃO-ARENA] A saída em '{chosen_node}' está TRANCADA. Encontre o outro agente primeiro!")
-                    # Não penalizamos como inválida, mas impedimos o movimento (choque na porta)
+                    # Não penalizamos como inválida (-5), mas impedimos o movimento (-1)
                     return -1.0 
                 
-                # Se o encontro JÁ aconteceu, permite sair
+                # Se o encontro JÁ aconteceu (Porta Destrancada)
                 self._log(agent_id, f"[ZONA K] {self.agent_names[agent_id]} saiu da Arena!")
                 self._end_arena_encounter(agent_id)
-                return 50.0 # Recompensa por sair
-            
-            node_data = self.arena_graph.nodes[chosen_node]
+                return 50.0 # Recompensa por sair            
 
-            self.current_nodes[agent_id] = chosen_node # Move o agente
+            # Movimento Normal (Dentro da Arena)
+            self.current_nodes[agent_id] = chosen_node
             
             # Atualiza o andar (embora na arena deva ser o mesmo)
-            self.current_floors[agent_id] = self.arena_graph.nodes[chosen_node].get('floor', self.current_floors[agent_id])
+            self.current_floors[agent_id] = node_data.get('floor', self.current_floors[agent_id])
             
             self._log(agent_id, f"[AÇÃO-ARENA] Movimento válido para '{chosen_node}'.")
             
-            # Recompensa pequena por movimento na arena
+            # Recompensa pequena (custo) por movimento na arena para evitar andar em círculos
             return -0.1
         
         else:
-            # --- Movimento INVÁLIDO ---
-            # O agente tentou mover para um slot de vizinho que não existe
-            # (ex: Ação 8 (Vizinho 2), mas a sala só tem 2 vizinhos (Índice 0 e 1))
+            # --- Movimento INVÁLIDO (Parede) ---
             self._log(agent_id, f"[AÇÃO-ARENA] Movimento INVÁLIDO. (Slot de Vizinho {neighbor_index} está vazio)")
             self.invalid_action_counts[agent_id] += 1
             return -5.0 # Penalidade por ação inválida
