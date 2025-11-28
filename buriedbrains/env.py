@@ -1548,19 +1548,43 @@ class BuriedBrainsEnv(gym.Env):
                         
             node_data = self.arena_graph.nodes[chosen_node]        
 
-            # --- LÓGICA DE SAÍDA DA ARENA ---
-            # Se o nó é uma saída...
+            # LÓGICA DE SAÍDA DA ARENA
             if node_data.get('is_exit', False):
-                # ...mas o encontro AINDA NÃO ACONTECEU (Porta Trancada)
+                # Se a saída está trancada
                 if not self.arena_meet_occurred:
-                    self._log(agent_id, f"[AÇÃO-ARENA] A saída em '{chosen_node}' está TRANCADA. Encontre o outro agente primeiro!")
-                    # Não penalizamos como inválida (-5), mas impedimos o movimento (-1)
+                    self._log(agent_id, f"[AÇÃO-ARENA] A saída em '{chosen_node}' está TRANCADA. Encontre o outro agente!")
                     return -1.0 
                 
-                # Se o encontro JÁ aconteceu (Porta Destrancada)
-                self._log(agent_id, f"[ZONA K] {self.agent_names[agent_id]} saiu da Arena!")
+                # Lógica de Saída com Paz (Barganha de Fuga) ---
+                base_exit_reward = 50.0
+                bonus_peace_reward = 0.0
+                
+                # Verifica se há alguma oferta de paz ativa (minha ou do outro)
+                my_peace = self.arena_interaction_state[agent_id]['offered_peace']
+                
+                other_agent_id = 'a2' if agent_id == 'a1' else 'a1'
+                other_peace = self.arena_interaction_state[other_agent_id]['offered_peace']
+                
+                # Se houve oferta de paz e ninguém morreu (estamos saindo vivos)
+                if my_peace or other_peace:
+                    bonus_peace_reward = 150.0 # Bônus por saída pacífica
+                    self._log(agent_id, f"[KARMA] Saída Pacífica com Tributo! (++)")
+                    
+                    # Aplica Karma positivo
+                    self.reputation_system.update_karma(agent_id, 'good')
+                    self.reputation_system.update_karma(other_agent_id, 'good')
+                    
+                    # Registra estatística
+                    self.bargains_succeeded_this_episode[agent_id] += 1
+                    if self.env_state == 'ARENA_INTERACTION': # Se o outro ainda está lá
+                        self.bargains_succeeded_this_episode[other_agent_id] += 1
+
+                # Se sair sem paz e sem combate (apenas ignorou)
+                else:
+                    self._log(agent_id, f"[ZONA K] {self.agent_names[agent_id]} saiu da Arena sem engajar em combate.")
+                
                 self._end_arena_encounter(agent_id)
-                return 50.0 # Recompensa por sair            
+                return base_exit_reward + bonus_peace_reward                
 
             # Movimento Normal (Dentro da Arena)
             self.current_nodes[agent_id] = chosen_node
