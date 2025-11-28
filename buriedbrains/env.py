@@ -1253,7 +1253,7 @@ class BuriedBrainsEnv(gym.Env):
                         'level': self.agent_states[agent_id]['level'],
                         'hp': self.agent_states[agent_id]['hp'],
                         'floor': self.current_floors[agent_id],
-                        'win': game_won and self.agent_states[agent_id]['hp'] > 0,
+                        'win': False,
                         'steps': self.current_step,
                         'enemies_defeated': self.enemies_defeated_this_episode[agent_id],
                         'invalid_actions': self.invalid_action_counts[agent_id],
