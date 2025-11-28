@@ -68,6 +68,10 @@ class BuriedBrainsEnv(gym.Env):
         self.pool_costs = content_generation._calculate_costs(enemy_data['pools'])
         self.rarity_map = {'Common': 0.25, 'Rare': 0.5, 'Epic': 0.75, 'Legendary': 1.0}
         self.sanctum_floor = sanctum_floor  # Andar em que ocorre a transição para a arena
+
+        # Buffers de estatísticas
+        self.pvp_durations = []  # Lista para guardar duração de CADA luta
+        self.current_pvp_timer = 0 # Contador para a luta ATUAL
         
         for catalog_name, catalog_data in self.catalogs.items():
             if isinstance(catalog_data, dict):
@@ -447,7 +451,9 @@ class BuriedBrainsEnv(gym.Env):
         self.current_episode_logs = {}
         self.enemies_defeated_this_episode = {}
         self.invalid_action_counts = {}
-        self.last_milestone_floors = {}
+        self.last_milestone_floors = {}        
+        self.pvp_durations = []
+        self.current_pvp_timer = 0
 
         # Estado Global
         self.current_step = 0
@@ -1149,11 +1155,15 @@ class BuriedBrainsEnv(gym.Env):
                         self._initiate_pvp_combat(attacker, defender)
                         rewards[attacker] += 20 
                         start_combat_now = True
+
+                        self.current_pvp_timer = 0
                         # Se combate começou, qualquer oferta de paz é esquecida
                         self.arena_interaction_state['a1']['offered_peace'] = False
                         self.arena_interaction_state['a2']['offered_peace'] = False
 
             if self.pvp_state:
+                # Incrementa o timer de combate PvP
+                self.current_pvp_timer += 1
                 # Resolve o turno de combate
                 c_act_a1 = self.agent_skill_names[action_a1] if is_a1_attacking else "Wait"
                 c_act_a2 = self.agent_skill_names[action_a2] if is_a2_attacking else "Wait"
@@ -1163,7 +1173,12 @@ class BuriedBrainsEnv(gym.Env):
                 rewards['a2'] += rew_a2
 
                 if combat_over:
-                    self._log(winner, f"[PVP] VITORIA de {self.agent_names[winner]}!")                    
+                    self._log(winner, f"[PVP] VITORIA de {self.agent_names[winner]}!")   
+
+                    # Salva para ambos, pois ambos participaram da luta
+                    self.pvp_combat_durations['a1'].append(self.current_pvp_timer)
+                    self.pvp_combat_durations['a2'].append(self.current_pvp_timer)
+                    self.current_pvp_timer = 0 # Zera para a próxima                 
                     
                     terminateds[loser] = False # O perdedor respawnou, não terminou
                     self.pvp_state = None
@@ -1209,6 +1224,9 @@ class BuriedBrainsEnv(gym.Env):
                         
                         self.reputation_system.update_karma('a1', 'good')
                         self.reputation_system.update_karma('a2', 'good')
+
+                        # Reseta o timer de PvP para evitar que conte 
+                        self.current_pvp_timer = 0
                         
                         rewards['a1'] += 200
                         rewards['a2'] += 200
