@@ -1079,8 +1079,8 @@ class BuriedBrainsEnv(gym.Env):
                 if self.current_nodes['a1'] == self.current_nodes['a2']:
                     self.arena_meet_occurred = True
                     
-                    self._log('a1', "[ZONA K] Encontro realizado! A saída foi destrancada.")
-                    self._log('a2', "[ZONA K] Encontro realizado! A saída foi destrancada.")
+                    self._log('a1', "[ZONA K] A heavy door has opened somewhere...")
+                    self._log('a2', "[ZONA K] A heavy door has opened somewhere...")
                     
                     # Recompensa pelo "Rito de Passagem" (objetivo cumprido)
                     rewards['a1'] += 100
@@ -1238,7 +1238,8 @@ class BuriedBrainsEnv(gym.Env):
                     
                     terminateds[loser] = False # O perdedor respawnou, não terminou
                     self.pvp_state = None
-                    self._end_arena_encounter(winner)
+
+                    self._log(winner, "[PVP] O vencedor permanece na arena. Hora do saque! Mas ainda precisa sair...")
 
             # --- 4. PROCESSAR AÇÕES FORA DE COMBATE ---
             else:
@@ -1876,6 +1877,8 @@ class BuriedBrainsEnv(gym.Env):
             self.env_state = 'PROGRESSION'
             self.arena_graph = None # Limpa o grafo da arena
 
+            self.arena_meet_occurred = False # Tranca a porta para a próxima Zona K (ex: andar 40)
+
     def _respawn_agent(self, agent_id: str):
         """
         Processa a "morte" de um agente.
@@ -1925,6 +1928,8 @@ class BuriedBrainsEnv(gym.Env):
                 self._log(agent_id, "[ZONA K] Arena vazia. Retornando ao modo de Progressão global.")
                 self.env_state = 'PROGRESSION'
                 self.arena_graph = None # Limpa o grafo da arena
+
+                self.arena_meet_occurred = False # Tranca a porta para a próxima Zona K (ex: andar 40)
 
         # 7. Criar uma Nova P-Zone
         self.current_floors[agent_id] = 0
