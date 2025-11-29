@@ -14,7 +14,7 @@ def saint_villain_drift(z: complex, action_type: str, params: Dict[str, Any]) ->
     z_saint = params.get('z_saint', -0.95 + 0j) 
     z_villain = params.get('z_villain', 0.95 + 0j)
     
-    speed = params.get('speed', 1.0) # Intensidade do movimento
+    speed = params.get('speed', 8.0) # Intensidade do movimento
     
     if action_type == 'evil':
         # Vetor: do ponto atual PARA o mal
@@ -28,7 +28,7 @@ def saint_villain_drift(z: complex, action_type: str, params: Dict[str, Any]) ->
         
     else: 
         # Neutro: Decai suavemente para o centro (0,0)
-        decay = params.get('decay', 0.5)
+        decay = params.get('decay', 0.01)
         return -decay * z
 
 # --- Classe Principal do Sistema de Reputação ---
