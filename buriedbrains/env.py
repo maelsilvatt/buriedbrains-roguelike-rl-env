@@ -830,7 +830,7 @@ class BuriedBrainsEnv(gym.Env):
         
         # Define a Janela de Tolerância (K/2 é uma boa medida. Se K=20, Janela=10)
         MATCH_WINDOW = self.sanctum_floor // 2
-        TESTE_SOCIAL = True  # Modo de teste para forçar PvP/Social sempre que possível
+        TESTE_SOCIAL = False  # Modo de teste para forçar PvP/Social sempre que possível (gera Smurfing!)
         
         # --- CENÁRIO 1: FORA DA JANELA (SKIP) ---
         if floor_diff > MATCH_WINDOW and not TESTE_SOCIAL:
@@ -1785,7 +1785,7 @@ class BuriedBrainsEnv(gym.Env):
         
         # --- 2. Definir o Limiar de "Covardia" ---
         # (Ajuste este valor conforme necessário para o balanceamento)
-        COWARDICE_THRESHOLD = 10 
+        COWARDICE_THRESHOLD = 8 
 
         # --- 3. Aplicar Atualização de Karma ao Vencedor ---
         action_type = 'neutral' # Padrão para uma luta justa
