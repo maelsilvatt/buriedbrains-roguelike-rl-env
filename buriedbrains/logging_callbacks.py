@@ -111,21 +111,27 @@ class LoggingCallback(BaseCallback):
         hall_list[:] = hall_list[:self.top_n]
         
     def _on_step(self) -> bool:
+        # Recupera as listas do VecEnv
         dones = self.locals.get("dones", [])
         infos = self.locals.get("infos", [])
         rewards = self.locals.get("rewards", [])
 
-        for i, done in enumerate(dones):
-            if not done:
-                continue
+        # Itera sobre todos os agentes (índices)
+        for i in range(len(infos)):
+            
+            info = infos[i]
+            
+            # Extrai o relatório final real            
+            final_status = info.get("final_status", None)
 
-            self.episode_count += 1
-
-            final_info = self._extract_final_info(infos[i])
-            final_status = final_info.get("final_status", None)
-
+            # Se não tem relatório final, pula este agente neste frame
             if not isinstance(final_status, dict):
                 continue
+            
+            # Coleta dados do episódio finalizado
+            self.episode_count += 1
+            if self.verbose > 1:
+                 print(f"[LoggingCallback] Capturado episódio de {final_status.get('agent_name')} (Morte/Vitória)")
 
             # Coleta métricas
             self.episode_rewards.append(rewards[i])

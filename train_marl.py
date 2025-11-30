@@ -113,28 +113,28 @@ def main():
         net_arch = {"pi": [256, 256], "vf": [256, 256]}
         enable_critic_lstm = True
 
-    elif args.num_agents <= 32:
+    elif args.num_agents >= 32:
         batch_size = 512
         n_steps = 1024
         lstm_hidden_size = 256
         net_arch = {"pi": [256, 256], "vf": [256, 256]}
-        enable_critic_lstm = False  # desativa critic LSTM para aliviar
+        enable_critic_lstm = True  # desativa critic LSTM para aliviar
 
     else:
         batch_size = 256
         n_steps = 512
         lstm_hidden_size = 128
         net_arch = {"pi": [128, 128], "vf": [128, 128]}
-        enable_critic_lstm = False
+        enable_critic_lstm = True
 
     lstm_params = {
-        "learning_rate": 0.000165,
+        "learning_rate": 0.0001,
         "n_steps": n_steps,
         "batch_size": batch_size,
-        "n_epochs": 20,
+        "n_epochs": 10,
         "gamma": 0.98,
         "gae_lambda": 0.92,
-        "ent_coef": 0.009,
+        "ent_coef": 0.03,
         "vf_coef": 0.4,
         "policy_kwargs": {
             "net_arch": net_arch,
@@ -172,7 +172,7 @@ def main():
 
     # --- 4. Callbacks ---
     checkpoint_callback = CheckpointCallback(save_freq=200_000, save_path=model_path, name_prefix="marl_model")
-    logging_callback = LoggingCallback(verbose=1, log_interval=1)
+    logging_callback = LoggingCallback(verbose=0, log_interval=1)
 
     # --- 5. Treino ---
     print(f"Iniciando Treino por {args.total_timesteps} passos...")

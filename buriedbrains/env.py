@@ -949,6 +949,9 @@ class BuriedBrainsEnv(gym.Env):
             # Agente está explorando (Ações 4-9)
             reward_explore, _ = self._handle_exploration_turn(agent_id, action)
             agent_reward += reward_explore
+
+        # Variável para rastrear se houve morte neste passo
+        just_died = False
         
         # 3. Verifica Morte do Agente
         if self.agent_states[agent_id]['hp'] <= 0:                        
@@ -963,6 +966,8 @@ class BuriedBrainsEnv(gym.Env):
             
             # Chama a função de respawn que reseta o agente para o Nível 1            
             self._respawn_agent(agent_id, cause=cause)
+
+            just_died = True
             
             # O agente não está 'terminated', pois o episódio continua
             # O 'agent_reward' (-300) será retornado        
@@ -983,7 +988,7 @@ class BuriedBrainsEnv(gym.Env):
                  self._transition_to_arena(agent_id) 
 
         # 7. Cria 'final_status' se o episódio terminou para este agente
-        if agent_terminated or global_truncated:
+        if agent_terminated or global_truncated or just_died:
             infos[agent_id]['final_status'] = {
                 'level': self.agent_states[agent_id]['level'],
                 'hp': self.agent_states[agent_id]['hp'],
@@ -1077,11 +1082,21 @@ class BuriedBrainsEnv(gym.Env):
                 rewards[p2] += rew2
                 
                 if over:
-                    self._log(winner, f"[PVP] VITORIA de {self.agent_names[winner]}!")
+                    # Calcula quanto tempo durou usando o start_step salvo na sessão
+                    duration = self.current_step - session['start_step']
+                    
+                    # Salva para ambos os participantes (p1 e p2 definidos acima)
+                    self.pvp_combat_durations[p1].append(duration)
+                    self.pvp_combat_durations[p2].append(duration)
+                    
+                    self._log(winner, f"[PVP] VITORIA de {self.agent_names[winner]}!")                    
                     terminateds[loser] = False # Respawnou
+
+                    # DESCOMENTE ESTA LINHA TEMPORARIAMENTE:
+                    self._end_arena_encounter(winner)
                     
                     # O vencedor permanece na arena
-                    self._log(winner, "[PVP] O vencedor permanece na arena.")
+                    # self._log(winner, "[PVP] O vencedor permanece na arena.")
 
             # --- CASO 2: ESTÁ NA FILA DE ESPERA? (Sincronização) ---
             elif agent_id in self.matchmaking_queue:
