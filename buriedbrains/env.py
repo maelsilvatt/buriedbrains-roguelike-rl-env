@@ -473,7 +473,8 @@ class BuriedBrainsEnv(gym.Env):
         self.karma_history = {}
         self.matchmaking_queue = [] 
         self.active_matches = {}    
-        self.arena_instances = {}   
+        self.arena_instances = {}       
+        self.pvp_sessions = {} # LIMPA sessões PvP ativas
 
 
         # Estado Global
@@ -1530,7 +1531,9 @@ class BuriedBrainsEnv(gym.Env):
                     self.social_flags[agent_id]['just_picked_up'] = True                
 
                 if best_item_type == 'Artifact' and is_in_arena:
-                     reward = 10 # Incentivo social
+                    #  reward = 10 # Incentivo social
+                    # Comentei para testar se o sistema de barganha social funciona sem recompensa direta
+                     pass
                 else:
                      reward = 50 + (max_rarity_diff * 100) # Incentivo PvE
             else:

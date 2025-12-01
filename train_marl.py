@@ -152,17 +152,35 @@ def main():
         }
     }
 
-    # --- 2. Carregar ou Criar Modelo ---
-    
+    # --- 2. Carregar ou Criar Modelo ---    
+    model = None
+
     if args.resume_path and os.path.exists(args.resume_path):
         print(f"\n>>> RESUMINDO TREINAMENTO MARL <<<")
         print(f"Carregando checkpoint: {args.resume_path}")
 
         model = RecurrentPPO.load(
             args.resume_path, 
-            env=env, 
+            env=env,
             device='cuda'
         )
+
+    else:
+        if not args.pretrained_path:
+            raise ValueError("Para iniciar um treino novo você deve fornecer --pretrained_path.")
+
+        print(f"\n>>> INICIANDO NOVO TREINO MARL (TRANSFER LEARNING) <<<")
+
+        model = RecurrentPPO(
+            "MlpLstmPolicy",
+            env,
+            verbose=0,
+            tensorboard_log=base_logdir,
+            **lstm_params
+        )
+
+        # Transferência dos pesos PvE → PvP Social
+        transfer_weights(args.pretrained_path, model, verbose=1)
 
     # --- 4. Callbacks ---
     checkpoint_callback = CheckpointCallback(save_freq=200_000, save_path=model_path, name_prefix="marl_model")
