@@ -46,6 +46,8 @@ class LoggingCallback(BaseCallback):
         self.episode_arena_encounters = []
         self.episode_pvp_combats = []
         self.episode_bargains = []
+        self.episode_bargains_trade = []
+        self.episode_bargains_toll = []
         self.episode_cowardice_kills = []
         self.episode_betrayals = []
         self.episode_final_karma_real = []
@@ -157,6 +159,8 @@ class LoggingCallback(BaseCallback):
             self.episode_arena_encounters.append(final_status.get("arena_encounters", 0))
             self.episode_pvp_combats.append(final_status.get("pvp_combats", 0))
             self.episode_bargains.append(final_status.get("bargains_succeeded", 0))
+            self.episode_bargains_trade.append(final_status.get("bargains_trade", 0))
+            self.episode_bargains_toll.append(final_status.get("bargains_toll", 0))
             self.episode_cowardice_kills.append(final_status.get("cowardice_kills", 0))
             self.episode_betrayals.append(final_status.get("betrayals", 0))
             karma = final_status.get("karma", {'real': 0})
@@ -208,6 +212,8 @@ class LoggingCallback(BaseCallback):
                 self.logger.record("social/total_arena_encounters", np.sum(self.episode_arena_encounters))
                 self.logger.record("social/total_pvp_combats", np.sum(self.episode_pvp_combats))
                 self.logger.record("social/total_bargains", np.sum(self.episode_bargains))
+                self.logger.record("social/total_bargains_trade", np.sum(self.episode_bargains_trade))
+                self.logger.record("social/total_bargains_toll", np.sum(self.episode_bargains_toll))
                 self.logger.record("social/total_cowardice_kills", np.sum(self.episode_cowardice_kills))
                 self.logger.record("social/avg_final_karma", np.mean(self.episode_final_karma_real))
                 self.logger.record("social/total_betrayals", np.mean(self.episode_betrayals))

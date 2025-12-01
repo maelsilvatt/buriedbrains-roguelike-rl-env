@@ -111,21 +111,21 @@ def main():
         n_steps = 1024
         lstm_hidden_size = 256
         net_arch = {"pi": [256, 256], "vf": [256, 256]}
-        enable_critic_lstm = True
+        enable_critic_lstm = False
 
     elif args.num_agents >= 32:
         batch_size = 512
         n_steps = 1024
         lstm_hidden_size = 256
         net_arch = {"pi": [256, 256], "vf": [256, 256]}
-        enable_critic_lstm = True  # desativa critic LSTM para aliviar
+        enable_critic_lstm = False  # desativa critic LSTM para aliviar
 
     else:
         batch_size = 256
         n_steps = 512
         lstm_hidden_size = 128
         net_arch = {"pi": [128, 128], "vf": [128, 128]}
-        enable_critic_lstm = True
+        enable_critic_lstm = False
 
     lstm_params = {
         "learning_rate": 0.0001,
