@@ -91,41 +91,50 @@ def main():
     # Aplica o wrapper para Shared Policy
     env = SharedPolicyVecEnv(base_env) 
 
-    # Parâmetros do LSTM (Ajuste automático baseado no número de agentes)
-    if args.num_agents <= 4:
+    # Ajustes dinâmicos baseados no número de agentes
+    na = args.num_agents
+
+    # Defaults seguros
+    lstm_hidden_size = 128
+    n_steps = 512
+    batch_size = 256
+    enable_critic_lstm = False
+    net_arch = {"pi": [128, 128], "vf": [128, 128]}
+
+    # 1 - Quase nenhum agente → pode usar rede maior
+    if na <= 4:
+        lstm_hidden_size = 128
+        n_steps = 512
         batch_size = 128
-        n_steps = 512
-        lstm_hidden_size = 128
         net_arch = {"pi": [64, 64], "vf": [64, 64]}
-        enable_critic_lstm = False
 
-    elif args.num_agents <= 8:
-        batch_size = 256
-        n_steps = 512
+    elif na <= 16:
         lstm_hidden_size = 128
-        net_arch = {"pi": [64, 64], "vf": [64, 64]}
-        enable_critic_lstm = False
-
-    elif args.num_agents <= 16:
-        batch_size = 512
-        n_steps = 1024
-        lstm_hidden_size = 256
-        net_arch = {"pi": [256, 256], "vf": [256, 256]}
-        enable_critic_lstm = False
-
-    elif args.num_agents >= 32:
-        batch_size = 512
-        n_steps = 1024
-        lstm_hidden_size = 256
-        net_arch = {"pi": [256, 256], "vf": [256, 256]}
-        enable_critic_lstm = False  # desativa critic LSTM para aliviar
-
-    else:
-        batch_size = 256
         n_steps = 512
-        lstm_hidden_size = 128
+        batch_size = 256
         net_arch = {"pi": [128, 128], "vf": [128, 128]}
+
+    # 2 - Média escala (32–128 agentes)
+    elif na <= 128:
+        lstm_hidden_size = 64
+        n_steps = 256
+        batch_size = 256
+        net_arch = {"pi": [128, 128], "vf": [128, 128]}
+
+    # 3 - Grande escala (128–1000 agentes)
+    elif na <= 1000:
+        lstm_hidden_size = 48
+        n_steps = 128
+        batch_size = 128
+        net_arch = {"pi": [64, 64], "vf": [64, 64]}
+
+    # 4 - Enorme escala (1000+ agentes)
+    else:
+        lstm_hidden_size = 32
+        n_steps = 64
+        batch_size = 64
         enable_critic_lstm = False
+        net_arch = {"pi": [32, 32], "vf": [32, 32]}
 
     lstm_params = {
         "learning_rate": 0.0001,
@@ -148,27 +157,12 @@ def main():
     if args.resume_path and os.path.exists(args.resume_path):
         print(f"\n>>> RESUMINDO TREINAMENTO MARL <<<")
         print(f"Carregando checkpoint: {args.resume_path}")
-        
-        # Carrega o modelo completo
+
         model = RecurrentPPO.load(
             args.resume_path, 
-            env=env, # Passa o VecEnv direto
-            device='cuda',
-            custom_objects={'policy_kwargs': lstm_params['policy_kwargs']} 
+            env=env, 
+            device='cuda'
         )
-        model.set_parameters(lstm_params) 
-        
-    else:
-        print(f"\n>>> INICIANDO NOVO TREINO MARL (TRANSFER LEARNING) <<<")        
-        model = RecurrentPPO(
-            "MlpLstmPolicy",
-            env, # Passa o VecEnv direto
-            verbose=0,
-            tensorboard_log=base_logdir,
-            **lstm_params
-        )
-        # Transplanta o cérebro do PvE
-        transfer_weights(args.pretrained_path, model, verbose=1)    
 
     # --- 4. Callbacks ---
     checkpoint_callback = CheckpointCallback(save_freq=200_000, save_path=model_path, name_prefix="marl_model")
