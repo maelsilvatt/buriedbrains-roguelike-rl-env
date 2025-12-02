@@ -33,6 +33,9 @@ body {
     flex-direction: column;
     box-shadow: 0 0 20px rgba(0,0,0,0.5);
     position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* Garante que nada vaze */
 }
 
 /* HEADER */
@@ -132,6 +135,68 @@ h1 { font-family: 'Press Start 2P', cursive; font-size: 14px; color: var(--accen
 .icon-event { color: #a29bfe; } /* Roxo para Eventos/Tesouros */
 .icon-effect { color: #55efc4; } /* Verde Água para Efeitos */
 
+/* Container dos Slots */
+.equipment-container {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px; /* Espaço abaixo da barra de XP */
+    justify-content: flex-start;
+}
+
+/* O Slot Individual */
+.equip-slot {
+    width: 32px;
+    height: 32px;
+    background: #222;
+    border: 2px solid #444; /* Borda padrão (Vazio/Comum) */
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #555; /* Cor do ícone vazio */
+    font-size: 14px;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+/* Quando tem item equipado, ícone fica branco */
+.equip-slot.equipped {
+    color: #fff;
+    background: #2d3436;
+}
+
+/* --- CORES DE RARIDADE (Bordas + Glow) --- */
+
+/* Comum (Verde) */
+.border-common {
+    border-color: #55efc4;
+    box-shadow: 0 0 5px rgba(85, 239, 196, 0.2);
+}
+
+/* Raro (Azul) */
+.border-rare {
+    border-color: #0984e3;
+    box-shadow: 0 0 8px rgba(9, 132, 227, 0.4);
+}
+
+/* Épico (Roxo) */
+.border-epic {
+    border-color: #a29bfe;
+    box-shadow: 0 0 10px rgba(162, 155, 254, 0.5);
+}
+
+/* Lendário (Laranja/Dourado) */
+.border-legendary {
+    border-color: #e17055;
+    box-shadow: 0 0 12px rgba(225, 112, 85, 0.7);
+    animation: glow-pulse 2s infinite;
+}
+
+/* Ícones específicos dentro dos slots */
+#slot-weapon i { font-size: 14px; }
+#slot-armor i { font-size: 14px; }
+#slot-artifact i { font-size: 12px; }
+
 /* Animações */
 @keyframes glow-pulse {
     from { text-shadow: 0 0 5px #fdcb6e; transform: scale(1); }
@@ -197,19 +262,29 @@ footer {
     color: #00ff00;
     display: flex;
     flex-direction: column;
-    justify-content: flex-end; /* Mantém scroll embaixo */
+    justify-content: flex-end; /* Mantém scroll embaixo */    
 }
 
 /* Controles */
-.controls {
-    position: absolute;
-    bottom: -50px;
+.controls {    
+    position: relative;
+    bottom: auto;    
+    margin-top: auto; 
+    
+    /* Estilo visual */
+    background: #0f0f1a; /* Cor de fundo sólida para não misturar */
+    border-top: 2px solid #333; /* Separação visual do footer */
+    padding: 15px;
     width: 100%;
+    
+    /* Layout dos botões */
     display: flex;
     justify-content: center;
     gap: 15px;
     align-items: center;
+    z-index: 10;
 }
+
 button { background: var(--accent-purple); border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
 input[type=range] { width: 300px; }
 

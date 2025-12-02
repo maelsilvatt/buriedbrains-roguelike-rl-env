@@ -8,15 +8,18 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_path', type=str, required=True, help="Caminho do .zip treinado")
     parser.add_argument('--output', type=str, default="replay_final.json")
+    parser.add_argument('--recording_duration', type=int, default=2000, help="Duração máxima da gravação em passos")
+    parser.add_argument('--num_agents', type=int, default=2, help="Número de agentes no ambiente")
+    parser.add_argument('--sanctum_floor', type=int, default=20, help="Andar do Sanctum para o ambiente")
+    parser.add_argument('--seed', type=int, default=123, help="Seed para o ambiente")
     args = parser.parse_args()
 
     # 1. Recria o Ambiente (Mesmas configs do treino)
     base_env = BuriedBrainsEnv(
-        max_episode_steps=2000, # Um episódio longo o suficiente
-        sanctum_floor=20,
-        verbose=0,
-        num_agents=2, # Ou mais, dependendo do que quer mostrar
-        seed=123 # Seed fixa para garantir que o replay seja 'sinistro'
+        max_episode_steps=args.recording_duration,
+        sanctum_floor=args.sanctum_floor,        
+        num_agents=args.num_agents, # Ou mais, dependendo do que quer mostrar
+        seed=args.seed # Seed fixa para garantir que o replay seja 'aquele'
     )
     env = SharedPolicyVecEnv(base_env)
 
@@ -36,7 +39,7 @@ def main():
     recorder.record_step(0)
 
     print("Gravando episódio...")
-    for step in range(2000):
+    for step in range(args.recording_duration):
         # Ação do Modelo
         action, lstm_states = model.predict(
             obs, 
