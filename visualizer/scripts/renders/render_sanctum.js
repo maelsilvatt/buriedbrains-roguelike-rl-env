@@ -1,105 +1,119 @@
-// ==========================================
-// CENA DO SANTUÁRIO (GRID 3x3 + SVG)
-// ==========================================
-
+// scripts/render_sanctum.js
 function renderSanctuaryScene(container, frame) {
-    // Pega o agente focado (definido globalmente no main.js via select)
-    // Precisamos acessar a variável global ou passar como argumento.
-    // Assumindo que passamos o ID ou o objeto do agente focado:
-    const agentSelect = document.getElementById('agent-selector');
-    const selectedId = agentSelect ? agentSelect.value : Object.keys(frame.agents)[0];
-    const focusedAgent = frame.agents[selectedId];
-
-    if (!focusedAgent) return;
-
-    container.innerHTML = ''; // Limpa palco
+    container.innerHTML = '';
 
     // 1. Título
     const titleDiv = document.createElement('div');
     titleDiv.className = 'room-title-display';
-    titleDiv.innerHTML = `<span style="color:#a29bfe">SANCTUM ZONE (Floor ${focusedAgent.floor})</span>`;
+    titleDiv.innerHTML = '<span style="color:var(--accent-blood)">SANCTUM ZONE</span>';
     container.appendChild(titleDiv);
 
-    // 2. Estrutura Visual
+    // 2. Wrapper
     const sanctumWrapper = document.createElement('div');
     sanctumWrapper.className = 'sanctuary-container';
 
+    // 3. Camadas
     const svgLayer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svgLayer.classList.add("sanctuary-svg");
     sanctumWrapper.appendChild(svgLayer);
 
     const gridLayer = document.createElement('div');
     gridLayer.className = 'sanctuary-grid';
-
-    // --- LÓGICA DE MAPA (A Correção) ---
     
-    // Tenta pegar a configuração da arena do agente focado
-    // Se ele estiver na Arena, ele TEM a lista de arestas.
-    // Se ele não estiver, procuramos ALGUÉM que esteja na mesma sala (improvável no seu visualizador focado).
-    let activeEdges = [];
-    let isMeetingActive = false;
+    // 4. Lógica de Ocupação e Arestas
+    const nodeOccupancy = {}; 
+    const itemsOnFloor = {}; 
+    let edgesToDraw = [];
 
-    if (focusedAgent.arena_config) {
-        activeEdges = focusedAgent.arena_config.edges || [];
-        isMeetingActive = focusedAgent.arena_config.meet_occurred || false;
+    // A. Identifica quem estamos assistindo (Câmera)
+    const cameraAgentId = window.selectedAgentId || Object.keys(frame.agents)[0];
+    const cameraAgent = frame.agents[cameraAgentId];
+
+    // B. Define quem deve aparecer (Eu + Meu Oponente)
+    const visibleAgentsIds = [cameraAgentId];
+    if (cameraAgent && cameraAgent.opponent_id) {
+        visibleAgentsIds.push(cameraAgent.opponent_id);
     }
 
-    // A. Desenha as Linhas (Baseado na Verdade do Python)
-    activeEdges.forEach(edge => {
-        const [u, v] = edge; 
+    // C. Pega o mapa da Arena (usando a visão da câmera)
+    if (cameraAgent && cameraAgent.arena_edges) {
+        edgesToDraw = cameraAgent.arena_edges;
+    }
+
+    // D. Processa apenas os agentes visíveis
+    visibleAgentsIds.forEach(agentId => {
+        const ag = frame.agents[agentId];
+        
+        // Segurança: se o oponente não existir no frame ou não estiver na arena
+        if (!ag) return; 
+        
+        // Verifica se está visualmente na arena (nó k_...)
+        const isInSanctumNode = ag.location_node && ag.location_node.startsWith('k_');
+        if (!isInSanctumNode && ag.scene_mode !== 'ARENA' && ag.scene_mode !== 'COMBAT_PVP') return;
+
+        const nodeIdx = parseKNodeIndex(ag.location_node);
+        
+        if (nodeIdx !== null) {
+            // Adiciona Agente ao Nó
+            if (!nodeOccupancy[nodeIdx]) nodeOccupancy[nodeIdx] = [];
+            nodeOccupancy[nodeIdx].push({...ag, id: agentId});
+
+            // Adiciona Itens do Chão (apenas se for a câmera ou relevante)
+            if (ag.room_items && ag.room_items.length > 0) {
+                itemsOnFloor[nodeIdx] = ag.room_items;
+            }
+        }
+    });
+    // 5. Desenha Linhas (Baseado no JSON real do mapa)
+    edgesToDraw.forEach(edge => {
+        const [u, v] = edge;
         const line = createSvgLine(u, v);
         svgLayer.appendChild(line);
     });
 
-    // --- LÓGICA DE AGENTES ---
-    // Descobre onde todos estão
-    const nodeOccupancy = {}; 
-    
-    Object.values(frame.agents).forEach(ag => {
-        // Só desenha agentes que estão no modo ARENA
-        if (ag.scene_mode === 'ARENA') {
-            const nodeIdx = parseKNodeIndex(ag.location_node);
-            if (nodeIdx !== null) {
-                if (!nodeOccupancy[nodeIdx]) nodeOccupancy[nodeIdx] = [];
-                nodeOccupancy[nodeIdx].push(ag);
-            }
-        }
-    });
-
-    // B. Desenha o Grid 3x3
+    // 6. Desenha Nós (0 a 8)
     for (let i = 0; i < 9; i++) {
         const nodeDiv = document.createElement('div');
         nodeDiv.className = `k-node`;
-        
         const floorDiv = document.createElement('div');
         floorDiv.className = 'k-room-floor';
         
-        // Se tem gente aqui
-        if (nodeOccupancy[i]) {
-            nodeDiv.classList.add('has-agent');
-            
-            // Efeito de Porta Aberta (Encontro)
-            if (isMeetingActive && nodeOccupancy[i].length > 1) {
-                nodeDiv.classList.add('has-exit'); // Brilho verde
-            }
+        // Verifica saída 
+        // Se houve encontro, a sala atual brilha
+        const hasAgents = nodeOccupancy[i] && nodeOccupancy[i].length > 0;
+        const isMeeting = nodeOccupancy[i] && nodeOccupancy[i].length > 1;
 
-            // Desenha Avatares
+        if (hasAgents) {
+            nodeDiv.classList.add('has-agent');
+            if (isMeeting) nodeDiv.classList.add('has-exit'); // Encontro = Brilho
+
+            // Desenha Agentes
             nodeOccupancy[i].forEach((ag, idx) => {
                 const img = document.createElement('img');
-                img.src = `https://api.dicebear.com/7.x/adventurer/svg?seed=${ag.name}`;
+                if (window.AssetManager) {
+                    img.src = AssetManager.getAgentSprite(ag.name);
+                }
                 img.className = 'k-avatar';
                 
-                // Auras Sociais
-                if (ag.social?.offered_peace) img.classList.add('peace-aura');
-                if (ag.social?.skipped_attack) img.classList.add('defense-aura');
-
-                // Offset para não encavalar
+                // Offset para não sobrepor se houver 2
                 if (nodeOccupancy[i].length > 1) {
-                    img.style.transform = `translate(${idx * 20 - 10}px, 0)`;
+                    const offset = idx === 0 ? -10 : 10;
+                    img.style.transform = `translateX(${offset}px)`;
+                    img.style.zIndex = idx + 10;
                 }
-                
                 floorDiv.appendChild(img);
             });
+        }
+
+        // Desenha Itens Dropados (Ação Social)
+        if (itemsOnFloor[i]) {
+            const itemIcon = document.createElement('div');
+            itemIcon.className = 'k-item';
+            // Se for artefato, ícone de anel, senão baú
+            const isArtifact = itemsOnFloor[i].some(it => it.includes('Amulet') || it.includes('Ring'));
+            itemIcon.innerHTML = `<i class="fa-solid ${isArtifact ? 'fa-ring' : 'fa-box-open'}"></i>`;
+            itemIcon.title = `Chão: ${itemsOnFloor[i].join(', ')}`;
+            floorDiv.appendChild(itemIcon);
         }
 
         nodeDiv.appendChild(floorDiv);
@@ -110,13 +124,12 @@ function renderSanctuaryScene(container, frame) {
     container.appendChild(sanctumWrapper);
 }
 
-// --- HELPERS ---
-
+// Auxiliares
 function createSvgLine(u, v) {
     const getCoord = (idx) => {
         const row = Math.floor(idx / 3);
         const col = idx % 3;
-        // Centraliza no grid 3x3 (16.66% offset)
+        // Centros: 16.66%, 50%, 83.33%
         return { x: (col * 33.33) + 16.66, y: (row * 33.33) + 16.66 };
     };
     const p1 = getCoord(u);
@@ -132,8 +145,6 @@ function createSvgLine(u, v) {
 }
 
 function parseKNodeIndex(nodeId) {
-    if (!nodeId || typeof nodeId !== 'string') return null;
-    if (!nodeId.startsWith('k_')) return null;
-    const parts = nodeId.split('_');
-    return parseInt(parts[2]); // k_20_5 -> 5
+    if (!nodeId || !nodeId.startsWith('k_')) return null;
+    return parseInt(nodeId.split('_')[2]);
 }
