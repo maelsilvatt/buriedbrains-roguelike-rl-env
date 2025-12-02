@@ -781,7 +781,7 @@ class BuriedBrainsEnv(gym.Env):
              self.agent_states[id_a1]['cooldowns'] = a1_combatant['cooldowns'].copy()
         if loser != id_a2: # Se a2 não perdeu
              self.agent_states[id_a2]['hp'] = a2_combatant['hp']
-             self.agent_states[id_a2]['cooldowns'] = a2_combatant['cooldowns'].copy()        
+             self.agent_states[id_a2]['cooldowns'] = a2_combatant['cooldowns'].copy()
         
         return rew_a1, rew_a2, combat_over, winner, loser
     
@@ -790,7 +790,7 @@ class BuriedBrainsEnv(gym.Env):
         Pega todos os equipamentos do perdedor (estado mestre)
         e os joga no chão da sala da arena.
         """
-        self._log(winner_id, f"[PVP] {self.agent_names[loser_id]} dropou seu equipamento.")
+        self._log(winner_id, f"[PVP] {self.agent_names[loser_id]} foi derrotado e dropou todos os seus itens.")
         
         # Pega o estado mestre do perdedor (ANTES do respawn)
         loser_main_state = self.agent_states[loser_id]        
@@ -902,7 +902,7 @@ class BuriedBrainsEnv(gym.Env):
         if agent_id in self.matchmaking_queue or agent_id in self.active_matches:
             return
 
-        self._log(agent_id, f"[SANCTUM] Chegou ao Santuário (Andar {self.current_floors[agent_id]}). Entrando na fila...")
+        self._log(agent_id, f"[SANCTUM] {self.agent_names[agent_id]} ao Santuário (Andar {self.current_floors[agent_id]}). Entrando na fila...")
         
         # 1. Adiciona à fila de espera
         self.matchmaking_queue.append(agent_id)
@@ -1006,7 +1006,7 @@ class BuriedBrainsEnv(gym.Env):
             cause = "Dano Ambiental"
             if self.combat_states.get(agent_id):
                 enemy_name = self.combat_states[agent_id]['enemy']['name']
-                cause = f"PvE ({enemy_name})"
+                cause = f"{enemy_name} (Lvl {self.combat_states[agent_id]['enemy']['level']}) PVE"
             self.death_cause[agent_id] = cause
 
             # Faz a limpa nos logs ANTES de salvar o final_status            
@@ -1027,8 +1027,8 @@ class BuriedBrainsEnv(gym.Env):
                 'death_cause': cause,
                 
                 # Métricas Sociais
-                'pve_durations': self.pve_combat_durations[agent_id],
-                'pvp_durations': self.pvp_combat_durations[agent_id],
+                'pve_durations': self.pve_combat_durations[agent_id].copy(),
+                'pvp_durations': self.pvp_combat_durations[agent_id].copy(),
                 'arena_encounters': self.arena_encounters_this_episode[agent_id],
                 'pvp_combats': self.pvp_combats_this_episode[agent_id],
                 'bargains_succeeded': self.bargains_succeeded_this_episode[agent_id],
@@ -1038,7 +1038,7 @@ class BuriedBrainsEnv(gym.Env):
                 'betrayals': self.betrayals_this_episode[agent_id],
                 'karma_history': self.karma_history[agent_id],
                 'karma': self.agent_states[agent_id]['karma']
-            }            
+            }                        
 
             # AGORA reseta (destroi os dados antigos para a nova vida)
             self._respawn_agent(agent_id, cause=cause)
@@ -1061,34 +1061,46 @@ class BuriedBrainsEnv(gym.Env):
         # 7. Cria 'final_status' se o episódio terminou para este agente
         if agent_terminated or global_truncated:
             # Só gera se não tiver gerado antes (na morte)
-             if 'final_status' not in infos[agent_id]:
-                 infos[agent_id]['final_status'] = {
+            if 'final_status' not in infos[agent_id]:
+                infos[agent_id]['final_status'] = {
                     'level': self.agent_states[agent_id]['level'],
-                    'hp': self.agent_states[agent_id]['hp'],
-                    'floor': self.max_floor_reached_this_episode[agent_id],
+                    'hp': self.agent_states[agent_id]['hp'],                    
+                    'floor': self.max_floor_reached_this_episode.get(agent_id, 0),
                     'win': game_won and self.agent_states[agent_id]['hp'] > 0,
                     'steps': self.current_step,
-                    'enemies_defeated': self.enemies_defeated_this_episode[agent_id],
-                    'invalid_actions': self.invalid_action_counts[agent_id],
-                    'agent_name': self.agent_names[agent_id],
-                    'full_log': self.current_episode_logs[agent_id],
-                    'equipment': self.agent_states[agent_id]['equipment'].copy(),
+                    'enemies_defeated': self.enemies_defeated_this_episode.get(agent_id, 0),
+                    'invalid_actions': self.invalid_action_counts.get(agent_id, 0),
+                    'agent_name': self.agent_names.get(agent_id, "Roberto"),
+                    
+                    # Logs e Equipamentos (precisa de copy)
+                    'full_log': self.current_episode_logs.get(agent_id, []).copy(), 
+                    'equipment': self.agent_states[agent_id].get('equipment', {}).copy(),
+                    
                     'exp': self.agent_states[agent_id]['exp'],
-                    'damage_dealt': self.damage_dealt_this_episode[agent_id],
-                    'equipment_swaps': self.equipment_swaps_this_episode[agent_id],
-                    'death_cause': self.death_cause[agent_id],
-                    'pve_durations': self.pve_combat_durations[agent_id],
-                    'pvp_durations': self.pvp_combat_durations[agent_id],
-                    'arena_encounters': self.arena_encounters_this_episode[agent_id],
-                    'pvp_combats': self.pvp_combats_this_episode[agent_id],
-                    'bargains_succeeded': self.bargains_succeeded_this_episode[agent_id],
-                    'bargains_trade': self.bargains_trade_this_episode[agent_id],
-                    'bargains_toll': self.bargains_toll_this_episode[agent_id],
-                    'cowardice_kills': self.cowardice_kills_this_episode[agent_id],
-                    'karma_history': self.karma_history[agent_id],
-                    'betrayals': self.betrayals_this_episode[agent_id],
-                    'karma': self.agent_states[agent_id]['karma']
-                 }                                    
+                    'damage_dealt': self.damage_dealt_this_episode.get(agent_id, 0.0),
+                    'equipment_swaps': self.equipment_swaps_this_episode.get(agent_id, 0),
+                    
+                    # Segurança caso death_cause não tenha sido setado ainda
+                    'death_cause': self.death_cause.get(agent_id, "Desconhecido"),
+                    
+                    # --- Listas de Duração ---                    
+                    'pve_durations': self.pve_combat_durations.get(agent_id, []).copy(),
+                    'pvp_durations': self.pvp_combat_durations.get(agent_id, []).copy(),
+                    
+                    'arena_encounters': self.arena_encounters_this_episode.get(agent_id, 0),
+                    'pvp_combats': self.pvp_combats_this_episode.get(agent_id, 0),
+                    'bargains_succeeded': self.bargains_succeeded_this_episode.get(agent_id, 0),
+                    'bargains_trade': self.bargains_trade_this_episode.get(agent_id, 0),
+                    'bargains_toll': self.bargains_toll_this_episode.get(agent_id, 0),
+                    'cowardice_kills': self.cowardice_kills_this_episode.get(agent_id, 0),
+                    
+                    # Histórico de Karma é lista, precisa de copy
+                    'karma_history': self.karma_history.get(agent_id, []).copy(), 
+                    'betrayals': self.betrayals_this_episode.get(agent_id, 0),
+                    
+                    # Karma atual é um dict/objeto, precisa de copy
+                    'karma': self.agent_states[agent_id]['karma'].copy() 
+                }                                
                     
         return agent_reward, agent_terminated
 
@@ -1162,9 +1174,9 @@ class BuriedBrainsEnv(gym.Env):
                     
                     # Salva para ambos os participantes (p1 e p2 definidos acima)
                     self.pvp_combat_durations[p1].append(duration)
-                    self.pvp_combat_durations[p2].append(duration)
+                    self.pvp_combat_durations[p2].append(duration)                    
 
-                    self._log(winner, f"[PVP] VITORIA de {self.agent_names[winner]}!")                    
+                    self._log(winner, f"[PVP] VITÓRIA de {self.agent_names[winner]}!")                    
                     terminateds[loser] = False # Respawnou
 
                     # Remove a sessão para impedir que haja uma sessão fantasma no próximo passo
@@ -1192,8 +1204,8 @@ class BuriedBrainsEnv(gym.Env):
                     if not arena_graph.graph.get('meet_occurred', False):
                         if self.current_nodes[agent_id] == self.current_nodes[opponent_id]:
                             arena_graph.graph['meet_occurred'] = True
-                            self._log(agent_id, f"[SANCTUM] Encontro realizado! Saída liberada.")
-                            self._log(opponent_id, f"[SANCTUM] Encontro realizado! Saída liberada.")
+                            self._log(agent_id, f"[SANCTUM] Encontro entre {self.agent_names[agent_id]} e {self.agent_names[opponent_id]}! Saída liberada.")
+                            self._log(opponent_id, f"[SANCTUM] Encontro entre {self.agent_names[opponent_id]} e {self.agent_names[agent_id]}! Saída liberada.")
                             rewards[agent_id] += 100
                             rewards[opponent_id] += 100
 
@@ -1208,7 +1220,7 @@ class BuriedBrainsEnv(gym.Env):
                 if target_id:
                     # Lógica de Traição (Atacou oferta de paz do outro)
                     if self.arena_interaction_state[target_id]['offered_peace']:
-                         self._log(agent_id, f"[SOCIAL] TRAIÇÃO contra {self.agent_names[target_id]}!")
+                         self._log(agent_id, f"[SOCIAL] TRAIÇÃO! O agente {self.agent_names[agent_id]} TRAIU a oferta de paz de {self.agent_names[target_id]}! Karma (--).")
                          self.reputation_system.update_karma(agent_id, 'bad')
                          self.reputation_system.update_karma(agent_id, 'bad') # Dupla
                          self.reputation_system.update_karma(target_id, 'bad')
@@ -1218,7 +1230,7 @@ class BuriedBrainsEnv(gym.Env):
 
                     # Lógica de Perfídia (Atacou segurando a própria oferta)
                     if self.arena_interaction_state[agent_id]['offered_peace']:
-                         self._log(agent_id, f"[SOCIAL] PERFÍDIA! Atacou sob bandeira branca.")
+                         self._log(agent_id, f"[SOCIAL] PERFÍDIA! O agente {self.agent_names[agent_id]} atacou enquanto oferecia paz! Karma (---).")
                          self.reputation_system.update_karma(agent_id, 'bad')
                          self.reputation_system.update_karma(agent_id, 'bad')
                          self.reputation_system.update_karma(agent_id, 'bad') # Tripla
@@ -1226,8 +1238,7 @@ class BuriedBrainsEnv(gym.Env):
                          self.betrayals_this_episode[agent_id] += 1
                          self.arena_interaction_state[agent_id]['offered_peace'] = False
 
-                    # Inicia PvP
-                    self._log(agent_id, f"[PVP] Iniciou combate contra {self.agent_names[target_id]}")
+                    # Inicia PvP                    
                     self._initiate_pvp_combat(agent_id, target_id) 
                     rewards[agent_id] += 20 
                     
@@ -1247,7 +1258,7 @@ class BuriedBrainsEnv(gym.Env):
                     # Atualiza estado de Paz (Se dropou com sucesso)
                     if self.social_flags[agent_id].get('just_dropped'):
                         self.arena_interaction_state[agent_id]['offered_peace'] = True
-                        self._log(agent_id, "[SOCIAL] Oferta de Paz ativada.")
+                        self._log(agent_id, f"[SOCIAL] O agente {self.agent_names[agent_id]} ofereceu seu artefato como oferta de paz.")
                     
                     # Atualiza Skipped Attack (Flag Social)
                     if opponent_id and self.current_nodes[agent_id] == self.current_nodes[opponent_id]:
@@ -1264,8 +1275,8 @@ class BuriedBrainsEnv(gym.Env):
                                              self.social_flags[agent_id].get('just_picked_up')
                         
                         if my_peace_accepted or opp_peace_accepted:
-                            self._log(agent_id, "[SOCIAL] Barganha Concluída! (+)")
-                            self._log(opponent_id, "[SOCIAL] Barganha Concluída! (+)")
+                            self._log(agent_id, f"[SOCIAL] Os agentes {self.agent_names[agent_id]} e {self.agent_names[opponent_id]} concluíram uma Barganha Pacífica! Karma (+)")
+                            self._log(opponent_id, f"[SOCIAL] Os agentes {self.agent_names[opponent_id]} e {self.agent_names[agent_id]} concluíram uma Barganha Pacífica! Karma (+)")
                             
                             self.reputation_system.update_karma(agent_id, 'good')
                             self.reputation_system.update_karma(opponent_id, 'good')
@@ -1310,33 +1321,49 @@ class BuriedBrainsEnv(gym.Env):
             # Salva final_status se truncou
             if global_truncated:
                  for agent_id in self.agent_ids:
-                     if 'final_status' not in infos[agent_id]:
-                        # Popula dados finais (cópia do bloco que já temos em _process_pve_step)
+                    if 'final_status' not in infos[agent_id]:
                         infos[agent_id]['final_status'] = {
                             'level': self.agent_states[agent_id]['level'],
                             'hp': self.agent_states[agent_id]['hp'],
-                            'floor': self.max_floor_reached_this_episode[agent_id],
-                            'win': False,
+                            
+                            # --- Métricas com .get() para segurança ---
+                            'floor': self.max_floor_reached_this_episode.get(agent_id, 0),
+                            'win': False, # Se caiu aqui pelo truncation, não venceu
                             'steps': self.current_step,
-                            'enemies_defeated': self.enemies_defeated_this_episode[agent_id],
-                            'invalid_actions': self.invalid_action_counts[agent_id],
-                            'agent_name': self.agent_names[agent_id],
-                            'full_log': self.current_episode_logs[agent_id],
-                            'equipment': self.agent_states[agent_id].get('equipment', {}),
+                            'enemies_defeated': self.enemies_defeated_this_episode.get(agent_id, 0),
+                            'invalid_actions': self.invalid_action_counts.get(agent_id, 0),
+                            'agent_name': self.agent_names.get(agent_id, "Unknown"),
+                            
+                            # --- Objetos Mutáveis com .copy() ---
+                            'full_log': self.current_episode_logs.get(agent_id, []).copy(),
+                            'equipment': self.agent_states[agent_id].get('equipment', {}).copy(),
+                            
                             'exp': self.agent_states[agent_id]['exp'],
-                            'damage_dealt': self.damage_dealt_this_episode[agent_id],
-                            'equipment_swaps': self.equipment_swaps_this_episode[agent_id],
-                            'death_cause': self.death_cause[agent_id],
-                            'pve_durations': self.pve_combat_durations[agent_id],
-                            'pvp_durations': self.pvp_combat_durations[agent_id],
-                            'arena_encounters': self.arena_encounters_this_episode[agent_id],
-                            'pvp_combats': self.pvp_combats_this_episode[agent_id],
-                            'bargains_succeeded': self.bargains_succeeded_this_episode[agent_id],
-                            'cowardice_kills': self.cowardice_kills_this_episode[agent_id],
-                            'karma_history': self.karma_history[agent_id],
-                            'betrayals': self.betrayals_this_episode[agent_id],
-                            'karma': self.agent_states[agent_id]['karma']
-                        }
+                            'damage_dealt': self.damage_dealt_this_episode.get(agent_id, 0.0),
+                            'equipment_swaps': self.equipment_swaps_this_episode.get(agent_id, 0),
+                            
+                            # Se o jogo acabou por tempo, a causa da morte pode não existir no dict
+                            'death_cause': self.death_cause.get(agent_id, "Time Limit Reached"),
+                            
+                            # --- Listas de Duração ---
+                            'pve_durations': self.pve_combat_durations.get(agent_id, []).copy(),
+                            'pvp_durations': self.pvp_combat_durations.get(agent_id, []).copy(),
+                            
+                            'arena_encounters': self.arena_encounters_this_episode.get(agent_id, 0),
+                            'pvp_combats': self.pvp_combats_this_episode.get(agent_id, 0),
+                            'bargains_succeeded': self.bargains_succeeded_this_episode.get(agent_id, 0),
+                            
+                            # Méritos de Barganha
+                            'bargains_trade': self.bargains_trade_this_episode.get(agent_id, 0),
+                            'bargains_toll': self.bargains_toll_this_episode.get(agent_id, 0),
+                            
+                            'cowardice_kills': self.cowardice_kills_this_episode.get(agent_id, 0),
+                            
+                            # Histórico e Karma (Listas/Dicts)
+                            'karma_history': self.karma_history.get(agent_id, []).copy(),
+                            'betrayals': self.betrayals_this_episode.get(agent_id, 0),
+                            'karma': self.agent_states[agent_id]['karma'].copy()
+                        }                             
 
         observations = {
             agent_id: self._get_observation(agent_id) for agent_id in self.agent_ids
@@ -1421,7 +1448,7 @@ class BuriedBrainsEnv(gym.Env):
                         # Se houve oferta de paz e estamos saindo vivos
                         if my_peace or other_peace:
                             bonus_peace_reward = 150.0 # Total 200 (igual Barganha)
-                            self._log(agent_id, f"[SOCIAL] Saída Pacífica com Tributo! (+)")
+                            self._log(agent_id, f"[SOCIAL] {self.agent_names[agent_id]} saiu do Santuário em paz, pagando o tributo.")
 
                             # Incrementa estatísticas de barganha bem-sucedida (Geral)
                             self.bargains_succeeded_this_episode[agent_id] += 1
@@ -1437,13 +1464,13 @@ class BuriedBrainsEnv(gym.Env):
                                 self.bargains_toll_this_episode[opponent_id] += 1 
                                                         
                         else:
-                            self._log(agent_id, f"[SANCTUM] Saiu do santuário sem tributo.")
+                            self._log(agent_id, f"[SANCTUM] {self.agent_names[agent_id]} saiu do Santuário ignorando a oferta de paz.")
                         
                         # Encerra e Sai
                         self._end_arena_encounter(agent_id)
                         return base_exit_reward + bonus_peace_reward, terminated                             
 
-                self._log(agent_id, f"[AÇÃO] Movimento VÁLIDO para '{chosen_node}'.")
+                self._log(agent_id, f"[AÇÃO] O agente {self.agent_names[agent_id]} fez um movimento VÁLIDO para '{chosen_node}'.")
                 
                 # Lógica de Poda (Apenas na P-Zone)
                 if not is_in_arena:
@@ -1524,7 +1551,8 @@ class BuriedBrainsEnv(gym.Env):
                 
                 # Registra a troca
                 self.equipment_swaps_this_episode[agent_id] += 1
-                self._log(agent_id, f"[AÇÃO] Equipou: '{best_item_to_equip}'.")
+                qualidade = self.catalogs['equipment'][best_item_to_equip]['rarity']
+                self._log(agent_id, f"[AÇÃO] O agente {self.agent_names[agent_id]} equipou: '{best_item_to_equip}' (Tipo: {best_item_type}, Raridade: {qualidade}).")
                 
                 # Flag de pick-up para barganha
                 if best_item_type == 'Artifact':
@@ -1546,7 +1574,7 @@ class BuriedBrainsEnv(gym.Env):
         # --- Ação 5: Dropar Artefato ---        
         elif action == 5:
             if not is_in_arena:
-                self._log(agent_id, "[AÇÃO] Ação 5 inválida fora da Arena K.")
+                self._log(agent_id, "[AÇÃO] Ação 5 inválida fora do Santuário.")
                 self.invalid_action_counts[agent_id] += 1
                 reward = -5
             else:
@@ -1584,7 +1612,7 @@ class BuriedBrainsEnv(gym.Env):
 
         # --- 1. Ação Social só é válida na Arena ---
         if self.env_state != 'ARENA_INTERACTION':
-            self._log(agent_id, "[AÇÃO] Ação 5 (Drop Artifact) é inválida fora da Arena K.")
+            self._log(agent_id, "[AÇÃO] Ação 5 (Drop Artifact) é inválida fora do Santuário.")
             self.invalid_action_counts[agent_id] += 1
             return -5.0
 
@@ -1730,8 +1758,8 @@ class BuriedBrainsEnv(gym.Env):
         self.pvp_combats_this_episode[attacker_id] += 1
         self.pvp_combats_this_episode[defender_id] += 1        
         
-        self._log(attacker_id, f"[PVP] Iniciou combate contra {self.agent_names[defender_id]}!")
-        self._log(defender_id, f"[PVP] Foi atacado por {self.agent_names[attacker_id]}!")
+        self._log(attacker_id, f"[PVP] {self.agent_names[attacker_id]} iniciou ataque contra {self.agent_names[defender_id]}!")
+        self._log(defender_id, f"[PVP] {self.agent_names[defender_id]} está sendo atacado por {self.agent_names[attacker_id]}!")
 
     def _resolve_pvp_end_karma(self, winner_id: str, loser_id: str):
         """
@@ -1758,7 +1786,7 @@ class BuriedBrainsEnv(gym.Env):
         if level_difference > COWARDICE_THRESHOLD:
             # --- Regra de Covardia ---
             # O vencedor estava 10+ níveis *acima* do perdedor.
-            self._log(winner_id, f"[SOCIAL] Covardia! (Nível {winner_level} vs {loser_level}). Karma (-)")
+            self._log(winner_id, f"[SOCIAL] Covardia! O agente {self.agent_names[winner_id]} derrotou covardemente {self.agent_names[loser_id]} (Nível {winner_level} vs {loser_level}). Karma (-)")
             action_type = 'bad'
 
             # Registra a covardia nas estatísticas do episódio
@@ -1767,13 +1795,13 @@ class BuriedBrainsEnv(gym.Env):
         elif level_difference < -COWARDICE_THRESHOLD:
             # --- Regra "Davi vs. Golias" ---
             # O vencedor estava 10+ níveis *abaixo* do perdedor.
-            self._log(winner_id, f"[SOCIAL] Vitória Heroica! (Nível {winner_level} vs {loser_level}). Karma (+)")
+            self._log(winner_id, f"[SOCIAL] Vitória Heroica! O agente {self.agent_names[winner_id]} derrotou heroicamente {self.agent_names[loser_id]} (Nível {winner_level} vs {loser_level}). Karma (+)")
             action_type = 'good'
             
         else:
             # --- Luta Justa ---
             # A diferença de nível era pequena.
-            self._log(winner_id, f"[SOCIAL] Luta Justa. (Nível {winner_level} vs {loser_level}). Karma (Neutro)")
+            self._log(winner_id, f"[SOCIAL] Luta Justa. O agente {self.agent_names[winner_id]} derrotou {self.agent_names[loser_id]} (Nível {winner_level} vs {loser_level}). Karma (Neutro)")
             action_type = 'neutral' # O karma decairá lentamente para o centro
             
         # Chama o motor de reputação para atualizar o karma do VENCEDOR
@@ -1783,7 +1811,7 @@ class BuriedBrainsEnv(gym.Env):
 
     def _end_arena_encounter(self, agent_id: str):
         """
-        Finaliza a participação de um agente na Arena K e o move para a próxima P-Zone.
+        Finaliza a participação de um agente na Santuário e o move para a próxima P-Zone.
         
         Chamado após uma vitória em PvP ou uma barganha bem-sucedida.
         """
@@ -1889,6 +1917,8 @@ class BuriedBrainsEnv(gym.Env):
         self.bargains_trade_this_episode[agent_id] = 0 # Troca de item
         self.bargains_toll_this_episode[agent_id] = 0  # Saída pacífica
         self.betrayals_this_episode[agent_id] = 0
+        self.pvp_combat_durations[agent_id] = []
+        self.pve_combat_durations[agent_id] = []
         
         # 6. LIMPEZA TOTAL DE ESTADOS DA ARENA
         self.combat_states[agent_id] = None 

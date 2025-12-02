@@ -152,7 +152,7 @@ class LoggingCallback(BaseCallback):
             # Durations
             pve_durs = final_status.get("pve_durations", [])
             pvp_durs = final_status.get("pvp_durations", [])
-            self.episode_avg_pve_duration.append(np.mean(pve_durs) if pve_durs else 0)
+            self.episode_avg_pve_duration.append(np.mean(pve_durs) if pve_durs else 0)            
             self.episode_avg_pvp_duration.append(np.mean(pvp_durs) if pvp_durs else 0)
 
             # Social
