@@ -39,6 +39,27 @@ class BuriedBrainsRecorder:
             if in_combat: scene_mode = "COMBAT_PVE"
             elif in_arena: scene_mode = "ARENA"
 
+            arena_config = None
+            if scene_mode == "ARENA":
+                current_graph = self.base_env.arena_instances.get(agent_id)
+                if current_graph:
+                    # Extrai arestas para o JS desenhar as linhas SVG
+                    edges = []
+                    for u, v in current_graph.edges():
+                        # Parseia 'k_20_0' -> 0
+                        try:
+                            u_idx = int(u.split('_')[-1])
+                            v_idx = int(v.split('_')[-1])
+                            edges.append([u_idx, v_idx])
+                        except: pass
+                    
+                    arena_config = {
+                        "edges": edges,
+                        # Precisamos saber onde os OUTROS estão para desenhar os bonecos
+                        # O JS vai ter acesso ao frame.agents inteiro, então ele pode descobrir isso sozinho.
+                        # Mas mandar as arestas é essencial.
+                    }
+
             # Dados de Localização
             current_node = self.base_env.current_nodes.get(agent_id)
             current_floor = self.base_env.current_floors.get(agent_id, 0)
@@ -68,12 +89,22 @@ class BuriedBrainsRecorder:
             if action_taken is not None and 0 <= action_taken < len(skill_names):
                 action_name = skill_names[action_taken]
 
+            # Chama o método interno do env que gera o vetor de 42 posições
+            raw_obs_array = self.base_env._get_observation(agent_id)
+            
+            # Converte de Numpy para Lista Python (obrigatório para JSON)
+            if hasattr(raw_obs_array, 'tolist'):
+                raw_obs_list = raw_obs_array.tolist()
+            else:
+                raw_obs_list = list(raw_obs_array)
+
             # Monta o objeto do agente
             frame_snapshot["agents"][agent_id] = {
                 "name": self.base_env.agent_names.get(agent_id, "Unknown"),
                 "hp": float(state.get('hp', 0)),
                 "max_hp": float(state.get('max_hp', 100)),
                 "level": int(state.get('level', 1)),
+                "raw_obs": raw_obs_list,
                 # Evita divisão por zero no XP
                 "exp_percent": int((state.get('exp', 0) / max(1, state.get('exp_to_level_up', 100))) * 100),
                 
@@ -90,6 +121,7 @@ class BuriedBrainsRecorder:
                 "location_node": current_node,
                 "floor": current_floor,
                 "scene_mode": scene_mode,
+                "arena_config": arena_config,
                 "neighbors": neighbors_data,
                 "current_effect": current_effect,
                 "combat_data": enemy_stats if in_combat else None,

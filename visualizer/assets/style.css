@@ -53,10 +53,79 @@ body {
     border-radius: 4px; /* Bordas menos arredondadas (mais rústico) */
     display: flex;
     flex-direction: column;
+    flex-direction: row; /* Muda layout para ter lateral */
+    flex-wrap: wrap;     /* Permite que o footer desça */
     box-shadow: 0 0 50px rgba(0,0,0,0.9);
     position: relative;
     overflow: hidden;
 }
+
+/* Ajuste do Palco para dividir espaço */
+#stage {
+    flex: 3; /* Ocupa 75% */
+    border-right: 1px solid #333;
+}
+
+.brain-panel {
+    flex: 1; /* Ocupa 25% */
+    background: #050508;
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    border-left: 1px solid #333;
+    overflow: hidden;
+    min-width: 250px;
+}
+
+.brain-header, .monitor-header {
+    font-family: var(--font-title);
+    color: var(--accent-soul);
+    font-size: 10px;
+    border-bottom: 1px solid #333;
+    margin-bottom: 10px;
+    padding-bottom: 2px;
+    letter-spacing: 2px;
+}
+
+/* Canvas da Rede */
+#neural-net-canvas {
+    width: 100%;
+    background: #000;
+    border: 1px solid #222;
+    border-radius: 4px;
+    margin-bottom: 5px;
+}
+
+.output-labels {
+    display: flex;
+    justify-content: space-between;
+    font-family: monospace;
+    font-size: 9px;
+    color: #555;
+    padding: 0 10px;
+    margin-bottom: 15px;
+}
+
+/* Grid de Estados Brutos */
+.state-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr); /* 6 colunas */
+    gap: 3px;
+}
+
+.state-cell {
+    height: 8px;
+    background: #111;
+    border: 1px solid #333;
+    transition: background 0.1s;
+}
+
+/* Cores de ativação dos estados */
+.state-active-pos { background: var(--accent-blood); box-shadow: 0 0 5px var(--accent-blood); }
+.state-active-neg { background: #2980b9; } /* Azul para valores negativos */
+
+/* Ajuste no Header e Footer para ocuparem 100% */
+header, footer, .controls { width: 100%; }
 
 /* HEADER */
 header {
@@ -470,9 +539,15 @@ footer {
 .controls {
     position: relative; bottom: auto; margin-top: auto;
     background: var(--bb-black);
-    border-top: 1px solid #333;
-    padding: 10px; width: 100%;
-    display: flex; justify-content: center; gap: 10px; align-items: center; z-index: 10;
+    border-top: 1px solid #333;    
+    z-index: 10;
+    width: 100%; /* Garante que use a largura toda do pai */
+    box-sizing: border-box; /* Garante que o padding não estoure a largura */
+    display: flex;
+    align-items: center;
+    justify-content: space-between; /* Distribui melhor */
+    gap: 10px;
+    padding: 10px 20px;
 }
 .controls button {
     background: #111; border: 1px solid #444; color: #888;
@@ -481,13 +556,23 @@ footer {
     transition: all 0.2s; border-radius: 2px;
     font-family: var(--font-title);
     font-weight: 700;
+    flex-shrink: 0;
 }
 .controls button:hover { background: #222; color: var(--bb-snow); border-color: var(--bb-snow); }
 .controls button:active { transform: scale(0.95); background: var(--accent-blood); border-color: var(--accent-blood); }
 
 input[type=range] {
-    flex-grow: 1; height: 4px; background: #333; border-radius: 2px; appearance: none; cursor: pointer;
+    /* Ocupa todo o espaço sobrando, mas NUNCA fica menor que 150px */
+    flex: 1; 
+    min-width: 150px; 
+    width: auto; /* Reseta larguras fixas se houver */    
+    height: 6px;
+    background: #333;
+    border-radius: 3px;
+    appearance: none;
+    cursor: pointer;
     accent-color: var(--accent-blood);
+    margin: 0 10px; /* Dá um respiro lateral extra */
 }
 .speed-control { width: 45px !important; font-size: 10px; color: var(--accent-soul) !important; border-color: var(--accent-soul) !important; }
 .speed-control:hover { background: var(--accent-soul) !important; color: #000 !important; }

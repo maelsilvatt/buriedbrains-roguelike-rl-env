@@ -32,6 +32,23 @@
 
         <main id="stage">
             </main>
+        <aside class="brain-panel">
+            <div class="brain-header">NEURAL ACTIVITY</div>
+            
+            <div class="brain-container">
+                <canvas id="neural-net-canvas" width="280" height="200"></canvas>
+                
+                <div class="output-labels">
+                    <span>ATK</span><span>EQP</span><span>SOC</span><span>MOV</span>
+                </div>
+            </div>
+
+            <div class="raw-monitor">
+                <div class="monitor-header">RAW INPUTS (42)</div>
+                <div id="raw-state-grid" class="state-grid">
+                    </div>
+            </div>
+        </aside>
 
         <footer>
             <div class="agent-panel">
@@ -116,7 +133,15 @@
         </div>
     </div>
 
-    <script src="scripts/asset_loader.js"></script>
+    <script src="scripts/data/data.js"></script>
+    <script src="scripts/core/utils.js"></script>
+    <script src="scripts/core/asset_loader.js"></script>
+    <script src="scripts/ui/ui_hud.js"></script>
+    <script src="scripts/ui/ui_controls.js"></script>
+    <script src="scripts/renders/render_exploration.js"></script>
+    <script src="scripts/renders/render_combat.js"></script>
+    <script src="scripts/renders/render_sanctum.js"></script>
+    <script src="scripts/renders/render_brain.js"></script>
     <script src="scripts/main.js"></script>
 </body>
 </html>
