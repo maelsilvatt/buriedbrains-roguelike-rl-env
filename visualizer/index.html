@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BuriedBrains Visualizer</title>
+    
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div class="main-container">
+        <header>
+            <div class="level-info">
+                <h1>BURIED BRAINS</h1>
+                <span id="floor-display">FLOOR 01</span>
+            </div>
+            <div class="turn-info">
+                <span>TURN</span>
+                <span id="turn-display" class="highlight">0</span>
+            </div>
+        </header>
+
+        <main id="stage">
+            </main>
+
+        <footer>
+            <div class="agent-panel">
+                <div class="avatar-container">
+                    <img src="https://api.dicebear.com/7.x/adventurer/svg?seed=Felix" alt="Agent" id="agent-avatar">
+                </div>
+                
+                <div class="stats-bars">
+                    <div class="stat-row">
+                        <i class="fa-solid fa-heart heart-icon"></i>
+                        <div class="bar-container">
+                            <div class="bar-fill hp-fill" id="hp-bar" style="width: 100%;"></div>
+                            <span class="bar-text" id="hp-text">100/100</span>
+                        </div>
+                    </div>
+                    <div class="stat-row">
+                        <i class="fa-solid fa-bolt exp-icon"></i>
+                        <div class="bar-container">
+                            <div class="bar-fill xp-fill" id="xp-bar" style="width: 0%;"></div>
+                            <span class="bar-text" id="xp-text">LVL 1</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="karma-panel">
+                <canvas id="karma-disk" width="80" height="80"></canvas>
+                <span>KARMA</span>
+            </div>
+
+            <div class="log-panel" id="log-container">
+                <div class="log-entry">Waiting for replay data...</div>
+            </div>
+        </footer>
+
+        <div class="controls">
+            <button id="btn-prev" title="Voltar 1 Turno"><i class="fa-solid fa-backward-step"></i></button>
+            
+            <button id="btn-play" title="Reproduzir"><i class="fa-solid fa-play"></i></button>
+            <button id="btn-pause" title="Pausar"><i class="fa-solid fa-pause"></i></button>
+            
+            <button id="btn-next" title="Avançar 1 Turno"><i class="fa-solid fa-forward-step"></i></button>
+            
+            <input type="range" id="timeline" min="0" max="100" value="0">
+            <span id="speed-label">1x</span>
+        </div>
+    </div>
+
+    <script src="show_pve_progress.js"></script>
+</body>
+</html>
