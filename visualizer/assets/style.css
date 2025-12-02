@@ -136,15 +136,15 @@ h1 { font-family: 'Press Start 2P', cursive; font-size: 14px; color: var(--accen
 .icon-effect { color: #55efc4; } /* Verde Água para Efeitos */
 
 /* Container dos Slots */
-.equipment-container {
+.equipment-container, .skills-container {
     display: flex;
-    gap: 10px;
-    margin-top: 8px; /* Espaço abaixo da barra de XP */
-    justify-content: flex-start;
+    gap: 8px; /* Ajuste o gap para ficarem iguais */
+    margin: 0; /* <--- ISSO CORRIGE O DESALINHAMENTO (Remove o margin-top antigo) */
+    padding: 0;
 }
 
 /* O Slot Individual */
-.equip-slot {
+.equip-slot, .skill-slot {
     width: 32px;
     height: 32px;
     background: #222;
@@ -196,6 +196,85 @@ h1 { font-family: 'Press Start 2P', cursive; font-size: 14px; color: var(--accen
 #slot-weapon i { font-size: 14px; }
 #slot-armor i { font-size: 14px; }
 #slot-artifact i { font-size: 12px; }
+
+/* --- INVENTÁRIO (Equips + Skills) --- */
+.inventory-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 15px;
+    margin-top: 5px;
+}
+
+.equipment-group, .skills-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.label-tiny {
+    font-size: 8px;
+    color: #666;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+.inventory-divider {
+    width: 1px;
+    height: 30px;
+    background: #444;
+    margin-bottom: 2px;
+}
+
+.skill-slot {
+    width: 32px;
+    height: 32px;
+    background: #1e272e;
+    border: 1px solid #485460;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #d2dae2;
+    font-size: 14px;
+    position: relative; /* Necessário para o overlay absoluto */
+    overflow: hidden;
+}
+
+/* Ícones específicos das skills */
+#skill-0 { color: #f1c40f; } /* Quick Strike (Amarelo) */
+#skill-1 { color: #e74c3c; } /* Heavy Blow (Vermelho) */
+#skill-2 { color: #3498db; } /* Shield (Azul) */
+#skill-3 { color: #95a5a6; } /* Wait (Cinza) */
+
+/* --- OVERLAY DE COOLDOWN (CAMADA VERMELHA) --- */
+.cd-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(231, 76, 60, 0.7); /* Vermelho Transparente */
+    color: #fff;
+    font-weight: bold;
+    font-size: 16px;
+    display: flex;       /* Flex para centralizar o número */
+    align-items: center;
+    justify-content: center;
+    text-shadow: 1px 1px 2px black;
+    
+    /* Escondido por padrão (CD 0) */
+    opacity: 0; 
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+
+/* Quando tem cooldown, mostra o overlay */
+.skill-slot.on-cooldown .cd-overlay {
+    opacity: 1;
+}
+.skill-slot.on-cooldown {
+    border-color: #e74c3c; /* Borda fica vermelha também */
+}
 
 /* Animações */
 @keyframes glow-pulse {

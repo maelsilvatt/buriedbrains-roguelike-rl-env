@@ -1943,7 +1943,7 @@ class BuriedBrainsEnv(gym.Env):
 
         # Limpa Instância de Arena
         if agent_id in self.arena_instances:
-            del self.arena_instances[agent_id] # <--- CRÍTICO: Tira ele da arena
+            del self.arena_instances[agent_id] 
 
         # Limpa Fila de Espera
         if agent_id in self.matchmaking_queue:

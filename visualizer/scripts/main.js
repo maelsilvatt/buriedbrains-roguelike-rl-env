@@ -1,6 +1,5 @@
-// ==========================================
 // 1. INICIALIZAÇÃO E DADOS
-// ==========================================
+
 const RECORD_PATH = 'records/replay.json';
 let replayData = []; 
 let currentFrame = 0;
@@ -67,9 +66,8 @@ const mockReplay = [
     }
 ];
 
-// ==========================================
 // 2. RENDERIZAÇÃO
-// ==========================================
+
 function renderFrame(index) {
     if (!replayData || index >= replayData.length) { pause(); return; }
     
@@ -96,6 +94,7 @@ function renderFrame(index) {
 }
 
 function updateStats(agent) {
+    // --- BARRAS (HP / XP) ---
     const hpPct = Math.max(0, (agent.hp / agent.max_hp) * 100);
     const xpPct = agent.exp_percent || 0;
     
@@ -103,15 +102,49 @@ function updateStats(agent) {
     document.getElementById('hp-text').innerText = `${Math.ceil(agent.hp)}/${agent.max_hp}`;
     
     document.getElementById('xp-bar').style.width = `${xpPct}%`;
-    document.getElementById('xp-text').innerText = `XP ${xpPct}%`; // Texto da barra verde
+    document.getElementById('xp-text').innerText = `XP ${xpPct}%`;
     
-    // Atualiza Avatar (opcional: mudar face se HP baixo)
+    // Atualiza Avatar (opcional)
     const avatar = document.getElementById('agent-avatar');
     if(agent.hp <= 0) avatar.style.filter = "grayscale(100%)";
     else avatar.style.filter = "none";
 
-    // ATUALIZA EQUIPAMENTOS
+    // --- EQUIPAMENTOS ---
     updateEquipmentSlots(agent.equipment);
+
+    // --- SKILLS ---
+    // Passa o objeto de cooldowns do JSON. Se não existir, passa vazio.
+    updateSkills(agent.cooldowns || {});
+}
+
+// --- FUNÇÃO DE ATUALIZAÇÃO DE SKILLS ---
+function updateSkills(cooldowns) {
+    // Mapeamento fixo das skills para os IDs do HTML
+    // A ordem importa: 0=Quick, 1=Heavy, 2=Shield, 3=Wait
+    const skillMap = [
+        { name: "Quick Strike", id: "skill-0" },
+        { name: "Heavy Blow",   id: "skill-1" },
+        { name: "Stone Shield", id: "skill-2" },
+        { name: "Wait",         id: "skill-3" }
+    ];
+
+    skillMap.forEach(skill => {
+        const element = document.getElementById(skill.id);
+        const overlay = element.querySelector('.cd-overlay');
+        
+        // Pega o valor do CD atual (default 0 se não vier no JSON)
+        const currentCD = cooldowns[skill.name] || 0;
+
+        if (currentCD > 0) {
+            // ESTÁ EM COOLDOWN
+            element.classList.add('on-cooldown');
+            overlay.innerText = currentCD; // Mostra o número branco no centro
+        } else {
+            // ESTÁ DISPONÍVEL
+            element.classList.remove('on-cooldown');
+            overlay.innerText = "";
+        }
+    });
 }
 
 function drawKarma(karma) {
@@ -217,8 +250,7 @@ function renderExplorationScene(container, agent) {
 
 // --- NOVA FUNÇÃO DE EQUIPAMENTO ---
 function updateEquipmentSlots(equipmentList) {
-    // Assume que a lista vem na ordem [Arma, Armadura, Artefato] ou busca por keywords
-    // Se o seu recorder mandar um objeto, melhor. Se for lista de strings, usamos lógica:
+    // Assume que a lista vem na ordem [Arma, Armadura, Artefato] ou busca por keywords    
     
     const slots = {
         weapon: document.getElementById('slot-weapon'),
@@ -348,9 +380,7 @@ function detectEnemyRank(name) {
     return 'blue';
 }
 
-// ==========================================
 // 3. CONTROLES
-// ==========================================
 function play() { if(!isPlaying) { isPlaying=true; playInterval=setInterval(()=>step(1), 800); } }
 function pause() { isPlaying=false; clearInterval(playInterval); }
 function step(dir) {
@@ -369,9 +399,7 @@ document.getElementById('btn-next').onclick = () => { pause(); step(1); };
 document.getElementById('btn-prev').onclick = () => { pause(); step(-1); };
 document.getElementById('timeline').oninput = (e) => { pause(); currentFrame = +e.target.value; renderFrame(currentFrame); };
 
-// ==========================================
 // 4. BOOT
-// ==========================================
 fetch(RECORD_PATH).then(r=>r.ok?r.json():null).then(d => {
     if(d) { replayData = d; console.log("Loaded Real Data"); }
     else { replayData = mockReplay; console.log("Loaded Mock Data"); }

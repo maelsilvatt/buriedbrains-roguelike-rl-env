@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BuriedBrains Visualizer</title>
     
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="assets/style.css">
+    <link rel="icon" type="image/png" href="assets/favicon.png">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Press+Start+2P&display=swap" rel="stylesheet">
 </head>
@@ -30,8 +31,7 @@
             <div class="agent-panel">
                 <div class="avatar-container">
                     <img src="https://api.dicebear.com/7.x/adventurer/svg?seed=Felix" alt="Agent" id="agent-avatar">
-                </div>
-                
+                </div>                
                 <div class="stats-bars">
                     <div class="stat-row">
                         <i class="fa-solid fa-heart heart-icon"></i>
@@ -40,6 +40,7 @@
                             <span class="bar-text" id="hp-text">100/100</span>
                         </div>
                     </div>
+                    
                     <div class="stat-row">
                         <i class="fa-solid fa-bolt exp-icon"></i>
                         <div class="bar-container">
@@ -48,15 +49,39 @@
                         </div>
                     </div>
 
-                    <div class="equipment-container">
-                        <div id="slot-weapon" class="equip-slot border-common" title="Vazio">
-                            <i class="fa-solid fa-fist-raised"></i>
+                    <div class="inventory-row">
+                        
+                        <div class="equipment-group">
+                            <span class="label-tiny">EQUIP</span>
+                            <div class="equipment-container">
+                                <div id="slot-weapon" class="equip-slot border-common" title="Arma"><i class="fa-solid fa-fist-raised"></i></div>
+                                <div id="slot-armor" class="equip-slot border-common" title="Armadura"><i class="fa-solid fa-shirt"></i></div>
+                                <div id="slot-artifact" class="equip-slot border-common" title="Artefato"><i class="fa-solid fa-ring"></i></div>
+                            </div>
                         </div>
-                        <div id="slot-armor" class="equip-slot border-common" title="Vazio">
-                            <i class="fa-solid fa-shirt"></i>
-                        </div>
-                        <div id="slot-artifact" class="equip-slot border-common" title="Vazio">
-                            <i class="fa-solid fa-ring"></i>
+
+                        <div class="inventory-divider"></div>
+
+                        <div class="skills-group">
+                            <span class="label-tiny">SKILLS</span>
+                            <div class="skills-container">
+                                <div id="skill-0" class="skill-slot" title="Quick Strike (CD 1)">
+                                    <i class="fa-solid fa-bolt"></i>
+                                    <div class="cd-overlay"></div>
+                                </div>
+                                <div id="skill-1" class="skill-slot" title="Heavy Blow (CD 3)">
+                                    <i class="fa-solid fa-hammer"></i>
+                                    <div class="cd-overlay"></div>
+                                </div>
+                                <div id="skill-2" class="skill-slot" title="Stone Shield (CD 3)">
+                                    <i class="fa-solid fa-shield"></i>
+                                    <div class="cd-overlay"></div>
+                                </div>
+                                <div id="skill-3" class="skill-slot" title="Wait (CD 0)">
+                                    <i class="fa-solid fa-hourglass-half"></i>
+                                    <div class="cd-overlay"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -85,6 +110,6 @@
         </div>
     </div>
 
-    <script src="main.js"></script>
+    <script src="scripts/main.js"></script>
 </body>
 </html>

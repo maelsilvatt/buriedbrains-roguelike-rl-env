@@ -2,7 +2,7 @@ import argparse
 from sb3_contrib import RecurrentPPO
 from buriedbrains.env import BuriedBrainsEnv
 from buriedbrains.wrappers import SharedPolicyVecEnv
-from visualizer.recorder import BuriedBrainsRecorder
+from visualizer.utils.recorder import BuriedBrainsRecorder
 
 def main():
     parser = argparse.ArgumentParser()
