@@ -1,6 +1,5 @@
 // 1. INICIALIZAÇÃO E DADOS
-
-const RECORD_PATH = 'records/replay.json';
+const RECORD_PATH = '../recordings/sanctum_floor_25_expert_recording.json';
 let replayData = []; 
 let currentFrame = 0;
 let isPlaying = false;
@@ -66,6 +65,45 @@ const mockReplay = [
     }
 ];
 
+// Efeitos de Sala 
+const EFFECT_LIBRARY = {
+    // --- Negativos ---
+    'Slow Terrain': { 
+        desc: "O terreno difícil aplica 'Slow' em todos no início do combate.", 
+        type: 'debuff', icon: 'fa-shoe-prints' 
+    },
+    'Heat': { 
+        desc: "O calor intenso aplica 'Burn' em todos a cada rodada.", 
+        type: 'debuff', icon: 'fa-fire' 
+    },
+    'Dense Fog': { 
+        desc: "A neblina densa aplica 'Blind' em todos no início do combate.", 
+        type: 'debuff', icon: 'fa-smog' 
+    },
+    'Weakening Field': { 
+        desc: "Uma aura profana reduz a eficácia de curas em 50% na sala.", 
+        type: 'debuff', icon: 'fa-heart-crack' 
+    },
+
+    // --- Positivos ---
+    'Evasion Zone': { 
+        desc: "Uma névoa mágica concede bônus de evasão a todos.", 
+        type: 'buff', icon: 'fa-wind' 
+    },
+    'Amplifying Field': { 
+        desc: "O campo de energia aumenta o dano de todos em 15%.", 
+        type: 'buff', icon: 'fa-hand-fist' 
+    },
+    'Consecrated Ground': { 
+        desc: "O solo sagrado cura todos os combatentes em 2% HP a cada rodada.", 
+        type: 'buff', icon: 'fa-notes-medical' 
+    },
+    'Conductive Field': { 
+        desc: "A energia arcana aumenta dano mágico causado e recebido em 25%.", 
+        type: 'neutral', icon: 'fa-bolt' 
+    }
+};
+
 // 2. RENDERIZAÇÃO
 
 function renderFrame(index) {
@@ -83,13 +121,13 @@ function renderFrame(index) {
     
     updateStats(agent);
     drawKarma(agent.karma);
-    updateLogs(agent.logs);
+    updateLogs(agent.logs);    
 
     const stage = document.getElementById('stage');
     if (agent.scene_mode.includes("COMBAT")) {
         renderCombatScene(stage, agent, index);
-    } else {
-        renderExplorationScene(stage, agent);
+    } else {        
+        renderExplorationScene(stage, agent, index); 
     }
 }
 
@@ -114,13 +152,13 @@ function updateStats(agent) {
 
     // --- SKILLS ---
     // Passa o objeto de cooldowns do JSON. Se não existir, passa vazio.
-    updateSkills(agent.cooldowns || {});
+    if (agent.cooldowns) {
+        updateSkills(agent.cooldowns);
+    }
 }
 
 // --- FUNÇÃO DE ATUALIZAÇÃO DE SKILLS ---
 function updateSkills(cooldowns) {
-    // Mapeamento fixo das skills para os IDs do HTML
-    // A ordem importa: 0=Quick, 1=Heavy, 2=Shield, 3=Wait
     const skillMap = [
         { name: "Quick Strike", id: "skill-0" },
         { name: "Heavy Blow",   id: "skill-1" },
@@ -130,19 +168,23 @@ function updateSkills(cooldowns) {
 
     skillMap.forEach(skill => {
         const element = document.getElementById(skill.id);
-        const overlay = element.querySelector('.cd-overlay');
-        
-        // Pega o valor do CD atual (default 0 se não vier no JSON)
-        const currentCD = cooldowns[skill.name] || 0;
+        if(!element) return;
 
-        if (currentCD > 0) {
-            // ESTÁ EM COOLDOWN
-            element.classList.add('on-cooldown');
-            overlay.innerText = currentCD; // Mostra o número branco no centro
+        const overlay = element.querySelector('.cd-overlay');
+        const cd = cooldowns[skill.name] || 0;
+
+        if (cd > 0) {
+            element.classList.add('on-cooldown'); // Ativa a borda vermelha (CSS)
+            if(overlay) {
+                overlay.style.opacity = '1';      
+                overlay.innerText = cd;           
+            }
         } else {
-            // ESTÁ DISPONÍVEL
             element.classList.remove('on-cooldown');
-            overlay.innerText = "";
+            if(overlay) {
+                overlay.style.opacity = '0';
+                overlay.innerText = "";
+            }
         }
     });
 }
@@ -184,18 +226,35 @@ function updateLogs(logs) {
 }
 
 // --- CENA EXPLORAÇÃO VERTICAL ---
-function renderExplorationScene(container, agent) {
+function renderExplorationScene(container, agent, index) { 
     container.innerHTML = '';
+    
+    // 1. Título da Sala Atual
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'room-title-display';
+    titleDiv.innerText = `CURRENT: ${formatRoomName(agent.location_node)}`;
+    container.appendChild(titleDiv);
+
     const col = document.createElement('div');
     col.className = 'exploration-container';
 
-    // Tier 1: Oculto
+    // --- PREVISÃO DO FUTURO (Qual sala ele escolheu?) ---
+    let chosenNodeId = null;
+    // Verifica se existe um próximo frame
+    if (index < replayData.length - 1) {
+        const nextFrame = replayData[index + 1];
+        // Assume agente 'a1' ou pega dinâmico
+        const nextAgent = nextFrame.agents[Object.keys(nextFrame.agents)[0]];
+        chosenNodeId = nextAgent.location_node;
+    }
+
+    // Tier 1: Oculto (Futuro)
     const row1 = document.createElement('div');
     row1.className = 'row-tier';
-    for(let i=0; i<4; i++) row1.appendChild(createCard('Oculto', [], 'hidden'));
+    for(let i=0; i<4; i++) row1.appendChild(createCard('UNKNOWN', [], 'hidden'));
     col.appendChild(row1);
 
-    // Tier 2: Vizinhos
+    // Tier 2: Vizinhos (Opções)
     const row2 = document.createElement('div');
     row2.className = 'row-tier';
     
@@ -203,44 +262,42 @@ function renderExplorationScene(container, agent) {
         agent.neighbors.forEach(n => {
             let icons = [];
             
-            // Inimigo (Cor por Rank)
+            // Ícones (Mesma lógica de antes)
             if (n.has_enemy) {
                 const rank = detectEnemyRank(n.enemy_type);
-                icons.push({
-                    class: 'fa-skull', 
-                    color: `skull-${rank}`, 
-                    tip: `Inimigo: ${n.enemy_type}`
-                });
+                icons.push({ class: 'fa-skull', color: `skull-${rank}`, tip: `Inimigo: ${n.enemy_type}` });
             }
-            // Tesouro
-            if (n.has_treasure) {
-                icons.push({class: 'fa-gem', color: 'icon-event', tip: 'Tesouro/Evento'});
-            }
-            // Efeito (Armadilha invisível para o agente, visível aqui)
-            if (n.effect && n.effect !== 'None') {
-                icons.push({class: 'fa-wind', color: 'icon-effect', tip: `Efeito: ${n.effect}`});
-            }
-            // Saída
-            if (n.is_exit) {
-                icons.push({class: 'fa-door-open', color: 'icon-door', tip: 'Saída'});
-            }
-            // Vazio
-            if (icons.length === 0 && !n.is_exit) {
-                icons.push({class: 'fa-road', color: 'icon-unknown', tip: 'Vazio'});
+            if (n.has_treasure) icons.push({class: 'fa-gem', color: 'icon-event', tip: 'Tesouro'});
+            if (n.effect && n.effect !== 'None') icons.push({class: 'fa-wind', color: 'icon-effect', tip: n.effect});
+            if (n.is_exit) icons.push({class: 'fa-door-open', color: 'icon-door', tip: 'Saída'});
+            if (icons.length === 0 && !n.is_exit) icons.push({class: 'fa-road', color: 'icon-unknown', tip: 'Vazio'});
+
+            // CRIA O CARD
+            const card = createCard(formatRoomName(n.id), icons, 'choice');
+
+            // --- LÓGICA DE DESTAQUE ---
+            if (n.id === chosenNodeId) {
+                card.classList.add('selected'); // Borda branca e Glow
+                
+                // Adiciona o indicador em baixo
+                const indicator = document.createElement('div');
+                indicator.className = 'selection-indicator';
+                indicator.innerText = "CHOSEN"; // Ou "ESCOLHIDO"
+                card.appendChild(indicator);
             }
 
-            row2.appendChild(createCard(n.id || '?', icons, 'choice'));
+            row2.appendChild(card);
         });
     } else {
-        row2.appendChild(createCard('Parede', [{class: 'fa-ban', color: 'icon-unknown'}], 'wall'));
+        row2.appendChild(createCard('WALL', [{class: 'fa-ban', color: 'icon-unknown'}], 'wall'));
     }
     col.appendChild(row2);
 
-    // Tier 3: Agente
+    // Tier 3: Agente (Presente)
     const row3 = document.createElement('div');
     row3.className = 'row-tier';
     const agentIcons = [{class: 'fa-user-ninja', color: 'icon-agent', tip: 'Você'}];
-    const agCard = createCard(agent.name, agentIcons, 'self');
+    const agCard = createCard('HERO', agentIcons, 'self');
     agCard.classList.add('card-agent');
     row3.appendChild(agCard);
     
@@ -248,10 +305,8 @@ function renderExplorationScene(container, agent) {
     container.appendChild(col);
 }
 
-// --- NOVA FUNÇÃO DE EQUIPAMENTO ---
-function updateEquipmentSlots(equipmentList) {
-    // Assume que a lista vem na ordem [Arma, Armadura, Artefato] ou busca por keywords    
-    
+// --- FUNÇÃO DE EQUIPAMENTO ---
+function updateEquipmentSlots(equipmentList) {    
     const slots = {
         weapon: document.getElementById('slot-weapon'),
         armor: document.getElementById('slot-armor'),
@@ -297,7 +352,7 @@ function updateEquipmentSlots(equipmentList) {
 }
 
 function resetSlot(el, defaultIcon) {
-    el.className = 'equip-slot border-common'; // Volta pro padrão (verde ou cinza se preferir)
+    el.className = 'equip-slot border-common'; // Volta pro padrão
     el.innerHTML = `<i class="fa-solid ${defaultIcon}"></i>`;
     el.title = "Vazio";
     el.classList.remove('equipped');
@@ -323,21 +378,71 @@ function detectRarity(itemName) {
 // --- CENA COMBATE ---
 function renderCombatScene(container, agent, index) {
     container.innerHTML = '';
-    const prev = replayData[index-1];
-    // Shake se HP caiu
-    const hurt = prev && prev.agents[Object.keys(prev.agents)[0]].hp > agent.hp ? 'shake' : '';
+    
+    // Dados para cálculo de dano
+    const prevFrame = index > 0 ? replayData[index - 1] : null;
+    const prevAgent = prevFrame ? prevFrame.agents[Object.keys(prevFrame.agents)[0]] : null;
+    const heroHurt = prevAgent && prevAgent.hp > agent.hp ? 'shake' : '';
+    
+    // Dados do Inimigo
+    let enemyHurt = '';
+    let enemyHpPct = 100;
+    let enemyName = "Inimigo";
+    let enemyHpText = "??/??";
+
+    if (agent.combat_data) {
+        enemyName = agent.combat_data.name;
+        const curHp = agent.combat_data.hp;
+        const maxHp = agent.combat_data.max_hp;
+        enemyHpPct = Math.max(0, (curHp / maxHp) * 100);
+        enemyHpText = `${Math.ceil(curHp)}/${maxHp}`;
+
+        if (prevAgent && prevAgent.combat_data && prevAgent.combat_data.hp > curHp) {
+            enemyHurt = 'shake';
+        }
+    }
+    
+    // Efeito de Sala
+    let effectHtml = '';
+    const effectName = agent.current_effect; 
+    
+    if (effectName && effectName !== 'None' && EFFECT_LIBRARY[effectName]) {
+        const data = EFFECT_LIBRARY[effectName];
+        effectHtml = `
+            <div class="combat-effect-badge effect-${data.type}">
+                <div class="effect-header">
+                    <i class="fa-solid ${data.icon}"></i>
+                    <span>${effectName}</span>
+                </div>
+                <div class="effect-desc">
+                    ${data.desc}
+                </div>
+            </div>
+        `;
+    }
     
     const scene = document.createElement('div');
-    scene.className = 'combat-scene';
+    scene.className = 'combat-scene';    
+    scene.style.position = 'relative'; 
+
     scene.innerHTML = `
-        <div class="combatant ${hurt}">
+        ${effectHtml} <div class="combatant ${heroHurt}">
             <img src="https://api.dicebear.com/7.x/adventurer/svg?seed=${agent.name}" class="avatar-hero">
-            <div style="color:#a29bfe; margin-top:10px;">${agent.name}</div>
+            <div style="color:#a29bfe; margin-top:5px; font-weight:bold; font-size:12px;">${agent.name}</div>
         </div>
+        
         <div class="vs-text">VS</div>
-        <div class="combatant">
-            <img src="https://api.dicebear.com/7.x/bottts/svg?seed=${agent.combat_enemy}" class="avatar-enemy" style="filter: hue-rotate(45deg);">
-            <div style="color:#ff7675; margin-top:10px;">${agent.combat_enemy}</div>
+        
+        <div class="combatant ${enemyHurt}">
+            <img src="https://api.dicebear.com/7.x/bottts/svg?seed=${enemyName}" class="avatar-enemy" style="filter: hue-rotate(320deg);">
+            
+            <div class="enemy-stats">
+                <div class="enemy-name">${enemyName}</div>
+                <div class="enemy-bar-bg">
+                    <div class="enemy-bar-fill" style="width: ${enemyHpPct}%;"></div>
+                </div>
+                <span class="enemy-hp-text">${enemyHpText}</span>
+            </div>
         </div>
     `;
     container.appendChild(scene);
@@ -370,6 +475,23 @@ function createCard(text, icons, type) {
     card.appendChild(lbl);
     
     return card;
+}
+
+// Formata IDs de sala para nomes legíveis
+function formatRoomName(rawId) {
+    if (!rawId) return "UNKNOWN";
+    // Ex: p_1_1 -> ZONE 1-1
+    if (rawId.startsWith("p_")) {
+        const parts = rawId.split('_');
+        return `ZONE ${parts[1]}-${parts[2]}`;
+    }
+    // Ex: k_5_5 -> ARENA 5-5
+    if (rawId.startsWith("k_")) {
+        const parts = rawId.split('_');
+        return `ARENA ${parts[1]}-${parts[2]}`;
+    }
+    if (rawId.toLowerCase() === 'start') return "ENTRY POINT";
+    return rawId.toUpperCase();
 }
 
 function detectEnemyRank(name) {

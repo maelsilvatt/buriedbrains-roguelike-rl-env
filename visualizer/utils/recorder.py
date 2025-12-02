@@ -36,6 +36,9 @@ class BuriedBrainsRecorder:
             full_log = self.base_env.current_episode_logs.get(agent_id, [])
             last_logs = full_log[-2:] if full_log else []
 
+            # Pega cooldowns atuais (Para mostrar ícones de habilidades)
+            current_cooldowns = state.get('cooldowns', {})
+
             # Determina o modo da cena
             in_combat = self.base_env.combat_states.get(agent_id) is not None
             in_arena = agent_id in self.base_env.arena_instances
@@ -49,6 +52,34 @@ class BuriedBrainsRecorder:
             current_floor = self.base_env.current_floors.get(agent_id, 0)
             neighbors_data = self._get_neighbors_view(agent_id, in_arena, current_node)
 
+            # Coleta dados extras de combate se houver
+            enemy_stats = {}
+            if in_combat:
+                combat_data = self.base_env.combat_states[agent_id]['enemy']
+                enemy_stats = {
+                    "name": combat_data['name'],
+                    "hp": combat_data['hp'],
+                    "max_hp": combat_data.get('max_hp', combat_data['hp']) # Fallback se não tiver max_hp
+                }
+
+            # --- PEGAR EFEITO DA SALA ATUAL ---
+            current_node = self.base_env.current_nodes.get(agent_id)
+            current_effect = "None"
+            
+            # Descobre o grafo correto (Arena ou P-Zone)
+            graph = None
+            if in_arena:
+                graph = self.base_env.arena_instances.get(agent_id)
+            else:
+                graph = self.base_env.graphs.get(agent_id)
+            
+            # Lê o conteúdo
+            if graph and graph.has_node(current_node):
+                content = graph.nodes[current_node].get('content', {})
+                effects = content.get('room_effects', [])
+                if effects:
+                    current_effect = effects[0] # Pega o primeiro efeito            
+
             # Monta o objeto do agente para este frame
             frame_snapshot["agents"][agent_id] = {
                 # Status Básicos
@@ -57,6 +88,9 @@ class BuriedBrainsRecorder:
                 "max_hp": float(state.get('max_hp', 100)),
                 "level": int(state.get('level', 1)),
                 "exp_percent": int((state.get('exp', 0) / state.get('exp_to_level_up', 100)) * 100),
+                
+                "cooldowns": state.get('cooldowns', {}).copy(),                
+                "combat_data": enemy_stats if in_combat else None,
                 
                 # Karma (Crucial para o Disco de Poincaré)
                 "karma": {
@@ -67,12 +101,16 @@ class BuriedBrainsRecorder:
                 # Equipamento (Para mostrar ícones no inventário)
                 "equipment": list(state.get('equipment', {}).values()),
 
+                # Ações e Recompensas
+                "cooldowns": current_cooldowns.copy(),
+
                 # Contexto Visual
                 "location_node": current_node,
                 "floor": current_floor,
                 "scene_mode": scene_mode,
                 "neighbors": neighbors_data,
                 "logs": [l.strip() for l in last_logs],
+                "current_effect": current_effect,
                 
                 # Combate
                 "combat_enemy": self.base_env.combat_states[agent_id]['enemy']['name'] if in_combat else None
