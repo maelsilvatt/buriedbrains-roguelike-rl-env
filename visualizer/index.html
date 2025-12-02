@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="assets/style.css">
     <link rel="icon" type="image/png" href="assets/favicon.png">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
 </head>
 <body>
 
@@ -17,6 +17,12 @@
             <div class="level-info">
                 <h1>BURIED BRAINS</h1>
                 <span id="floor-display">FLOOR 01</span>
+            </div>
+
+            <div class="camera-controls">
+                <label for="agent-select" style="font-size: 10px; color: #666; margin-right: 5px;">VIEW:</label>
+                <select id="agent-select" style="background: #222; color: #fff; border: 1px solid #444; padding: 2px 5px; border-radius: 4px; font-family: 'Inter', sans-serif; font-size: 11px;">
+                    </select>
             </div>
             <div class="turn-info">
                 <span>TURN</span>
@@ -110,6 +116,7 @@
         </div>
     </div>
 
+    <script src="scripts/asset_loader.js"></script>
     <script src="scripts/main.js"></script>
 </body>
 </html>

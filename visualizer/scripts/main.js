@@ -4,6 +4,7 @@ let replayData = [];
 let currentFrame = 0;
 let isPlaying = false;
 let playInterval;
+let selectedAgentId = null;
 
 // Mock de segurança caso não ache o arquivo
 const mockReplay = [
@@ -105,14 +106,17 @@ const EFFECT_LIBRARY = {
 };
 
 // 2. RENDERIZAÇÃO
-
 function renderFrame(index) {
     if (!replayData || index >= replayData.length) { pause(); return; }
     
-    // Suporte a múltiplos agentes (pega o primeiro encontrado se 'a1' não existir)
     const frame = replayData[index];
-    const agentId = Object.keys(frame.agents)[0]; 
+    
+    // Usa o ID selecionado ou fallback
+    const agentId = selectedAgentId || Object.keys(frame.agents)[0];
     const agent = frame.agents[agentId];
+
+    if (!agent) return; 
+    
 
     // Atualiza UI
     document.getElementById('floor-display').innerText = `FLOOR ${agent.floor}`;
@@ -125,11 +129,32 @@ function renderFrame(index) {
     updateStats(agent, agent.action_taken);
 
     const stage = document.getElementById('stage');
-    if (agent.scene_mode.includes("COMBAT")) {
+
+    // Verifica o modo de cena
+    if (agent.scene_mode === "WAITING") {
+        renderWaitingScreen(stage, agent);
+    } else if (agent.scene_mode.includes("COMBAT")) {
         renderCombatScene(stage, agent, index);
-    } else {        
+    } 
+    else if (agent.scene_mode === "ARENA") {        
+        // Passamos o frame inteiro para ver TODOS os agentes, não só o 'a1'
+        renderSanctuaryScene(stage, frame); 
+    } 
+    else {
         renderExplorationScene(stage, agent, index); 
     }
+}
+
+function renderWaitingScreen(container, agent) {
+    container.innerHTML = '';
+    container.innerHTML = `
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:#aaa; animation: pulse 2s infinite;">
+            <i class="fa-solid fa-hourglass-half fa-spin" style="font-size:50px; margin-bottom:20px; color:var(--accent-gold);"></i>
+            <h2 style="font-family:'Press Start 2P'; font-size:16px; margin-bottom:10px;">SANCTUM REACHED</h2>
+            <p style="font-family:'Inter'; font-size:14px;">Aguardando oponente...</p>
+            <p style="font-size:12px; color:#666; margin-top:5px;">(Troque a câmera para ver o outro agente)</p>
+        </div>
+    `;
 }
 
 function updateStats(agent) {
@@ -143,10 +168,11 @@ function updateStats(agent) {
     document.getElementById('xp-bar').style.width = `${xpPct}%`;
     document.getElementById('xp-text').innerText = `XP ${xpPct}%`;
     
-    // Atualiza Avatar (opcional)
+    // Atualiza Avatar
     const avatar = document.getElementById('agent-avatar');
     if(agent.hp <= 0) avatar.style.filter = "grayscale(100%)";
     else avatar.style.filter = "none";
+    avatar.src = AssetManager.getAgentPortrait(agent.name);
 
     // --- EQUIPAMENTOS ---
     updateEquipmentSlots(agent.equipment);
@@ -301,13 +327,13 @@ function renderExplorationScene(container, agent, index) {
 
             // --- LÓGICA DE DESTAQUE ---
             if (n.id === chosenNodeId) {
-                card.classList.add('selected'); // Borda branca e Glow
-                
-                // Adiciona o indicador em baixo
-                const indicator = document.createElement('div');
-                indicator.className = 'selection-indicator';
-                indicator.innerText = "CHOSEN"; // Ou "ESCOLHIDO"
-                card.appendChild(indicator);
+            card.classList.add('selected'); // Borda branca e Glow
+
+            // Adiciona o indicador em baixo
+            const indicator = document.createElement('div');
+            indicator.className = 'selection-indicator';
+            indicator.innerText = "↑"; // seta para cima
+            card.appendChild(indicator);
             }
 
             row2.appendChild(card);
@@ -403,24 +429,16 @@ function detectRarity(itemName) {
 function renderCombatScene(container, agent, index) {
     container.innerHTML = '';
     
-    // 1. Lógica de Dano e Comparação com Frame Anterior
+    // Dados para cálculo de dano
     const prevFrame = index > 0 ? replayData[index - 1] : null;
     let prevAgent = null;
-    let wasInCombatBefore = false;
-
     if (prevFrame) {
         const prevAgentId = Object.keys(prevFrame.agents)[0];
         prevAgent = prevFrame.agents[prevAgentId];
-        // Verifica se no frame passado JÁ ESTAVA em combate PVE
-        if (prevAgent.scene_mode && prevAgent.scene_mode.includes("COMBAT")) {
-            wasInCombatBefore = true;
-        }
     }
-
-    // Shake no Heroi
     const heroHurt = prevAgent && prevAgent.hp > agent.hp ? 'shake' : '';
     
-    // 2. Lógica do Inimigo
+    // Dados do Inimigo
     let enemyHurt = '';
     let enemyHpPct = 100;
     let enemyName = "Inimigo";
@@ -438,14 +456,20 @@ function renderCombatScene(container, agent, index) {
         }
     }
     
-    // 3. Lógica do Badge de Efeito (Com controle de animação)
+    // Carregando assets
+    const heroImgSrc = AssetManager.getAgentSprite(agent.name);
+    const enemyImgSrc = AssetManager.getEnemyImage(enemyName);    
+
+    // Lógica do Badge de Efeito
     let effectHtml = '';
-    const effectName = agent.current_effect; 
-    
+    const effectName = agent.current_effect;
+    let wasInCombatBefore = false;
+    if (prevAgent && prevAgent.scene_mode && prevAgent.scene_mode.includes("COMBAT")) {
+        wasInCombatBefore = true;
+    }
+
     if (effectName && effectName !== 'None' && EFFECT_LIBRARY[effectName]) {
         const data = EFFECT_LIBRARY[effectName];
-        
-        // Só anima se NÃO estava em combate antes (Entrada)
         const animClass = wasInCombatBefore ? '' : 'anim-enter';
         
         effectHtml = `
@@ -461,22 +485,22 @@ function renderCombatScene(container, agent, index) {
         `;
     }
     
-    // 4. Montagem da Cena
     const scene = document.createElement('div');
-    scene.className = 'combat-scene';    
-    
+    scene.className = 'combat-scene';
+    scene.style.position = 'relative';
+
     scene.innerHTML = `
         ${effectHtml} 
 
         <div class="combatant ${heroHurt}">
-            <img src="https://api.dicebear.com/7.x/adventurer/svg?seed=${agent.name}" class="avatar-hero">
+            <img src="${heroImgSrc}" class="avatar-hero">
             <div style="color:#a29bfe; margin-top:5px; font-weight:bold; font-size:12px;">${agent.name}</div>
         </div>
         
         <div class="vs-text">VS</div>
         
         <div class="combatant ${enemyHurt}">
-            <img src="https://api.dicebear.com/7.x/bottts/svg?seed=${enemyName}" class="avatar-enemy" style="filter: hue-rotate(320deg);">
+            <img src="${enemyImgSrc}" class="avatar-enemy">
             
             <div class="enemy-stats">
                 <div class="enemy-name">${enemyName}</div>
@@ -544,6 +568,148 @@ function detectEnemyRank(name) {
     return 'blue';
 }
 
+function renderSanctuaryScene(container, frame) {
+    container.innerHTML = '';
+
+    // 1. Título
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'room-title-display';
+    titleDiv.innerHTML = '<span style="color:#a29bfe">SANCTUM ZONE</span>';
+    container.appendChild(titleDiv);
+
+    // 2. Wrapper Principal
+    const sanctumWrapper = document.createElement('div');
+    sanctumWrapper.className = 'sanctuary-container';
+
+    // 3. Camada SVG (Linhas)
+    const svgLayer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svgLayer.classList.add("sanctuary-svg");
+    sanctumWrapper.appendChild(svgLayer);
+
+    // 4. Camada Grid (Nós)
+    const gridLayer = document.createElement('div');
+    gridLayer.className = 'sanctuary-grid';
+
+    // Estado Global do Mapa neste frame
+    // Vamos varrer todos os agentes para saber onde estão e quais linhas desenhar
+    const nodeOccupancy = {}; // map: index -> [agentData]
+    const connections = new Set(); // set: "u-v" para desenhar linhas
+    let meetingOccurred = false;
+
+    Object.keys(frame.agents).forEach(agentId => {
+        const ag = frame.agents[agentId];
+        const nodeIdx = parseKNodeIndex(ag.location_node);
+        
+        if (nodeIdx !== null) {
+            if (!nodeOccupancy[nodeIdx]) nodeOccupancy[nodeIdx] = [];
+            nodeOccupancy[nodeIdx].push({...ag, id: agentId});
+
+            // Coleta arestas baseadas nos vizinhos visíveis deste agente
+            if (ag.neighbors) {
+                ag.neighbors.forEach(n => {
+                    const neighborIdx = parseKNodeIndex(n.id);
+                    if (neighborIdx !== null) {
+                        // Cria chave única para aresta (menor-maior) para não duplicar
+                        const u = Math.min(nodeIdx, neighborIdx);
+                        const v = Math.max(nodeIdx, neighborIdx);
+                        connections.add(`${u}-${v}`);
+                    }
+                    // Verifica se porta abriu (se um vizinho é saída e agente está lá)
+                    // Ou usa a flag global (se tiver no JSON). 
+                    // Pela lógica do env: se vizinho tem is_exit=true e eles se encontraram.
+                    if (n.is_exit) meetingOccurred = true; 
+                });
+            }
+        }
+    });
+
+    // 5. Desenha as Linhas (Arestas)
+    connections.forEach(conn => {
+        const [u, v] = conn.split('-').map(Number);
+        const line = createSvgLine(u, v);
+        svgLayer.appendChild(line);
+    });
+
+    // 6. Desenha os 9 Nós
+    for (let i = 0; i < 9; i++) {
+        const nodeDiv = document.createElement('div');
+        nodeDiv.className = `k-node`;
+        
+        const floorDiv = document.createElement('div');
+        floorDiv.className = 'k-room-floor';
+        
+        // Renderiza Agentes neste nó
+        if (nodeOccupancy[i]) {
+            nodeDiv.classList.add('has-agent');
+            
+            // Desenha os avatares (pode ter 2 na mesma sala)
+            nodeOccupancy[i].forEach((ag, idx) => {
+                const img = document.createElement('img');
+                img.src = AssetManager.getAgentSprite(ag.name);
+                img.className = 'k-avatar';
+                
+                // Offset se houver 2 agentes para não sobrepor totalmente
+                if (nodeOccupancy[i].length > 1) {
+                    img.style.transform = `translate(${idx * 15 - 10}px, ${idx * 5}px)`;
+                }
+
+                // Estados Especiais (Bandeira Branca / Escudo)
+                // Precisamos garantir que o recorder.py salve essas flags!
+                // Assumindo que estão em ag.social_flags ou algo assim no futuro.
+                // Por enquanto, simulamos com base na lógica:
+                // Se dropou item -> Bandeira Branca (simulação visual)
+                
+                floorDiv.appendChild(img);
+            });
+
+            // Se houve encontro e esta é a sala do encontro (ou saída), brilha
+            if (nodeOccupancy[i].length > 1) {
+                nodeDiv.classList.add('has-exit'); // Simula a porta abrindo
+            }
+        }
+
+        nodeDiv.appendChild(floorDiv);
+        gridLayer.appendChild(nodeDiv);
+    }
+
+    sanctumWrapper.appendChild(gridLayer);
+    container.appendChild(sanctumWrapper);
+}
+
+// --- AUXILIAR: Desenha linha SVG entre nós ---
+function createSvgLine(u, v) {
+    // Grid 3x3 conceitual em SVG 100% x 100%
+    // Coordenadas aproximadas dos centros dos nós (em %)
+    // 0: 16%,16% | 1: 50%,16% | 2: 83%,16%
+    // etc...
+    
+    const getCoord = (idx) => {
+        const row = Math.floor(idx / 3);
+        const col = idx % 3;
+        // 16.6% = (100 / 3) / 2 -> Centro da coluna
+        return { x: (col * 33.33) + 16.66, y: (row * 33.33) + 16.66 };
+    };
+
+    const p1 = getCoord(u);
+    const p2 = getCoord(v);
+
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", `${p1.x}%`);
+    line.setAttribute("y1", `${p1.y}%`);
+    line.setAttribute("x2", `${p2.x}%`);
+    line.setAttribute("y2", `${p2.y}%`);
+    line.classList.add("connection-line", "active"); // Active deixa roxo
+    
+    return line;
+}
+
+// --- AUXILIAR: Parseia k_20_5 -> 5 ---
+function parseKNodeIndex(nodeId) {
+    if (!nodeId || !nodeId.startsWith('k_')) return null;
+    const parts = nodeId.split('_');
+    // k_{floor}_{index} -> pega o último
+    return parseInt(parts[2]);
+}
 
 // 3. CONTROLES DE REPRODUÇÃO
 // Configurações de Velocidade
@@ -616,11 +782,34 @@ timeline.oninput = (e) => {
 };
 
 // 4. BOOT E CORREÇÃO DA TIMELINE
-function initSystem(data) {
+function initSystem(data) {    
+    replayData = data;
+    
+    // 1. Popula o Seletor de Agentes baseado no primeiro frame
+    const select = document.getElementById('agent-select');
+    select.innerHTML = ''; // Limpa
+    const firstFrame = replayData[0];
+    
+    Object.keys(firstFrame.agents).forEach(id => {
+        const option = document.createElement('option');
+        option.value = id;
+        option.innerText = firstFrame.agents[id].name; // Mostra o nome (ex: Ren_Warden)
+        select.appendChild(option);
+    });
+
+    // Listener para trocar de câmera
+    select.addEventListener('change', (e) => {
+        selectedAgentId = e.target.value;
+        renderFrame(currentFrame); // Redesenha na hora
+    });
+
+    // Define o padrão
+    selectedAgentId = Object.keys(firstFrame.agents)[0];
+
     replayData = data;
     console.log(`Dados carregados: ${replayData.length} frames.`);
 
-    // [CORREÇÃO] Configura o slider IMEDIATAMENTE após carregar os dados
+    // Configura o slider IMEDIATAMENTE após carregar os dados
     const timeline = document.getElementById('timeline');
     timeline.min = 0;
     timeline.max = replayData.length - 1; // Garante que vá até o último frame

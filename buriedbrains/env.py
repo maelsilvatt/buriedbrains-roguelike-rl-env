@@ -6,6 +6,7 @@ import yaml
 import os
 import random
 import networkx as nx
+from collections import deque
 
 # Importando módulos internos
 from . import agent_rules
@@ -69,6 +70,9 @@ class BuriedBrainsEnv(gym.Env):
         self.sanctum_floor = sanctum_floor
         self.num_agents = num_agents 
         self.seed = seed
+
+        # Pra evitar andar em circulos
+        # self.movement_history = {}
 
         self.pvp_durations = []
         self.current_pvp_timer = 0
@@ -446,12 +450,14 @@ class BuriedBrainsEnv(gym.Env):
         self.current_floors = {}
         self.nodes_per_floor_counters = {}
         self.combat_states = {}
+
+        # self.movement_history[agent_id] = deque(maxlen=3)
         
         # Métricas
         self.current_episode_logs = {}
         self.enemies_defeated_this_episode = {}
         self.invalid_action_counts = {}
-        self.last_milestone_floors = {}        
+        self.last_milestone_floors = {}                
         
         # Buffers de estatísticas (Duração, Dano, Trocas)
         self.pvp_durations = []
@@ -1196,7 +1202,7 @@ class BuriedBrainsEnv(gym.Env):
                 processed_agents.add(agent_id)
                 
                 # Descobre o oponente
-                opponent_id = self.active_matches.get(agent_id)
+                opponent_id = self.active_matches.get(agent_id)                
                 
                 # A. Verifica Encontro/Porta (Rito de Passagem)
                 if opponent_id:
@@ -1208,6 +1214,9 @@ class BuriedBrainsEnv(gym.Env):
                             self._log(opponent_id, f"[SANCTUM] Encontro entre {self.agent_names[opponent_id]} e {self.agent_names[agent_id]}! Saída liberada.")
                             rewards[agent_id] += 100
                             rewards[opponent_id] += 100
+                        else:
+                            # Cobra uma taxa por inação na arena
+                            rewards[agent_id] -= 5
 
                 # B. Processa Ação (Traição, Movimento, etc)
                 
@@ -1297,7 +1306,7 @@ class BuriedBrainsEnv(gym.Env):
                             # Encerra a arena para ambos
                             self._end_arena_encounter(agent_id)
                             self._end_arena_encounter(opponent_id)
-                            processed_agents.add(opponent_id)
+                            processed_agents.add(opponent_id)                        
 
                 else: # Ação Inválida (> 9)
                      self.invalid_action_counts[agent_id] += 1
@@ -1419,11 +1428,28 @@ class BuriedBrainsEnv(gym.Env):
 
             if neighbor_index < len(neighbors):
                 # --- Movimento VÁLIDO ---
-                chosen_node = neighbors[neighbor_index]                                             
+                chosen_node = neighbors[neighbor_index]  
+
+                # # Verifica se ele esteve aqui nos últimos 2 turnos
+                # step_penalty = -0.1 # Custo base de energia
+                
+                # if chosen_node in self.movement_history[agent_id]:
+                #     # "Todo mundo tá olhando, pare de andar em círculos!"
+                #     step_penalty = -2.0 
+                #     self._log(agent_id, f"[SANCTUM] Andando em círculos em {chosen_node}. Vergonha!")
+                
+                # # Atualiza histórico
+                # self.movement_history[agent_id].append(chosen_node)
+                
+                # # Move o agente
+                # self.current_nodes[agent_id] = chosen_node
+                
+                # return step_penalty                                           
 
                 # --- LÓGICA DE SAÍDA DA ARENA COM TRIBUTO ---
                 if is_in_arena:
                     node_data = current_graph.nodes[chosen_node]
+
                     if node_data.get('is_exit', False):
                         # Verifica a trava global de encontro
                         meet_occurred = current_graph.graph.get('meet_occurred', False)
@@ -1564,6 +1590,9 @@ class BuriedBrainsEnv(gym.Env):
                      pass
                 else:
                      reward = 50 + (max_rarity_diff * 100) # Incentivo PvE
+
+                if is_in_arena:
+                    reward -= 2.0  # Custa pontos ficar pegando de volta
             else:
                 if room_items:
                     reward = -2 # Itens ignorados
@@ -1587,7 +1616,10 @@ class BuriedBrainsEnv(gym.Env):
                     # Flag de drop para barganha
                     self.social_flags[agent_id]['just_dropped'] = True                    
                     
-                    self._log(agent_id, f"[AÇÃO-ARENA] Dropou '{equipped}'.")                    
+                    self._log(agent_id, f"[AÇÃO-ARENA] Dropou '{equipped}'.")
+
+                    if is_in_arena:
+                        reward -= 2.0 # Custa pontos ficar soltando                    
                 else:
                     self.invalid_action_counts[agent_id] += 1
                     reward = -5
@@ -1898,6 +1930,9 @@ class BuriedBrainsEnv(gym.Env):
         self.agent_states[agent_id] = agent_rules.create_initial_agent(agent_name)
         self.agent_states[agent_id]['skills'] = self.agent_skill_names
         self.agent_states[agent_id]['equipment']['Artifact'] = 'Amulet of Vigor'
+
+        # Reinicia memória curta de movimento
+        # self.movement_history[agent_id] = deque(maxlen=3)
         
         # 4. RE-APLICAR Karma
         self.agent_states[agent_id]['karma']['real'] = preserved_karma_z.real
