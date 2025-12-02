@@ -593,3 +593,27 @@ input[type=range] { width: 300px; }
 }
 .controls button:hover { background: var(--accent-purple); color: #000; }
 .controls button:active { transform: scale(0.95); }
+
+/* --- CONTROLES DA TIMELINE --- */
+input[type=range] {
+    flex-grow: 1; /* Faz a barra esticar para ocupar o espaço disponível */
+    height: 6px;
+    background: #444;
+    border-radius: 3px;
+    appearance: none; /* Remove estilo padrão do navegador */
+    cursor: pointer;
+    accent-color: var(--accent-red); /* <--- ISSO DEIXA A BARRA VERMELHA */
+}
+
+/* Estilo do botão de velocidade (para diferenciar dos de navegação) */
+.speed-control {
+    font-family: monospace;
+    font-size: 12px;
+    width: 50px !important; /* Um pouco mais largo */
+    color: var(--accent-gold) !important;
+    border-color: var(--accent-gold) !important;
+}
+.speed-control:hover {
+    background: var(--accent-gold) !important;
+    color: #000 !important;
+}

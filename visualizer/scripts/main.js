@@ -122,6 +122,7 @@ function renderFrame(index) {
     updateStats(agent);
     drawKarma(agent.karma);
     updateLogs(agent.logs);    
+    updateStats(agent, agent.action_taken);
 
     const stage = document.getElementById('stage');
     if (agent.scene_mode.includes("COMBAT")) {
@@ -151,33 +152,56 @@ function updateStats(agent) {
     updateEquipmentSlots(agent.equipment);
 
     // --- SKILLS ---
-    // Passa o objeto de cooldowns do JSON. Se não existir, passa vazio.
+    let actionName = null;
+    if (agent.action_taken !== undefined && agent.action_taken !== null) {
+        if (typeof agent.action_taken === 'number') {
+            actionName = ACTION_INDEX_MAP[agent.action_taken];
+        } else {
+            actionName = agent.action_taken; 
+        }
+    }
+
+    updateEquipmentSlots(agent.equipment);
+    
     if (agent.cooldowns) {
-        updateSkills(agent.cooldowns);
+        updateSkills(agent.cooldowns, actionName);
     }
 }
 
-// --- FUNÇÃO DE ATUALIZAÇÃO DE SKILLS ---
-function updateSkills(cooldowns) {
-    const skillMap = [
-        { name: "Quick Strike", id: "skill-0" },
-        { name: "Heavy Blow",   id: "skill-1" },
-        { name: "Stone Shield", id: "skill-2" },
-        { name: "Wait",         id: "skill-3" }
-    ];
+// Mapeamento de Skills e seus CDs Máximos (Para forçar visualização)
+const SKILL_INFO = {
+"Quick Strike": { id: "skill-0", maxCD: 1 },
+"Heavy Blow":   { id: "skill-1", maxCD: 3 },
+"Stone Shield": { id: "skill-2", maxCD: 3 },
+"Wait":         { id: "skill-3", maxCD: 0 }
+};
 
-    skillMap.forEach(skill => {
-        const element = document.getElementById(skill.id);
+// Mapeamento de índices de ação (do Env) para nomes
+// 0: Quick Strike, 1: Heavy Blow, 2: Stone Shield, 3: Wait
+const ACTION_INDEX_MAP = ["Quick Strike", "Heavy Blow", "Stone Shield", "Wait"];
+
+// --- FUNÇÃO DE ATUALIZAÇÃO DE SKILLS ---
+function updateSkills(cooldowns, currentAction) {
+    Object.keys(SKILL_INFO).forEach(skillName => {
+        const info = SKILL_INFO[skillName];
+        const element = document.getElementById(info.id);
         if(!element) return;
 
         const overlay = element.querySelector('.cd-overlay');
-        const cd = cooldowns[skill.name] || 0;
+        
+        // Valor do JSON
+        let cdValue = cooldowns[skillName] || 0;
+        
+        // Força a visualização como se já tivesse apertado o botão
+        if (currentAction === skillName && info.maxCD > 0) {
+            cdValue = info.maxCD;
+        }
 
-        if (cd > 0) {
-            element.classList.add('on-cooldown'); // Ativa a borda vermelha (CSS)
+        if (cdValue > 0) {
+            element.classList.add('on-cooldown');
             if(overlay) {
-                overlay.style.opacity = '1';      
-                overlay.innerText = cd;           
+                overlay.style.opacity = '1';
+                overlay.innerText = cdValue;
             }
         } else {
             element.classList.remove('on-cooldown');
@@ -379,12 +403,24 @@ function detectRarity(itemName) {
 function renderCombatScene(container, agent, index) {
     container.innerHTML = '';
     
-    // Dados para cálculo de dano
+    // 1. Lógica de Dano e Comparação com Frame Anterior
     const prevFrame = index > 0 ? replayData[index - 1] : null;
-    const prevAgent = prevFrame ? prevFrame.agents[Object.keys(prevFrame.agents)[0]] : null;
+    let prevAgent = null;
+    let wasInCombatBefore = false;
+
+    if (prevFrame) {
+        const prevAgentId = Object.keys(prevFrame.agents)[0];
+        prevAgent = prevFrame.agents[prevAgentId];
+        // Verifica se no frame passado JÁ ESTAVA em combate PVE
+        if (prevAgent.scene_mode && prevAgent.scene_mode.includes("COMBAT")) {
+            wasInCombatBefore = true;
+        }
+    }
+
+    // Shake no Heroi
     const heroHurt = prevAgent && prevAgent.hp > agent.hp ? 'shake' : '';
     
-    // Dados do Inimigo
+    // 2. Lógica do Inimigo
     let enemyHurt = '';
     let enemyHpPct = 100;
     let enemyName = "Inimigo";
@@ -402,14 +438,18 @@ function renderCombatScene(container, agent, index) {
         }
     }
     
-    // Efeito de Sala
+    // 3. Lógica do Badge de Efeito (Com controle de animação)
     let effectHtml = '';
     const effectName = agent.current_effect; 
     
     if (effectName && effectName !== 'None' && EFFECT_LIBRARY[effectName]) {
         const data = EFFECT_LIBRARY[effectName];
+        
+        // Só anima se NÃO estava em combate antes (Entrada)
+        const animClass = wasInCombatBefore ? '' : 'anim-enter';
+        
         effectHtml = `
-            <div class="combat-effect-badge effect-${data.type}">
+            <div class="combat-effect-badge effect-${data.type} ${animClass}">
                 <div class="effect-header">
                     <i class="fa-solid ${data.icon}"></i>
                     <span>${effectName}</span>
@@ -421,12 +461,14 @@ function renderCombatScene(container, agent, index) {
         `;
     }
     
+    // 4. Montagem da Cena
     const scene = document.createElement('div');
     scene.className = 'combat-scene';    
-    scene.style.position = 'relative'; 
-
+    
     scene.innerHTML = `
-        ${effectHtml} <div class="combatant ${heroHurt}">
+        ${effectHtml} 
+
+        <div class="combatant ${heroHurt}">
             <img src="https://api.dicebear.com/7.x/adventurer/svg?seed=${agent.name}" class="avatar-hero">
             <div style="color:#a29bfe; margin-top:5px; font-weight:bold; font-size:12px;">${agent.name}</div>
         </div>
@@ -502,33 +544,105 @@ function detectEnemyRank(name) {
     return 'blue';
 }
 
-// 3. CONTROLES
-function play() { if(!isPlaying) { isPlaying=true; playInterval=setInterval(()=>step(1), 800); } }
-function pause() { isPlaying=false; clearInterval(playInterval); }
-function step(dir) {
-    const next = currentFrame + dir;
-    if(next >= 0 && next < replayData.length) {
-        currentFrame = next;
-        renderFrame(currentFrame);
-    } else {
-        pause();
+
+// 3. CONTROLES DE REPRODUÇÃO
+// Configurações de Velocidade
+const SPEEDS = [1, 1.5, 2, 4];
+let speedIndex = 0;
+let baseDelay = 1000; // 1 segundo por turno (na velocidade 1x)
+
+function getDelay() {
+    return baseDelay / SPEEDS[speedIndex];
+}
+
+function toggleSpeed() {
+    // Alterna o índice (0 -> 1 -> 2 -> 3 -> 0)
+    speedIndex = (speedIndex + 1) % SPEEDS.length;
+    const currentSpeed = SPEEDS[speedIndex];
+    
+    // Atualiza texto do botão
+    const btn = document.getElementById('btn-speed');
+    btn.innerText = `${currentSpeed}x`;
+    
+    // Se estiver tocando, reinicia o timer com a nova velocidade
+    if (isPlaying) {
+        clearInterval(playInterval);
+        playInterval = setInterval(() => step(1), getDelay());
     }
 }
 
+function play() {
+    if (isPlaying) return;
+    isPlaying = true;
+    
+    // Atualiza ícones (opcional, visual)
+    document.getElementById('btn-play').innerHTML = '<i class="fa-solid fa-play" style="color:#55efc4"></i>';
+    
+    // Inicia o loop com a velocidade atual
+    playInterval = setInterval(() => step(1), getDelay());
+}
+
+function pause() {
+    isPlaying = false;
+    clearInterval(playInterval);
+    
+    // Reseta ícone
+    document.getElementById('btn-play').innerHTML = '<i class="fa-solid fa-play"></i>';
+}
+
+function step(dir) {
+    const next = currentFrame + dir;
+    if (next >= 0 && next < replayData.length) {
+        currentFrame = next;
+        renderFrame(currentFrame);
+    } else {
+        pause(); // Chegou no fim ou início
+    }
+}
+
+// --- EVENT LISTENERS ---
 document.getElementById('btn-play').onclick = play;
 document.getElementById('btn-pause').onclick = pause;
 document.getElementById('btn-next').onclick = () => { pause(); step(1); };
 document.getElementById('btn-prev').onclick = () => { pause(); step(-1); };
-document.getElementById('timeline').oninput = (e) => { pause(); currentFrame = +e.target.value; renderFrame(currentFrame); };
+document.getElementById('btn-speed').onclick = toggleSpeed; // <--- Novo Listener
 
-// 4. BOOT
-fetch(RECORD_PATH).then(r=>r.ok?r.json():null).then(d => {
-    if(d) { replayData = d; console.log("Loaded Real Data"); }
-    else { replayData = mockReplay; console.log("Loaded Mock Data"); }
-    document.getElementById('timeline').max = replayData.length - 1;
+// Listener da Timeline (Slider)
+const timeline = document.getElementById('timeline');
+timeline.oninput = (e) => {
+    pause(); // Pausa ao arrastar manualmente
+    currentFrame = parseInt(e.target.value);
+    renderFrame(currentFrame);
+};
+
+// 4. BOOT E CORREÇÃO DA TIMELINE
+function initSystem(data) {
+    replayData = data;
+    console.log(`Dados carregados: ${replayData.length} frames.`);
+
+    // [CORREÇÃO] Configura o slider IMEDIATAMENTE após carregar os dados
+    const timeline = document.getElementById('timeline');
+    timeline.min = 0;
+    timeline.max = replayData.length - 1; // Garante que vá até o último frame
+    timeline.value = 0;
+
+    // Renderiza o primeiro frame
     renderFrame(0);
-}).catch(e => {
-    console.log("Error loading, using mock.", e);
-    replayData = mockReplay;
-    renderFrame(0);
-});
+}
+
+// Fetch Inicial
+fetch(RECORD_PATH)
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+        if (d) {
+            console.log("Modo: Arquivo Real");
+            initSystem(d);
+        } else {
+            console.warn("Modo: Mock Data (Arquivo não encontrado)");
+            initSystem(mockReplay);
+        }
+    })
+    .catch(e => {
+        console.error("Erro fatal:", e);
+        initSystem(mockReplay);
+    });

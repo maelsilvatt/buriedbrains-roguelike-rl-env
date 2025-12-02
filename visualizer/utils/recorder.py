@@ -104,6 +104,9 @@ class BuriedBrainsRecorder:
                 # Ações e Recompensas
                 "cooldowns": current_cooldowns.copy(),
 
+                # Mapeia a ação tomada pelo agente
+                "action_taken": actions_dict.get(agent_id) if actions_dict else None,
+
                 # Contexto Visual
                 "location_node": current_node,
                 "floor": current_floor,
