@@ -158,18 +158,7 @@ pools:
       exp_yield: 15
 
     # --- Elites (Antigos "Bosses" de Nível Baixo/Médio) ---
-    # (Ajustes para suavizar a curva inicial)
-
-    Lava Golem: # (NERFADO - Aumenta CD do Stun)
-      cost: 25 
-      weight: 15 
-      tags: [Elite, Thermal, Area_Damage] 
-      hp: 220
-      skills: ['Heavy Blow', 'Flame Burst', 'Earthquake', 'Wait']
-      equipment: ['Warhammer'] 
-      exp_yield: 90
-      min_floor: 20
-      # Redesign: Stun um pouco menos frequente para reduzir o lockdown. Continua perigoso com AOE+DoT.
+    # (Ajustes para suavizar a curva inicial)    
 
     Krul: # (Mantido como está - Stat check físico)
       cost: 20 
@@ -237,6 +226,17 @@ pools:
 
     # --- Bosses (Antigos "Elite" de Nível Alto - Desafios Maiores) ---
     # (Reordenados e alguns mantidos como desafios finais)
+
+    Lava Golem: # Bem vindo ao gigante
+      cost: 25 
+      weight: 15 
+      tags: [Elite, Thermal, Area_Damage] 
+      hp: 320
+      skills: ['Heavy Blow', 'Flame Burst', 'Earthquake', 'Wait']
+      equipment: ['Warhammer'] 
+      exp_yield: 90
+      min_floor: 85
+      # Redesign: Stun um pouco menos frequente para reduzir o lockdown. Continua perigoso com AOE+DoT.
 
     Kalisto: # (NERFADO DRASTICAMENTE - Era um muro muito cedo)
       cost: 35 

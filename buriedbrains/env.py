@@ -259,7 +259,7 @@ class BuriedBrainsEnv(gym.Env):
             item_generated_log = content.get('items', []) or ['Nenhum']
             effect_log = content.get('room_effects', []) or ['Nenhum']
 
-            self._log(agent_id, f"[PVE] Sala '{node_name}' (Andar {next_floor}) gerada com: "
+            self._log(agent_id, f"[PVE] {self.agent_names[agent_id]} diante de '{node_name}' (Andar {next_floor}) gerada com: "
                         f"Inimigo: {enemy_log[0]}, "
                         f"Evento: {event_outcome_log[0]}, "
                         f"Item Gerado: {item_generated_log[0]}, "
@@ -582,9 +582,7 @@ class BuriedBrainsEnv(gym.Env):
             self._generate_and_populate_successors(agent_id, "start")
             
             # --- Logging e Retorno ---
-            self._log(agent_id, 
-                      f"[RESET] Novo episódio iniciado. {agent_name} (Nível {self.agent_states[agent_id]['level']}).\n"
-                      f"[RESET] Mapa de progressão individual gerado. Sala inicial: 'start'.")
+            self._log(agent_id, f"[RESET] Novo episódio iniciado. {agent_name} (Nível {self.agent_states[agent_id]['level']}).\n")                      
             
             # Coleta a observação inicial
             observations[agent_id] = self._get_observation(agent_id)
@@ -918,7 +916,7 @@ class BuriedBrainsEnv(gym.Env):
         if agent_id in self.matchmaking_queue or agent_id in self.active_matches:
             return
 
-        self._log(agent_id, f"[SANCTUM] {self.agent_names[agent_id]} ao Santuário (Andar {self.current_floors[agent_id]}). Entrando na fila...")
+        self._log(agent_id, f"[SANCTUM] {self.agent_names[agent_id]} chegou ao Santuário (Andar {self.current_floors[agent_id]}). Entrando na fila...")
         
         # 1. Adiciona à fila de espera
         self.matchmaking_queue.append(agent_id)
@@ -1185,22 +1183,37 @@ class BuriedBrainsEnv(gym.Env):
                 rewards[p2] += rew2
                 
                 if over:
-                    # Calcula quanto tempo durou usando o start_step salvo na sessão
+                    # Logs e Métricas
                     duration = self.current_step - session['start_step']
-                    
-                    # Salva para ambos os participantes (p1 e p2 definidos acima)
                     self.pvp_combat_durations[p1].append(duration)
-                    self.pvp_combat_durations[p2].append(duration)                    
+                    self.pvp_combat_durations[p2].append(duration)
+                    
+                    self._log(winner, f"[PVP] VITÓRIA de {self.agent_names[winner]}!")
+                    
+                    # --- CICLO DE VIDA: O PERDEDOR ---
+                    # 1. Define Morte
+                    terminateds[loser] = True 
+                    
+                    # 2. Remove da Arena (Transição de Estado: Arena -> PvE)
+                    if loser in self.arena_instances: del self.arena_instances[loser]
+                    if loser in self.agents_in_arena: self.agents_in_arena.discard(loser)
+                    
+                    # 3. Reseta o agente derrotado
+                    self._respawn_agent(loser, "PVP")
 
-                    self._log(winner, f"[PVP] VITÓRIA de {self.agent_names[winner]}!")                    
-                    terminateds[loser] = False # Respawnou
+                    # --- CICLO DE VIDA: O VENCEDOR ---
+                    # 1. Quebra o Pareamento (Ele agora está "Solteiro" na arena)
+                    if winner in self.active_matches: del self.active_matches[winner]
+                    if loser in self.active_matches: del self.active_matches[loser]
 
-                    # Remove a sessão para impedir que haja uma sessão fantasma no próximo passo
+                    # Destranca a Porta 
+                    if winner in self.arena_instances:
+                        self.arena_instances[winner].graph['meet_occurred'] = True
+                        self._log(winner, "[SANCTUM] Oponente eliminado. Saída destrancada.")
+
+                    # Limpa a sessão de PVP
                     if p1 in self.pvp_sessions: del self.pvp_sessions[p1]
                     if p2 in self.pvp_sessions: del self.pvp_sessions[p2]
-
-                    # Para que o agente não saia da arena, comente esta linha:
-                    #self._end_arena_encounter(winner)
 
             # --- CASO 2: ESTÁ NA FILA DE ESPERA? (Sincronização) ---
             elif agent_id in self.matchmaking_queue:
@@ -1239,7 +1252,7 @@ class BuriedBrainsEnv(gym.Env):
                 if target_id:
                     # Lógica de Traição (Atacou oferta de paz do outro)
                     if self.arena_interaction_state[target_id]['offered_peace']:
-                         self._log(agent_id, f"[SOCIAL] TRAIÇÃO! O agente {self.agent_names[agent_id]} TRAIU a oferta de paz de {self.agent_names[target_id]}! Karma (--).")
+                         self._log(agent_id, f"[SOCIAL] TRAIÇÃO! {self.agent_names[agent_id]} TRAIU a oferta de paz de {self.agent_names[target_id]}! Karma (--).")
                          self.reputation_system.update_karma(agent_id, 'bad')
                          self.reputation_system.update_karma(agent_id, 'bad') # Dupla
                          self.reputation_system.update_karma(target_id, 'bad')
@@ -1249,7 +1262,7 @@ class BuriedBrainsEnv(gym.Env):
 
                     # Lógica de Perfídia (Atacou segurando a própria oferta)
                     if self.arena_interaction_state[agent_id]['offered_peace']:
-                         self._log(agent_id, f"[SOCIAL] PERFÍDIA! O agente {self.agent_names[agent_id]} atacou enquanto oferecia paz! Karma (---).")
+                         self._log(agent_id, f"[SOCIAL] PERFÍDIA! {self.agent_names[agent_id]} atacou enquanto oferecia paz! Karma (---).")
                          self.reputation_system.update_karma(agent_id, 'bad')
                          self.reputation_system.update_karma(agent_id, 'bad')
                          self.reputation_system.update_karma(agent_id, 'bad') # Tripla
@@ -1275,9 +1288,9 @@ class BuriedBrainsEnv(gym.Env):
                     rewards[agent_id] += r
                     
                     # Atualiza estado de Paz (Se dropou com sucesso)
-                    if self.social_flags[agent_id].get('just_dropped'):
+                    if self.social_flags[agent_id].get('just_dropped') and agent_id in self.active_matches:
                         self.arena_interaction_state[agent_id]['offered_peace'] = True
-                        self._log(agent_id, f"[SOCIAL] O agente {self.agent_names[agent_id]} ofereceu seu artefato como oferta de paz.")
+                        self._log(agent_id, f"[SOCIAL] {self.agent_names[agent_id]} ofereceu seu artefato como oferta de paz.")
                     
                     # Atualiza Skipped Attack (Flag Social)
                     if opponent_id and self.current_nodes[agent_id] == self.current_nodes[opponent_id]:
@@ -1438,23 +1451,7 @@ class BuriedBrainsEnv(gym.Env):
 
             if neighbor_index < len(neighbors):
                 # --- Movimento VÁLIDO ---
-                chosen_node = neighbors[neighbor_index]  
-
-                # # Verifica se ele esteve aqui nos últimos 2 turnos
-                # step_penalty = -0.1 # Custo base de energia
-                
-                # if chosen_node in self.movement_history[agent_id]:
-                #     # "Todo mundo tá olhando, pare de andar em círculos!"
-                #     step_penalty = -2.0 
-                #     self._log(agent_id, f"[SANCTUM] Andando em círculos em {chosen_node}. Vergonha!")
-                
-                # # Atualiza histórico
-                # self.movement_history[agent_id].append(chosen_node)
-                
-                # # Move o agente
-                # self.current_nodes[agent_id] = chosen_node
-                
-                # return step_penalty                                           
+                chosen_node = neighbors[neighbor_index]                 
 
                 # --- LÓGICA DE SAÍDA DA ARENA COM TRIBUTO ---
                 if is_in_arena:
@@ -1506,7 +1503,7 @@ class BuriedBrainsEnv(gym.Env):
                         self._end_arena_encounter(agent_id)
                         return base_exit_reward + bonus_peace_reward, terminated                             
 
-                self._log(agent_id, f"[AÇÃO] O agente {self.agent_names[agent_id]} fez um movimento VÁLIDO para '{chosen_node}'.")
+                self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} fez um movimento VÁLIDO para '{chosen_node}'.")
                 
                 # Lógica de Poda (Apenas na P-Zone)
                 if not is_in_arena:
@@ -1588,7 +1585,7 @@ class BuriedBrainsEnv(gym.Env):
                 # Registra a troca
                 self.equipment_swaps_this_episode[agent_id] += 1
                 qualidade = self.catalogs['equipment'][best_item_to_equip]['rarity']
-                self._log(agent_id, f"[AÇÃO] O agente {self.agent_names[agent_id]} equipou: '{best_item_to_equip}' (Tipo: {best_item_type}, Raridade: {qualidade}).")
+                self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} equipou: '{best_item_to_equip}' (Tipo: {best_item_type}, Raridade: {qualidade}).")
                 
                 # Flag de pick-up para barganha
                 if best_item_type == 'Artifact':
@@ -1642,60 +1639,7 @@ class BuriedBrainsEnv(gym.Env):
             self.invalid_action_counts[agent_id] += 1
             reward = -5
 
-        return reward, terminated
-        
-    def _handle_arena_social(self, agent_id: str) -> float:
-        """
-        Processa a Ação Social (Ação 5): APENAS Dropar o Artefato equipado.
-        Ação 4 (Equipar) agora lida com o 'Pegar'.
-        Retorna a recompensa pela ação.
-        """
-        self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} tentou Ação 5 (Drop Artifact).")
-
-        # --- 1. Ação Social só é válida na Arena ---
-        if self.env_state != 'ARENA_INTERACTION':
-            self._log(agent_id, "[AÇÃO] Ação 5 (Drop Artifact) é inválida fora do Santuário.")
-            self.invalid_action_counts[agent_id] += 1
-            return -5.0
-
-        # --- 2. Obter Estados Atuais ---
-        agent_state = self.agent_states[agent_id]
-        current_node_id = self.current_nodes[agent_id]
-        
-        # Garante que 'content' e 'items' existam no nó da arena
-        if not self.arena_instances[agent_id].has_node(current_node_id) or 'content' not in self.arena_instances[agent_id].nodes[current_node_id]:
-             self._log(agent_id, "[AÇÃO] Tentou dropar item em nó/sala inválida.")
-             self.invalid_action_counts[agent_id] += 1
-             return -5.0
-             
-        room_items = self.arena_instances[agent_id].nodes[current_node_id]['content'].setdefault('items', [])
-        
-        # --- 3. Lógica da Ação (APENAS Dropar) ---
-
-        # Verifica se o agente TEM um artefato no slot 'Artifact'
-        equipped_artifact_name = agent_state['equipment'].get('Artifact')
-
-        if equipped_artifact_name:
-            # --- Ação VÁLIDA: Dropar o Artefato ---
-            
-            # Tira o artefato do agente (remove a chave do dicionário)
-            del agent_state['equipment']['Artifact']
-            
-            # Coloca o artefato no chão da sala da ARENA
-            room_items.append(equipped_artifact_name)
-            
-            # Seta a flag de 1 turno (para o outro agente ver)
-            self.social_flags[agent_id]['just_dropped'] = True
-            
-            self._log(agent_id, f"[AÇÃO-ARENA] {self.agent_names[agent_id]} dropou '{equipped_artifact_name}' (iniciando barganha).")
-            # Recompensa por iniciar interação social
-            return 10.0 
-        else:
-            # --- Ação INVÁLIDA ---
-            # (Agente tentou dropar, mas não tinha artefato equipado)
-            self._log(agent_id, f"[AÇÃO-ARENA] Ação 5 (Drop Artifact) falhou. Nenhum artefato equipado para dropar.")
-            self.invalid_action_counts[agent_id] += 1
-            return -5.0 # Penalidade
+        return reward, terminated    
     
     def _start_combat(self, agent_id: str, enemy_name: str):
         """
@@ -1828,7 +1772,7 @@ class BuriedBrainsEnv(gym.Env):
         if level_difference > COWARDICE_THRESHOLD:
             # --- Regra de Covardia ---
             # O vencedor estava 10+ níveis *acima* do perdedor.
-            self._log(winner_id, f"[SOCIAL] Covardia! O agente {self.agent_names[winner_id]} derrotou covardemente {self.agent_names[loser_id]} (Nível {winner_level} vs {loser_level}). Karma (-)")
+            self._log(winner_id, f"[SOCIAL] Covardia! {self.agent_names[winner_id]} derrotou covardemente {self.agent_names[loser_id]} (Nível {winner_level} vs {loser_level}). Karma (-)")
             action_type = 'bad'
 
             # Registra a covardia nas estatísticas do episódio
@@ -1837,13 +1781,13 @@ class BuriedBrainsEnv(gym.Env):
         elif level_difference < -COWARDICE_THRESHOLD:
             # --- Regra "Davi vs. Golias" ---
             # O vencedor estava 10+ níveis *abaixo* do perdedor.
-            self._log(winner_id, f"[SOCIAL] Vitória Heroica! O agente {self.agent_names[winner_id]} derrotou heroicamente {self.agent_names[loser_id]} (Nível {winner_level} vs {loser_level}). Karma (+)")
+            self._log(winner_id, f"[SOCIAL] Vitória Heroica! {self.agent_names[winner_id]} derrotou heroicamente {self.agent_names[loser_id]} (Nível {winner_level} vs {loser_level}). Karma (+)")
             action_type = 'good'
             
         else:
             # --- Luta Justa ---
             # A diferença de nível era pequena.
-            self._log(winner_id, f"[SOCIAL] Luta Justa. O agente {self.agent_names[winner_id]} derrotou {self.agent_names[loser_id]} (Nível {winner_level} vs {loser_level}). Karma (Neutro)")
+            self._log(winner_id, f"[SOCIAL] Luta Justa. {self.agent_names[winner_id]} derrotou {self.agent_names[loser_id]} (Nível {winner_level} vs {loser_level}). Karma (Neutro)")
             action_type = 'neutral' # O karma decairá lentamente para o centro
             
         # Chama o motor de reputação para atualizar o karma do VENCEDOR
@@ -1885,8 +1829,7 @@ class BuriedBrainsEnv(gym.Env):
         
         # Adiciona este novo nó ao grafo de progressão individual do agente
         agent_graph = self.graphs[agent_id]
-        agent_graph.add_node(next_p_node_id, floor=next_p_floor)
-        # (Opcional: adicionar uma aresta do nó da arena? Por enquanto, apenas o movemos)
+        agent_graph.add_node(next_p_node_id, floor=next_p_floor)        
         
         # Atualiza o contador de nós para este andar
         self.nodes_per_floor_counters[agent_id][next_p_floor] += 1
@@ -1894,6 +1837,9 @@ class BuriedBrainsEnv(gym.Env):
         # 5. Move o agente para este novo nó
         self.current_nodes[agent_id] = next_p_node_id
         self.current_floors[agent_id] = next_p_floor
+
+        # DEBUG
+        print(f"Posição atual do agente {self.agent_names[agent_id]}: {self.current_floors[agent_id]}")
         
         # 6. Popula o novo nó com conteúdo (vazio, pois é um "hub" de entrada)
         start_content = content_generation.generate_room_content(
@@ -1903,7 +1849,7 @@ class BuriedBrainsEnv(gym.Env):
         
         # 7. Gera os primeiros sucessores da P-Zone (ex: p_22_0, p_22_1)
         self._generate_and_populate_successors(agent_id, next_p_node_id)
-        self._log(agent_id, f"[PROGRESSION] {self.agent_names[agent_id]} entrou na P-Zone do Andar {next_p_floor} no nó '{next_p_node_id}'.")
+        self._log(agent_id, f"[PVE] {self.agent_names[agent_id]} entrou na P-Zone do Andar {next_p_floor} no nó '{next_p_node_id}'.")
 
         # --- LIMPEZA N-AGENTES ---
         # Remove o registro do pareamento
@@ -1917,12 +1863,6 @@ class BuriedBrainsEnv(gym.Env):
         # Remove a referência da instância da arena
         if agent_id in self.arena_instances:
             del self.arena_instances[agent_id]        
-
-        # 8. Se a arena estiver vazia, reseta o estado global
-        if not self.agents_in_arena:
-            self._log(agent_id, "[SANCTUM] Santuário vazio. Retornando a zona de progressão.")
-            
-            self.arena_instances[agent_id] = None # Limpa o grafo da arena
 
     def _respawn_agent(self, agent_id: str, cause: str = "Desconhecida"):
         """
