@@ -9,6 +9,7 @@ from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
 from buriedbrains.env import BuriedBrainsEnv
 from buriedbrains.logging_callbacks import LoggingCallback
 from buriedbrains.wrappers import SharedPolicyVecEnv 
+from stable_baselines3.common.utils import set_random_seed
 
 def transfer_weights(old_model_path, new_model, verbose=0):
     """
@@ -65,6 +66,9 @@ def main():
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--num_agents', type=int, default=2)
     args = parser.parse_args()
+
+    # Seta a seed globalmente
+    set_random_seed(args.seed)
 
     # Validação básica
     if not args.resume_path and not args.pretrained_path:
@@ -176,6 +180,7 @@ def main():
             env,
             verbose=0,
             tensorboard_log=base_logdir,
+            seed=args.seed,
             **lstm_params
         )
 

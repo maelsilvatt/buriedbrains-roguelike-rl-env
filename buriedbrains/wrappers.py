@@ -27,6 +27,13 @@ class SharedPolicyVecEnv(VecEnv):
         self.last_obs = None
         self.actions = None
 
+    def seed(self, seed=None):
+        """
+        Define a semente para o ambiente global subjacente.
+        """
+                
+        return self.env.reset(seed=seed)
+
     def reset(self):
         """
         Reseta o ambiente real e retorna as observações de TODOS os agentes empilhadas.

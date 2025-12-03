@@ -433,13 +433,23 @@ class BuriedBrainsEnv(gym.Env):
         return obs
     
     def reset(self, seed=None, options=None):
+        # Chama o reset do pai (Gerencia o self.np_random interno do Gym)
         super().reset(seed=seed)
+        
+        # 2. Captura a semente gerada (ou passada)
+        # Se seed foi passado explicitamente, usamos ele. 
+        # Se for None, pegamos do gerador interno do Gym para manter sincronia.
         if seed is not None:
-            self.seed = seed  # atualiza a semente da instância
-            random.seed(seed) # garante consistência 
-        else:            
-            if self.seed is not None:
-                random.seed(self.seed)
+            used_seed = seed
+        else:
+            # Pega uma semente derivada do estado atual do np_random do Gym            
+            used_seed = self.np_random.integers(0, 2**32 - 1)
+        
+        # Aplica a semente no Python nativo (afeta o módulo 'random')
+        random.seed(int(used_seed))
+        
+        # Aplica a semente no Numpy Global        
+        np.random.seed(int(used_seed))
 
         # --- 1. RESETAR ESTADOS GLOBAIS E DE AGENTE ---
         # Limpa todos os dicionários de estado da sessão anterior

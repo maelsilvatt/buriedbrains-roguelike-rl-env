@@ -106,18 +106,13 @@ def _prune_graph_by_centrality(G: nx.Graph, alpha=0.5, beta=0.3, gamma=0.2) -> n
 def generate_k_zone_topology(
     floor_level: int,
     num_nodes: int = 9,
-    connectivity_prob: float = 0.40,
-    seed: int = None,
+    connectivity_prob: float = 0.40,    
     num_exits: int = 1 # Novo parâmetro
 ) -> nx.Graph:
     """
     Gera a topologia para uma Zona do Karma (Arena PvP),
-    garantindo pelo menos um nó de saída estrategicamente posicionado.
-    [cite_start][cite: 345-347]
+    garantindo pelo menos um nó de saída estrategicamente posicionado.    
     """
-    if seed is not None:
-        random.seed(seed)
-
     # 1. Tenta gerar um grafo conectado (Erdős-Rényi)
     for _ in range(20):
         G = nx.erdos_renyi_graph(num_nodes, connectivity_prob)
