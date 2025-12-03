@@ -52,10 +52,6 @@ class LoggingCallback(BaseCallback):
         self.episode_betrayals = []
         self.episode_final_karma_real = []
 
-        self.episode_artifacts_equiped = []
-        self.episode_sanctum_steps = []
-        self.episode_sanctum_deaths = [] # Mortes por profanação
-
     def _extract_final_info(self, info):
         """Retorna o final_info real do SB3, sem quebrar."""
         raw = info.get("final_info", None)
@@ -152,14 +148,12 @@ class LoggingCallback(BaseCallback):
             self.episode_enemies_defeated.append(final_status.get("enemies_defeated", 0))
             self.episode_invalid_actions.append(final_status.get("invalid_actions", 0))
             self.episode_total_actions.append(final_status.get("steps", 1))
-            self.episode_artifacts_equiped.append(final_status.get("artifacts_equiped", 0))
-            self.episode_sanctum_steps.append(final_status.get("sanctum_steps", 0))            
 
             # Durations
             pve_durs = final_status.get("pve_durations", [])
             pvp_durs = final_status.get("pvp_durations", [])
             self.episode_avg_pve_duration.append(np.mean(pve_durs) if pve_durs else 0)            
-            self.episode_avg_pvp_duration.append(np.mean(pvp_durs) if pvp_durs else 0)            
+            self.episode_avg_pvp_duration.append(np.mean(pvp_durs) if pvp_durs else 0)
 
             # Social
             self.episode_arena_encounters.append(final_status.get("arena_encounters", 0))
@@ -170,15 +164,7 @@ class LoggingCallback(BaseCallback):
             self.episode_cowardice_kills.append(final_status.get("cowardice_kills", 0))
             self.episode_betrayals.append(final_status.get("betrayals", 0))
             karma = final_status.get("karma", {'real': 0})
-            self.episode_final_karma_real.append(karma.get("real", 0))                    
-
-            # Detecta Morte por Profanação
-            # Verificamos se a string da causa da morte contém a palavra chave que determina morte por profanar o Templo
-            cause = final_status.get("death_cause", "")
-            if "Colapso" in cause or "Demora" in cause:
-                self.episode_sanctum_deaths.append(1)
-            else:
-                self.episode_sanctum_deaths.append(0)
+            self.episode_final_karma_real.append(karma.get("real", 0))
 
             # Atualiza máximo global
             cp_floor = final_status.get("floor", 0)
@@ -231,12 +217,6 @@ class LoggingCallback(BaseCallback):
                 self.logger.record("social/total_cowardice_kills", np.sum(self.episode_cowardice_kills))
                 self.logger.record("social/avg_final_karma", np.mean(self.episode_final_karma_real))
                 self.logger.record("social/total_betrayals", np.mean(self.episode_betrayals))
-                
-                # Média de artefatos equipados por episódio (indica procura por barganha)
-                self.logger.record("custom/avg_artifacts_equiped", np.mean(self.episode_artifacts_equiped))
-                
-                # Média de passos gastos dentro do santuário (indica eficiência da negociação)
-                self.logger.record("social/avg_steps_in_sanctum", np.mean(self.episode_sanctum_steps))
 
                 self.logger.dump(step=self.num_timesteps)
 

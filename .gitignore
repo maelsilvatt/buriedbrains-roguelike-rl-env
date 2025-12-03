@@ -27,4 +27,6 @@
 \__pycache__
 .vscode
 \bats
-visualizer/recordings/
+\recordings
+visualizer/recordings/sanctum_floor_25_expert_recording.json
+visualizer/recordings/sanctum_floor_25_expert_recording.json
