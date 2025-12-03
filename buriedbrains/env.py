@@ -111,7 +111,7 @@ class BuriedBrainsEnv(gym.Env):
         ACTION_SHAPE = 10 
                 
         # 14 PvE + 14 Social + 12 Vizinhos + 2 Self-Equip = 42
-        OBS_SHAPE = (42,)
+        OBS_SHAPE = (46,)
         
         # --- Detalhamento do Espaço de Observação (36 estados) ---
         # Bloco Próprio (7 estados):
@@ -192,6 +192,7 @@ class BuriedBrainsEnv(gym.Env):
         self.pvp_combat_durations = {}
         self.karma_history = {}
         self.max_floor_reached_this_episode = {}
+        self.previous_nodes = {}
         
         # --- 6. ESTADO GLOBAL ---
                 
@@ -267,8 +268,7 @@ class BuriedBrainsEnv(gym.Env):
 
     def _get_observation(self, agent_id: str) -> np.ndarray:
         """
-        Coleta e retorna a observação de 42 estados para o agente especificado.
-        [CORRIGIDO] Blindagem contra current_graph None.
+        Coleta e retorna a observação de 42 estados para o agente especificado.        
         """
         # Começa com -1.0 (default)
         obs = np.full(self.observation_space[agent_id].shape, -1.0, dtype=np.float32) 
@@ -277,28 +277,34 @@ class BuriedBrainsEnv(gym.Env):
             return obs
 
         agent = self.agent_states[agent_id]
-        current_node_id = self.current_nodes.get(agent_id) # Usa .get para segurança
+        current_node_id = self.current_nodes.get(agent_id) 
         
-        # --- 1. SELEÇÃO DINÂMICA DE GRAFO ---
-        current_graph = None
-
-        # Se o agente tem uma arena atribuída, usa ela.
-        if agent_id in self.arena_instances:
-            current_graph = self.arena_instances[agent_id]
-        # Caso contrário, usa o grafo de progressão (se existir)
-        elif agent_id in self.graphs:
-            current_graph = self.graphs[agent_id]
-
-        # --- PROTEÇÃO CRÍTICA (A Correção do Erro) ---
-        # Se não achou grafo, ou se o grafo é None, ou se o nó não existe: retorna obs vazia.
-        if current_graph is None:
-             return obs
+        # Verifica o contexto do agente
+        is_in_arena = agent_id in self.arena_instances
         
-        if not current_graph.has_node(current_node_id):
-             return obs
-        # ---------------------------------------------
-             
-        room_content = current_graph.nodes[current_node_id].get('content', {})
+        # Seleciona o grafo correto
+        if is_in_arena:
+            current_graph_to_use = self.arena_instances[agent_id]
+        else:
+            # Pega do dicionário de grafos PvE
+            current_graph_to_use = self.graphs.get(agent_id)
+
+        # Identifica a sala atual
+        current_node_id = self.current_nodes.get(agent_id)
+
+        # Busca os nós vizinhos
+        neighbors = []
+        if current_graph_to_use and current_node_id:
+            if current_graph_to_use.has_node(current_node_id):
+                # Pega a lista de IDs dos nós disponíveis
+                neighbors = list(current_graph_to_use.neighbors(current_node_id))
+                # Garante que a ordem sempre seja a mesma
+                neighbors.sort() 
+        
+        # 5. Identifica o Outro Agente (para contexto social)
+        other_agent_id = self.active_matches.get(agent_id)
+
+        room_content = current_graph_to_use.nodes[current_node_id].get('content', {})
         pve_combat_state = self.combat_states.get(agent_id)
         
         # --- Bloco Próprio (0-6) ---
@@ -360,20 +366,6 @@ class BuriedBrainsEnv(gym.Env):
                     obs[18] = opponent_karma_z.real 
                     obs[19] = opponent_karma_z.imag
 
-                    # Gear Score
-                    opp_equip = other_agent_state.get('equipment', {})
-                    total_rarity = 0.0
-                    for item in opp_equip.values():
-                        if item:
-                            r_str = self.catalogs['equipment'].get(item, {}).get('rarity')
-                            total_rarity += self.rarity_map.get(r_str, 0.0)
-                    obs[38] = total_rarity / 3.0 
-
-                    # Intenções Sociais
-                    opp_flags = self.social_flags.get(other_agent_id, {})
-                    obs[39] = 1.0 if opp_flags.get('just_dropped', False) else -1.0
-                    obs[40] = 1.0 if opp_flags.get('skipped_attack', False) else -1.0        
-
         # Artefatos (20-21)
         best_artifact_rarity = 0.0
         found_artifact_floor = False
@@ -397,38 +389,117 @@ class BuriedBrainsEnv(gym.Env):
             obs[23] = 1.0
 
         # --- Bloco Contexto Movimento (24-35) ---
-        if not is_in_arena: # PvE
-             neighbors = list(current_graph.successors(current_node_id))
-        else: # Arena
-             try: neighbors = list(current_graph.neighbors(current_node_id))
-             except: neighbors = []
-        neighbors.sort()    
-
-        for i in range(self.MAX_NEIGHBORS):
-            if i < len(neighbors):
-                neighbor_node_id = neighbors[i]
-                if not current_graph.has_node(neighbor_node_id): continue 
-                neighbor_content = current_graph.nodes[neighbor_node_id].get('content', {})
-                
-                obs[24 + i*3 + 0] = 1.0 # Válido
-                if neighbor_content.get('enemies') or (other_agent_id and self.current_nodes.get(other_agent_id) == neighbor_node_id):
-                    obs[24 + i*3 + 1] = 1.0 # Inimigo
-                if neighbor_content.get('items') or any(evt in neighbor_content.get('events', []) for evt in ['Treasure', 'Morbid Treasure', 'Fountain of Life']):
-                    obs[24 + i*3 + 2] = 1.0 # Recompensa
+        # Agora são 4 features por vizinho: [Valido?, Inimigo?, Loot?, PERIGO?]
+        # Índices: 
+        # Vizinho 0: 24, 25, 26, 27
+        # Vizinho 1: 28, 29, 30, 31
+        # Vizinho 2: 32, 33, 34, 35
+        # Vizinho 3: 36, 37, 38, 39
         
-        # --- Equipamento Atual (36-37) ---
-        equipped_weapon = agent['equipment'].get('Weapon')
-        obs[36] = self.rarity_map.get(self.catalogs['equipment'][equipped_weapon].get('rarity'), 0.0) if equipped_weapon else 0.0
-            
-        equipped_armor = agent['equipment'].get('Armor')
-        obs[37] = self.rarity_map.get(self.catalogs['equipment'][equipped_armor].get('rarity'), 0.0) if equipped_armor else 0.0
+        base_idx = 24 
+        
+        for i in range(self.MAX_NEIGHBORS): # 0 a 3
+            # AQUI ESTÁ A MUDANÇA: Multiplicamos por 4 agora, não 3
+            idx = base_idx + (i * 4) 
 
-        # --- Estado da Porta (41) ---
-        obs[41] = -1.0 # Default (Trancada/Ausente)
-        if is_in_arena:
-             # Lê do grafo atual (arena) a flag
-             if current_graph.graph.get('meet_occurred', False):
-                 obs[41] = 1.0
+            # Só processa se tiver vizinho e grafo válido
+            if i < len(neighbors) and current_graph_to_use:
+                neighbor_node_id = neighbors[i]
+                
+                # Double check: vizinho existe no grafo?
+                if current_graph_to_use.has_node(neighbor_node_id):
+                    neighbor_content = current_graph_to_use.nodes[neighbor_node_id].get('content', {})
+                    
+                    # [Feature 0] É Válido?
+                    obs[idx + 0] = 1.0 
+                    
+                    # Verifica presença de inimigos e jogadores
+                    enemy_list = neighbor_content.get('enemies', [])
+                    has_opponent = (other_agent_id and self.current_nodes.get(other_agent_id) == neighbor_node_id)
+                    
+                    # [Feature 1] Tem Inimigo/Oponente?
+                    if enemy_list or has_opponent:
+                        obs[idx + 1] = 1.0 
+                    
+                    # [Feature 2] Tem Recompensa?
+                    # (Loot, Eventos Positivos ou Saída destrancada na arena)
+                    has_loot = neighbor_content.get('items')
+                    has_good_event = any(evt in neighbor_content.get('events', []) for evt in ['Treasure', 'Morbid Treasure', 'Fountain of Life'])
+                    
+                    is_exit_open = False
+                    if is_in_arena and current_graph_to_use.nodes[neighbor_node_id].get('is_exit', False):
+                        if current_graph_to_use.graph.get('meet_occurred', False):
+                            is_exit_open = True
+                            
+                    if has_loot or has_good_event or is_exit_open:
+                        obs[idx + 2] = 1.0 
+
+                    # Nível de Perigo (Danger Tier)
+                    danger_level = 0.0
+                    
+                    # A. Analisa Monstros
+                    if enemy_list:
+                        enemy_name = enemy_list[0]
+                        # Tenta pegar tags do catálogo
+                        enemy_data = self.catalogs['enemies'].get(enemy_name, {})
+                        tags = enemy_data.get('tags', [])
+                        
+                        if 'Boss' in tags: 
+                            danger_level = 1.0   # PERIGO MÁXIMO (Vermelho / Lava Golem)
+                        elif 'Elite' in tags: 
+                            danger_level = 0.66  # PERIGO ALTO (Laranja)
+                        else: 
+                            danger_level = 0.33  # PERIGO MÉDIO (Amarelo / Mob comum)
+                            
+                    # B. Analisa Jogadores (Arena PvP)
+                    elif has_opponent:
+                        # Outro jogador é imprevisível = Elite
+                        danger_level = 0.66
+                    
+                    obs[idx + 3] = danger_level                                
+            
+        # [Index 40] Self Weapon Rarity
+        current_eq = self.agent_states[agent_id]['equipment']
+
+        w_name = current_eq.get('Weapon')
+        if w_name:
+            r_str = self.catalogs['equipment'].get(w_name, {}).get('rarity', 'Common')
+            obs[40] = self.rarity_map.get(r_str, 0.0)
+            
+        # [Index 41] Self Armor Rarity
+        a_name = current_eq.get('Armor')
+        if a_name:
+            r_str = self.catalogs['equipment'].get(a_name, {}).get('rarity', 'Common')
+            obs[41] = self.rarity_map.get(r_str, 0.0)
+
+        # [Index 42] Social Score do Outro (Se visível)
+        if other_agent_id:
+            other_eq = self.agent_states[other_agent_id]['equipment']
+            total_rarity = 0.0
+            count = 0
+            for slot in ['Weapon', 'Armor']:
+                it = other_eq.get(slot)
+                if it:
+                    rst = self.catalogs['equipment'].get(it, {}).get('rarity')
+                    total_rarity += self.rarity_map.get(rst, 0.0)
+                    count += 1
+            if count > 0:
+                obs[42] = total_rarity / 2.0 # Média
+        
+        # [Index 43] Oponente dropou item recentemente?
+        if other_agent_id and self.social_flags[other_agent_id].get('just_dropped'):
+            obs[43] = 1.0
+            
+        # [Index 44] Oponente pulou ataque (sinal de paz)?
+        if other_agent_id and self.social_flags[other_agent_id].get('skipped_attack'):
+            obs[44] = 1.0
+            
+        # [Index 45] Encontro Ocorreu? (Global Flag)
+        # Avisa ao agente que a porta está destrancada
+        if is_in_arena and current_graph_to_use.graph.get('meet_occurred', False):
+            obs[45] = 1.0
+        elif is_in_arena: # Se está na arena mas não encontrou
+            obs[45] = -1.0
         
         return obs
     
@@ -1423,6 +1494,7 @@ class BuriedBrainsEnv(gym.Env):
         # Verifica se ESTE AGENTE está na Arena
         # (agents_in_arena inclui quem está na fila, arena_instances só quem está jogando)
         is_in_arena = (agent_id in self.arena_instances)
+        reward = 0.0
         
         # Seleciona o grafo correto
         current_graph = self.arena_instances[agent_id] if is_in_arena else self.graphs.get(agent_id)
@@ -1449,9 +1521,17 @@ class BuriedBrainsEnv(gym.Env):
 
             self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} na sala '{current_node_id}'. Tentando Mover Vizinho {neighbor_index}.")
 
-            if neighbor_index < len(neighbors):
-                # --- Movimento VÁLIDO ---
-                chosen_node = neighbors[neighbor_index]                 
+            if neighbor_index < len(neighbors):                
+                chosen_node = neighbors[neighbor_index]                           
+
+                # Se o agente está voltando para o nó de onde acabou de vir (A -> B -> A)
+                prev_node = self.previous_nodes.get(agent_id)
+                if prev_node and chosen_node == prev_node:
+                     # Punição leve para desencorajar ficar indo e voltando
+                     reward -= 1.5
+                else:
+                     # Recompensa leve por explorar nó novo (incentivo de descoberta)
+                     reward += 0.5      
 
                 # --- LÓGICA DE SAÍDA DA ARENA COM TRIBUTO ---
                 if is_in_arena:
@@ -1463,7 +1543,7 @@ class BuriedBrainsEnv(gym.Env):
                         
                         if not meet_occurred:
                             self._log(agent_id, f"[AÇÃO-ARENA] A saída em '{chosen_node}' está TRANCADA. Encontre o outro agente primeiro!")
-                            return -1.0, terminated 
+                            return -5.0, terminated 
                         
                         # Lógica de Saída com Paz (Pedágio)
                         base_exit_reward = 50.0
@@ -1497,11 +1577,18 @@ class BuriedBrainsEnv(gym.Env):
                                 self.bargains_toll_this_episode[opponent_id] += 1 
                                                         
                         else:
-                            self._log(agent_id, f"[SANCTUM] {self.agent_names[agent_id]} saiu do Santuário ignorando a oferta de paz.")
-                        
-                        # Encerra e Sai
+                             self._log(agent_id, f"[SANCTUM] ... ignorando oferta de paz.")
+
+                        # O agente sai da arena
                         self._end_arena_encounter(agent_id)
-                        return base_exit_reward + bonus_peace_reward, terminated                             
+                        
+                        # Liberta o Oponente também 
+                        if opponent_id and opponent_id in self.arena_instances:
+                            # Opção A: O oponente também sai automaticamente (Empate técnico)
+                            self._end_arena_encounter(opponent_id)
+                            self._log(opponent_id, f"[SANCTUM] O oponente partiu. O santuário se desfaz.")                                                        
+
+                        return base_exit_reward + bonus_peace_reward, terminated                            
 
                 self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} fez um movimento VÁLIDO para '{chosen_node}'.")
                 
@@ -1837,9 +1924,6 @@ class BuriedBrainsEnv(gym.Env):
         # 5. Move o agente para este novo nó
         self.current_nodes[agent_id] = next_p_node_id
         self.current_floors[agent_id] = next_p_floor
-
-        # DEBUG
-        print(f"Posição atual do agente {self.agent_names[agent_id]}: {self.current_floors[agent_id]}")
         
         # 6. Popula o novo nó com conteúdo (vazio, pois é um "hub" de entrada)
         start_content = content_generation.generate_room_content(
@@ -1944,6 +2028,8 @@ class BuriedBrainsEnv(gym.Env):
         self.nodes_per_floor_counters[agent_id] = {0: 1}
         self.graphs[agent_id] = nx.DiGraph()
         self.graphs[agent_id].add_node("start", floor=0)
+
+        self._log(agent_id, f"[RESPAWN] {agent_name} (Nível 1) voltou a estaca zero.")
         
         # 8. Popular e Gerar
         start_content = content_generation.generate_room_content(
@@ -1952,4 +2038,4 @@ class BuriedBrainsEnv(gym.Env):
         self.graphs[agent_id].nodes["start"]['content'] = start_content
         self._generate_and_populate_successors(agent_id, "start")
         
-        self._log(agent_id, f"[RESPAWN] {agent_name} (Nível 1) voltou para a estaca zero.")
+        
