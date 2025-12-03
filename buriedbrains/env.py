@@ -1080,35 +1080,40 @@ class BuriedBrainsEnv(gym.Env):
 
             # Faz a limpa nos logs ANTES de salvar o final_status            
             infos[agent_id]['final_status'] = {
-                'level': self.agent_states[agent_id]['level'], 
-                'hp': 0, # Morreu
-                'floor': self.max_floor_reached_this_episode.get(agent_id, self.current_floors[agent_id]),
+                'level': self.agent_states.get(agent_id, {}).get('level', 0),
+                'hp': 0,  # Morreu
+                'floor': self.max_floor_reached_this_episode.get(agent_id, self.current_floors.get(agent_id, 0)),
                 'win': False,
-                'steps': self.current_step,
-                'enemies_defeated': self.enemies_defeated_this_episode[agent_id],
-                'invalid_actions': self.invalid_action_counts[agent_id],
-                'agent_name': self.agent_names[agent_id],
-                'full_log': self.current_episode_logs[agent_id].copy(), # Salva o log antes de limpar
-                'equipment': self.agent_states[agent_id].get('equipment', {}).copy(), # Salva itens antes de perder
-                'exp': self.agent_states[agent_id]['exp'],
-                'damage_dealt': self.damage_dealt_this_episode[agent_id],
-                'equipment_swaps': self.equipment_swaps_this_episode[agent_id],
-                'artifacts_equiped': self.artifacts_equiped_this_episode[agent_id],
-                'death_cause': cause,
+                'steps': getattr(self, 'current_step', 0),
+                'enemies_defeated': self.enemies_defeated_this_episode.get(agent_id, 0),
+                'invalid_actions': self.invalid_action_counts.get(agent_id, 0),
+                'agent_name': self.agent_names.get(agent_id, f"Agente_{agent_id}"),
                 
+                'full_log': self.current_episode_logs.get(agent_id, []).copy() if self.current_episode_logs.get(agent_id) else [],
+                'equipment': self.agent_states.get(agent_id, {}).get('equipment', {}).copy(),
+                'exp': self.agent_states.get(agent_id, {}).get('exp', 0),
+                
+                'damage_dealt': self.damage_dealt_this_episode.get(agent_id, 0),
+                'equipment_swaps': self.equipment_swaps_this_episode.get(agent_id, 0),
+                                
+                'artifacts_equiped': self.artifacts_equiped_this_episode.get(agent_id, 0),
+                'sanctum_steps': self.steps_in_sanctum_this_episode.get(agent_id, 0), 
+                
+                'death_cause': cause if cause else "Desconhecida",
+
                 # Métricas Sociais
-                'pve_durations': self.pve_combat_durations[agent_id].copy(),
-                'pvp_durations': self.pvp_combat_durations[agent_id].copy(),
-                'arena_encounters': self.arena_encounters_this_episode[agent_id],
-                'pvp_combats': self.pvp_combats_this_episode[agent_id],
-                'bargains_succeeded': self.bargains_succeeded_this_episode[agent_id],
-                'bargains_trade': self.bargains_trade_this_episode[agent_id],
-                'bargains_toll': self.bargains_toll_this_episode[agent_id],
-                'cowardice_kills': self.cowardice_kills_this_episode[agent_id],
-                'betrayals': self.betrayals_this_episode[agent_id],
-                'karma_history': self.karma_history[agent_id],
-                'karma': self.agent_states[agent_id]['karma']
-            }                        
+                'pve_durations': self.pve_combat_durations.get(agent_id, []).copy() if self.pve_combat_durations.get(agent_id) else [],
+                'pvp_durations': self.pvp_combat_durations.get(agent_id, []).copy() if self.pvp_combat_durations.get(agent_id) else [],
+                'arena_encounters': self.arena_encounters_this_episode.get(agent_id, 0),
+                'pvp_combats': self.pvp_combats_this_episode.get(agent_id, 0),
+                'bargains_succeeded': self.bargains_succeeded_this_episode.get(agent_id, 0),
+                'bargains_trade': self.bargains_trade_this_episode.get(agent_id, 0),
+                'bargains_toll': self.bargains_toll_this_episode.get(agent_id, 0),
+                'cowardice_kills': self.cowardice_kills_this_episode.get(agent_id, 0),
+                'betrayals': self.betrayals_this_episode.get(agent_id, 0),
+                'karma_history': self.karma_history.get(agent_id, []),
+                'karma': self.agent_states.get(agent_id, {}).get('karma', 0.0)
+            }
 
             # AGORA reseta (destroi os dados antigos para a nova vida)
             self._respawn_agent(agent_id, cause=cause)
@@ -1140,7 +1145,7 @@ class BuriedBrainsEnv(gym.Env):
                     'steps': self.current_step,
                     'enemies_defeated': self.enemies_defeated_this_episode.get(agent_id, 0),
                     'invalid_actions': self.invalid_action_counts.get(agent_id, 0),
-                    'agent_name': self.agent_names.get(agent_id, "Roberto"),
+                    'agent_name': self.agent_names.get(agent_id, "Unknown"),
                     
                     # Logs e Equipamentos (precisa de copy)
                     'full_log': self.current_episode_logs.get(agent_id, []).copy(), 
@@ -1149,11 +1154,12 @@ class BuriedBrainsEnv(gym.Env):
                     'exp': self.agent_states[agent_id]['exp'],
                     'damage_dealt': self.damage_dealt_this_episode.get(agent_id, 0.0),
                     'equipment_swaps': self.equipment_swaps_this_episode.get(agent_id, 0),
-                    'artifacts_equiped': self.artifacts_equiped_this_episode(agent_id, 0),
+                                        
+                    'artifacts_equiped': self.artifacts_equiped_this_episode.get(agent_id, 0),
                     'sanctum_steps': self.steps_in_sanctum_this_episode.get(agent_id, 0),
                     
                     # Segurança caso death_cause não tenha sido setado ainda
-                    'death_cause': self.death_cause.get(agent_id, "Desconhecido"),
+                    'death_cause': self.death_cause.get(agent_id, "Time Limit Reached"),
                     
                     # --- Listas de Duração ---                    
                     'pve_durations': self.pve_combat_durations.get(agent_id, []).copy(),
@@ -1172,7 +1178,7 @@ class BuriedBrainsEnv(gym.Env):
                     
                     # Karma atual é um dict/objeto, precisa de copy
                     'karma': self.agent_states[agent_id]['karma'].copy() 
-                }                                
+                }
                     
         return agent_reward, agent_terminated
 

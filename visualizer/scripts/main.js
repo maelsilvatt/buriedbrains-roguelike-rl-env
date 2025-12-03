@@ -1,6 +1,6 @@
 // scripts/main.js
 
-const RECORD_PATH = 'recordings/sanctum_floor_25_expert_recording.json'; 
+const RECORD_PATH = 'recordings/recording.json'; 
 window.replayData = [];
 let selectedAgentId = null;
 
