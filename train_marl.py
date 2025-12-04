@@ -3,6 +3,7 @@ import os
 import argparse
 import torch
 import torch.nn as nn
+import random
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
 
@@ -53,22 +54,35 @@ def transfer_weights(old_model_path, new_model, verbose=0):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--total_timesteps', type=int, default=5_000_000)
-    
+        
     # Argumentos de Modelo
+    parser.add_argument('--total_timesteps', type=int, default=5_000_000)
     parser.add_argument('--pretrained_path', type=str, default=None, help="Caminho do modelo PvE Expert (para começar do zero)")
     parser.add_argument('--resume_path', type=str, default=None, help="Caminho de um checkpoint MARL (para continuar treino)")
-    
+
     parser.add_argument('--suffix', type=str, default="MARL_Shared")
     parser.add_argument('--max_episode_steps', type=int, default=10_000)
     parser.add_argument('--sanctum_floor', type=int, default=20)
     parser.add_argument('--verbose', type=int, default=0)
-    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--seed', nargs='?', const='random', default='random', help="Seed fixa ou 'random'")
     parser.add_argument('--num_agents', type=int, default=2)
     args = parser.parse_args()
 
-    # Seta a seed globalmente
-    set_random_seed(args.seed)
+    # Lógica da Seed
+    seed_val = None  
+
+    if args.seed is not None and str(args.seed).lower() != "random":
+        try:
+            seed_val = int(args.seed)
+            print(f"\n>>> MODO DETERMINÍSTICO: Seed Global fixada em {seed_val} <<<")
+            
+            # Fixa a seed globalmente
+            set_random_seed(seed_val) 
+            
+        except ValueError:
+            print(f"Aviso: Valor de seed '{args.seed}' inválido. Usando modo aleatório.")
+    else:
+        print("\nMODO ALEATÓRIO: Nenhuma seed fixa definida.")
 
     # Validação básica
     if not args.resume_path and not args.pretrained_path:
@@ -89,7 +103,7 @@ def main():
         sanctum_floor=args.sanctum_floor,
         verbose=args.verbose,
         num_agents=args.num_agents,
-        seed=args.seed
+        seed=seed_val
     ) 
     
     # Aplica o wrapper para Shared Policy
@@ -160,7 +174,7 @@ def main():
     model = None
 
     if args.resume_path and os.path.exists(args.resume_path):
-        print(f"\n>>> RESUMINDO TREINAMENTO MARL <<<")
+        print(f"\nResumindo treinamento MARL...")
         print(f"Carregando checkpoint: {args.resume_path}")
 
         model = RecurrentPPO.load(
@@ -173,7 +187,7 @@ def main():
         if not args.pretrained_path:
             raise ValueError("Para iniciar um treino novo você deve fornecer --pretrained_path.")
 
-        print(f"\n>>> INICIANDO NOVO TREINO MARL (TRANSFER LEARNING) <<<")
+        print(f"\nIniciando novo treino MARL")
 
         model = RecurrentPPO(
             "MlpLstmPolicy",
@@ -188,7 +202,8 @@ def main():
         transfer_weights(args.pretrained_path, model, verbose=1)
 
     # --- 4. Callbacks ---
-    checkpoint_callback = CheckpointCallback(save_freq=200_000, save_path=model_path, name_prefix="marl_model")
+    save_freq = max(1, 200_000 // env.num_envs) # Como estamos usando múltiplos ambientes paralelos
+    checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path=model_path, name_prefix="marl_model")
     logging_callback = LoggingCallback(verbose=0, log_interval=1)
 
     # --- 5. Treino ---
@@ -207,14 +222,25 @@ def main():
     except KeyboardInterrupt:
         print("Treinamento interrompido pelo usuário. Salvando...")
 
-    # Salva o modelo final
+    # 1. Garante que a pasta existe antes de tentar salvar
+    if not os.path.exists(model_path):
+        os.makedirs(model_path, exist_ok=True)
+        print(f"Diretório criado: {model_path}")
+    
     final_steps = model.num_timesteps
-    save_name = f"{model_path}/final_marl_model_{final_steps}_steps.zip"
-    model.save(save_name)
-    print(f"Modelo final salvo em: {save_name}")
+    save_filename = f"final_marl_model_{final_steps}_steps.zip"
+    full_save_path = os.path.join(model_path, save_filename)
+    
+    # Salva
+    model.save(full_save_path)
+    print(f"Modelo final salvo com sucesso em: {full_save_path}")
     
     # Salva o Hall da Fama
-    logging_callback.save_hall_of_fame(os.path.join(tb_path, "hall_of_fame"))
+    hof_path = os.path.join(tb_path, "hall_of_fame")
+    if not os.path.exists(hof_path):
+        os.makedirs(hof_path, exist_ok=True)
+        
+    logging_callback.save_hall_of_fame(hof_path)
 
     print("Encerrado.")
 
