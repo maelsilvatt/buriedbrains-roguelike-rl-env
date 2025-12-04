@@ -37,19 +37,8 @@ def check_for_level_up(agent: Dict[str, Any]) -> bool:
         
         agent['exp'] -= agent['exp_to_level_up']
         agent['level'] += 1
-        
-        # --- CORREÇÃO: Taxa de Custo (Linear) para Bater com a Taxa de Ganho ---
-        # A taxa de ganho (de instantiate_enemy) sobe em +4 por andar (20 * 0.2).
-        # A taxa de custo agora também sobe em +4 por nível.
-        
-        # Antes (Exponencial):
-        # agent['exp_to_level_up'] = int(agent['exp_to_level_up'] * 1.05)
-        # Minha Sugestão Ruim (Linear +20):
-        # agent['exp_to_level_up'] += 20 
-        
-        # Agora (Linear +4):
-        agent['exp_to_level_up'] += 4
-        # --- FIM DA CORREÇÃO ---
+                        
+        agent['exp_to_level_up'] += 4        
                 
         # --- AUMENTOS DE PODER DO AGENTE ---
         agent['max_hp'] += 30  
@@ -61,44 +50,47 @@ def check_for_level_up(agent: Dict[str, Any]) -> bool:
 
     return leveled_up
 
-def instantiate_enemy(
-    enemy_name: str, 
-    current_floor_k: int, 
-    catalogs: Dict[str, Any]
-) -> Dict[str, Any]:
+def instantiate_enemy(enemy_name: str, agent_current_floor: int, catalogs: Dict[str, Any]) -> Dict[str, Any]:
     """
     Cria uma instância de um inimigo com stats escalonados pela profundidade do andar.
+    Usa as fórmulas de balanceamento da Fase 2 (Hardcore Mode).
     """
-    from . import combat
+    # Importação local para evitar ciclo se 'combat' importar 'agent_rules'
+    from . import combat 
 
     enemies_catalog = catalogs.get('enemies', {})
-    if enemy_name not in enemies_catalog:
-        return None
-
-    base_enemy_data = enemies_catalog[enemy_name].copy()
+    enemy_base = enemies_catalog.get(enemy_name)
     
-    # --- ESCALONAMENTO DOS INIMIGOS ---
+    if not enemy_base:
+        # Fallback de segurança ou log de erro
+        return None    
     
-    # Escalonamento de HP por andar
-    hp_scaling_factor = 1 + (current_floor_k * 0.02)
-    scaled_hp = int(base_enemy_data.get('hp', 50) * hp_scaling_factor)
+    # O escalonamento só começa a ter um efeito real a partir do andar 3
+    effective_floor = max(0, agent_current_floor - 2)
     
-    instantiated_enemy = combat.initialize_combatant(
+    # 1. Escalonamento de HP (8% por andar efetivo)
+    hp_scaling_factor = 1 + (effective_floor * 0.08)
+    scaled_hp = int(enemy_base.get('hp', 50) * hp_scaling_factor)
+    
+    # 2. Inicializa o objeto de combate básico
+    enemy_combatant = combat.initialize_combatant(
         name=enemy_name,
         hp=scaled_hp,
-        equipment=base_enemy_data.get('equipment', []),
-        skills=base_enemy_data.get('skills', []),
+        equipment=enemy_base.get('equipment', []),
+        skills=enemy_base.get('skills', []),
         team=2,
         catalogs=catalogs
     )
     
-    # Aumentado ligeiramente o escalonamento de dano do inimigo
-    bonus_factor = (current_floor_k + 1) * 0.08
-    damage_increase = int(current_floor_k * 0.8) # Um aumento mais direto: +0.8 de dano por andar.
-    instantiated_enemy['base_stats']['flat_damage_bonus'] += damage_increase
+    # 3. Escalonamento de Dano (12.5% por andar efetivo)
+    damage_scaling_factor = 1 + (effective_floor * 0.125)
+    enemy_combatant['base_stats']['flat_damage_bonus'] *= damage_scaling_factor
+    
+    # 4. Escalonamento de XP (16.5% por andar efetivo)
+    base_exp = enemy_base.get('exp_yield', 20)
+    enemy_combatant['exp_yield'] = int(base_exp * (1 + effective_floor * 0.165))
+    
+    # 5. Define nível visual
+    enemy_combatant['level'] = agent_current_floor
 
-    # Ajusta o yield de experiência do inimigo
-    exp_increase_factor = 1 + (current_floor_k * 0.2) # +20% de EXP por andar
-    instantiated_enemy['exp_yield'] = int(base_enemy_data.get('exp_yield', 20) * exp_increase_factor)
-
-    return instantiated_enemy
+    return enemy_combatant

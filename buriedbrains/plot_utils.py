@@ -53,10 +53,10 @@ def save_poincare_plot(karma_history: list, agent_name: str, save_path: str):
     # Definindo posições com um pequeno offset para o texto
     style_text = dict(fontsize=9, fontweight='bold', ha='center', va='center')
     
-    # Vilão (+Real)
-    ax.text(1.15, 0, "VILÃO", color='darkred', **style_text)
-    # Santo (-Real)
-    ax.text(-1.15, 0, "SANTO", color='darkblue', **style_text)
+    # Santo (+Real)
+    ax.text(1.15, 0, "SANTO", color='darkblue', **style_text)
+    # Vilão (-Real)
+    ax.text(-1.15, 0, "VILÃO", color='darkred', **style_text)
     # Caos/Ordem (Eixo Imaginário - Opcional, dependendo da sua mecânica)
     ax.text(0, 1.08, "+IMAG", color='gray', fontsize=7, ha='center')
     ax.text(0, -1.08, "-IMAG", color='gray', fontsize=7, ha='center')
@@ -88,18 +88,17 @@ def save_poincare_plot(karma_history: list, agent_name: str, save_path: str):
     ax.set_xlim(-1.3, 1.3)
     ax.set_ylim(-1.3, 1.3)
     
-    # Título mais limpo
+    # Título 
     ax.set_title(f"Trajetória de Karma\nAgente: {agent_name}", fontsize=11, pad=15, color='#333333')
     
-    # Remove a caixa quadrada padrão do matplotlib (eixos x/y cartesianos externos)
+    # Remove a caixa quadrada padrão do matplotlib
     ax.axis('off')
 
-    # Legenda minimalista
+    # Legenda
     ax.legend(loc='lower right', fontsize='x-small', framealpha=0.8, edgecolor='gray')
 
     # Salvar e Fechar
-    try:
-        # tight_layout ajusta para não cortar os textos laterais
+    try:        
         plt.tight_layout()
         plt.savefig(save_path, dpi=150, bbox_inches='tight', facecolor='white')
     except Exception as e:
