@@ -39,8 +39,7 @@ def check_for_level_up(agent: Dict[str, Any]) -> bool:
         agent['level'] += 1
                         
         agent['exp_to_level_up'] += 4        
-                
-        # --- AUMENTOS DE PODER DO AGENTE ---
+                        
         agent['max_hp'] += 30  
         agent['hp'] = agent['max_hp']
         
@@ -61,18 +60,17 @@ def instantiate_enemy(enemy_name: str, agent_current_floor: int, catalogs: Dict[
     enemies_catalog = catalogs.get('enemies', {})
     enemy_base = enemies_catalog.get(enemy_name)
     
-    if not enemy_base:
-        # Fallback de segurança ou log de erro
+    if not enemy_base:        
         return None    
     
-    # O escalonamento só começa a ter um efeito real a partir do andar 3
+    # Escalonamento só começa a ter um efeito real a partir do andar 3
     effective_floor = max(0, agent_current_floor - 2)
     
-    # 1. Escalonamento de HP (8% por andar efetivo)
+    # Escalonamento de HP (8% por andar efetivo)
     hp_scaling_factor = 1 + (effective_floor * 0.08)
     scaled_hp = int(enemy_base.get('hp', 50) * hp_scaling_factor)
     
-    # 2. Inicializa o objeto de combate básico
+    # Inicializa o objeto de combate
     enemy_combatant = combat.initialize_combatant(
         name=enemy_name,
         hp=scaled_hp,
@@ -82,15 +80,15 @@ def instantiate_enemy(enemy_name: str, agent_current_floor: int, catalogs: Dict[
         catalogs=catalogs
     )
     
-    # 3. Escalonamento de Dano (12.5% por andar efetivo)
+    # Escalonamento de Dano (12.5% por andar efetivo)
     damage_scaling_factor = 1 + (effective_floor * 0.125)
     enemy_combatant['base_stats']['flat_damage_bonus'] *= damage_scaling_factor
     
-    # 4. Escalonamento de XP (16.5% por andar efetivo)
+    # Escalonamento de XP (16.5% por andar efetivo)
     base_exp = enemy_base.get('exp_yield', 20)
     enemy_combatant['exp_yield'] = int(base_exp * (1 + effective_floor * 0.165))
     
-    # 5. Define nível visual
+    # Define nível
     enemy_combatant['level'] = agent_current_floor
 
     return enemy_combatant

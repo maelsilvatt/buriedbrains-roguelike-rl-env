@@ -8,14 +8,14 @@ class SharedPolicyVecEnv(VecEnv):
     
     O SB3 enxergará cada AGENTE como um "Ambiente" separado.
     Isso permite que a mesma política controle todos os agentes e aprenda
-    com a experiência de TODOS eles simultaneamente (Parameter Sharing real).
+    com a experiência de TODOS eles simultaneamente (Parameter Sharing).
     """
     def __init__(self, env):
         self.env = env
         self.agent_ids = env.agent_ids
         self.num_agents = len(self.agent_ids)
         
-        # Define o espaço de observação e ação (assume-se homogêneo)
+        # Define o espaço de observação e ação
         # Pega o espaço do primeiro agente como modelo
         observation_space = env.observation_space[self.agent_ids[0]]
         action_space = env.action_space[self.agent_ids[0]]
@@ -54,16 +54,16 @@ class SharedPolicyVecEnv(VecEnv):
         """
         Executa o passo real no ambiente.
         """
-        # 1. Converte Array de Ações (SB3) -> Dicionário (Env)
+        # Converte Array de Ações (SB3) -> Dicionário (Env)
         action_dict = {
             agent_id: self.actions[i] 
             for i, agent_id in enumerate(self.agent_ids)
         }
         
-        # 2. Passo no Ambiente Real
+        # Passo no Ambiente Real
         obs_dict, rew_dict, term_dict, trunc_dict, info_dict = self.env.step(action_dict)
         
-        # 3. Converte Dicionários -> Arrays para o SB3
+        # Converte Dicionários -> Arrays para o SB3
         obs_list = []
         rew_list = []
         done_list = []

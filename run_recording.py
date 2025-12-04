@@ -66,7 +66,7 @@ def main():
             obs, 
             state=lstm_states, 
             episode_start=episode_starts,
-            deterministic=True 
+            deterministic=False
         )
                 
         # Nota: O step do SharedPolicyVecEnv faz isso internamente, 

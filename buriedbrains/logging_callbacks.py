@@ -6,10 +6,10 @@ from buriedbrains.plot_utils import save_poincare_plot
 
 class LoggingCallback(BaseCallback):
     """
-    Callback avançado para registrar métricas detalhadas do BuriedBrains (SAE/MAE)
+    Callback avançado para registrar métricas detalhadas do BuriedBrains (MAE)
     e salvar as "melhores histórias" (Hall da Fama) periodicamente.
     """
-    def __init__(self, log_interval: int = 10, verbose: int = 1, top_n: int = 10):
+    def __init__(self, log_interval: int = 10, verbose: int = 1, top_n: int = 10, enable_hall_of_fame: bool = True):
         super().__init__(verbose)
         self.log_interval = log_interval
         self.top_n = top_n
@@ -24,6 +24,7 @@ class LoggingCallback(BaseCallback):
 
         self.max_floor_ever = 0
         self.episode_count = 0
+        self.enable_hall_of_fame = enable_hall_of_fame
 
     def _reset_interval_buffers(self):
         """Zera os buffers do intervalo."""
@@ -69,7 +70,7 @@ class LoggingCallback(BaseCallback):
         - remoção de duplicatas
         """
 
-        # --- 1. Evita duplicatas reais ---
+        # Evita duplicatas reais
         signature = (
             story.get("agent_name"),
             story.get("level"),
@@ -106,10 +107,10 @@ class LoggingCallback(BaseCallback):
             else:
                 return  # Não entra no top N
 
-        # --- 3. Reordena ---
+        # Reordena
         hall_list.sort(key=lambda s: s[key], reverse=True)
 
-        # --- 4. Garante tamanho máximo (pode cortar empates excessivos) ---
+        # Garante tamanho máximo
         hall_list[:] = hall_list[:self.top_n]
         
     def _on_step(self) -> bool:
@@ -118,7 +119,7 @@ class LoggingCallback(BaseCallback):
         infos = self.locals.get("infos", [])
         rewards = self.locals.get("rewards", [])
 
-        # Itera sobre todos os agentes (índices)
+        # Itera sobre todos os agentes
         for i in range(len(infos)):
             
             info = infos[i]
@@ -225,16 +226,16 @@ class LoggingCallback(BaseCallback):
                     print(f"  Avg Floor: {np.mean(self.episode_floors):.2f} | Max Ever: {self.max_floor_ever}")
                     print(f"  Social: {np.sum(self.episode_arena_encounters)} Encounters, {np.sum(self.episode_bargains)} Bargains")
                     print("-" * 40)
-                
-                # --- SALVAMENTO AUTOMÁTICO DO HALL DA FAMA ---
+                                
                 # Salva sempre que logar no TensorBoard, para garantir que não percamos dados
-                try:
-                    log_dir = self.logger.get_dir()
-                    if log_dir:
-                        hof_path = os.path.join(log_dir, "hall_of_fame")
-                        self.save_hall_of_fame(hof_path)
-                except Exception as e:
-                    if self.verbose: print(f"[Logger WARN] Falha ao salvar Hall da Fama automático: {e}")                
+                if self.enable_hall_of_fame:
+                    try:
+                        log_dir = self.logger.get_dir()
+                        if log_dir:
+                            hof_path = os.path.join(log_dir, "hall_of_fame")
+                            self.save_hall_of_fame(hof_path)
+                    except Exception as e:
+                        if self.verbose: print(f"[Logger WARN] Falha ao salvar Hall da Fama: {e}")                  
 
                 self._reset_interval_buffers()                
 

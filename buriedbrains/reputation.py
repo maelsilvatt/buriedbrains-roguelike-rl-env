@@ -2,15 +2,11 @@
 import numpy as np
 from typing import Dict, Any, Callable
 
-# --- Funções de Drift (Física do Movimento) ---
-
 def saint_villain_drift(z: complex, action_type: str, params: Dict[str, Any]) -> complex:
     """
-    Calcula a direção e velocidade da mudança de reputação.
-    CORRIGIDO: 'good' atrai para z_saint, 'bad' atrai para z_villain.
+    Calcula a direção e velocidade da mudança de reputação.    
     """
-    # Configuração dos Polos (Padrão: Santo na Direita/Cima, Vilão na Esquerda/Baixo)
-    # Mas respeita o que vier do env.py (0.95 e -0.95)
+    # Configuração dos Polos
     z_saint = params.get('z_saint', 0.95 + 0j) 
     z_villain = params.get('z_villain', -0.95 + 0j)
     
@@ -35,8 +31,6 @@ def saint_villain_drift(z: complex, action_type: str, params: Dict[str, Any]) ->
     # Calcula o vetor de direção: (Alvo - Posição Atual)
     direction = target - z
     return speed * direction
-
-# --- Classe Principal do Sistema de Reputação ---
 
 class HyperbolicReputationSystem:
     """

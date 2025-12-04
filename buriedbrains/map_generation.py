@@ -23,7 +23,7 @@ def generate_progression_successors(
     
     parent_floor = graph.nodes[parent_node].get('floor', 0)
     next_floor = parent_floor + 1
-    branching_factor = 2 # Fator de ramificação (conforme Figura 2 do memorial) [cite: 322]
+    branching_factor = 2 # Fator de ramificação
     
     new_node_names = []
 
@@ -48,12 +48,9 @@ def generate_progression_successors(
     return new_node_names, nodes_per_floor_counters
 
 # --- Geração da Zona do Karma (Estática, por Arena) ---
-# Esta é a sua lógica, que está perfeita.
-
 def _prune_graph_by_centrality(G: nx.Graph, alpha=0.5, beta=0.3, gamma=0.2) -> nx.Graph:
     """
-    Poda arestas de um grafo com base em uma pontuação heurística de centralidade.
-    Implementa a Equação 3.8 do memorial. [cite: 228-240, 233]
+    Poda arestas de um grafo com base em uma pontuação heurística de centralidade.    
     """
     scores = {}
     
@@ -113,35 +110,34 @@ def generate_k_zone_topology(
     Gera a topologia para uma Zona do Karma (Arena PvP),
     garantindo pelo menos um nó de saída estrategicamente posicionado.    
     """
-    # 1. Tenta gerar um grafo conectado (Erdős-Rényi)
+    # Tenta gerar um grafo conectado (Erdős-Rényi)
     for _ in range(20):
         G = nx.erdos_renyi_graph(num_nodes, connectivity_prob)
         if nx.is_connected(G):
             break
     else:
-        # Fallback seguro: Ciclo com arestas extras
+        # Fallback: Ciclo com arestas extras
         G = nx.cycle_graph(num_nodes)
         for _ in range(num_nodes // 2):
             u, v = random.sample(list(G.nodes()), 2)
             if not G.has_edge(u, v):
                 G.add_edge(u, v)
 
-    # 2. Renomeia nós para o padrão do ambiente: k_{andar}_{índice}
+    # Renomeia nós para o padrão do ambiente: k_{andar}_{índice}
     mapping = {old_node: f"k_{floor_level}_{old_node}" for old_node in G.nodes()}
     G = nx.relabel_nodes(G, mapping)
 
-    # 3. Inicializa Atributos padrão
+    # Inicializa Atributos padrão
     for node in G.nodes():
         G.nodes[node]['floor'] = floor_level
         G.nodes[node]['is_exit'] = False
         G.nodes[node]['is_center'] = False
 
-    # 4. Seleciona um nó "central" (Maior grau = mais conectado = arena de batalha)
+    # Seleciona um nó "central" (Maior grau = mais conectado = arena de batalha)
     degrees = dict(G.degree())
     center_node = max(degrees, key=degrees.get)
     G.nodes[center_node]['is_center'] = True
-
-    # 5. Seleciona saídas – longe do centro para forçar navegação
+    
     # Calcula distância de todos os nós para o centro
     lengths = nx.single_source_shortest_path_length(G, center_node)
     # Ordena do mais distante para o mais perto

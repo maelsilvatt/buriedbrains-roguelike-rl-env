@@ -19,9 +19,8 @@ def _calculate_costs(pools: Dict) -> Dict:
         costs[pool_name] = total_cost / num_items if num_items > 0 else 1
     return costs
 
-# --- VERSÃO REFEITA ---
 def generate_room_content(
-    catalogs: Dict, # Modificado: Recebe todos os catálogos
+    catalogs: Dict,
     budget: float,
     current_floor: int,
     guarantee_enemy: bool = False
@@ -38,15 +37,15 @@ def generate_room_content(
     # Adicionada a chave 'items' para guardar equipamentos encontrados
     selected_content = {'enemies': [], 'events': [], 'items': [], 'room_effects': []}
 
-    # Ordem definida pela arquitetura Gamma [cite: 555-560]
+    # Ordem definida pela arquitetura Gamma
     processing_order = ['enemies', 'events', 'room_effects']
     current_budget = budget
 
-    # Acesso aos catálogos individuais (assume que estão no nível superior de 'catalogs')
+    # Acesso aos catálogos individuais
     enemy_pool = catalogs.get('enemies', {})
-    event_pool = catalogs.get('events', {}) # Precisa garantir que 'events' esteja aqui
+    event_pool = catalogs.get('events', {}) 
     effect_pool = catalogs.get('room_effects', {})
-    equipment_catalog = catalogs.get('equipment', {}) # Necessário para gerar itens
+    equipment_catalog = catalogs.get('equipment', {}) 
 
     pool_map = {
         'enemies': enemy_pool,
@@ -69,7 +68,7 @@ def generate_room_content(
 
         weights = [c.get('weight', 0) for c in candidates]
 
-        # --- Slot ci: Inimigos (Máximo 1) ---
+        # Slot ci: Inimigos
         if pool_name == 'enemies':
             enemy_chosen_data = None # Guarda o dicionário do inimigo escolhido
             if any(w > 0 for w in weights):
@@ -93,14 +92,14 @@ def generate_room_content(
                  # Sempre deduz o custo para afetar slots subsequentes
                  current_budget -= enemy_chosen_data.get('cost', 0) # Atualiza B_res1
 
-        # --- Slot ce: Eventos/Itens (Máximo 1 Resultado) ---
+        # Slot ce: Eventos/Itens
         elif pool_name == 'events':
             if any(w > 0 for w in weights):
                 try:
                     # Seleciona UM evento/resultado potencial baseado no peso
                     chosen_event = random.choices(candidates, weights=weights, k=1)[0]
                     event_cost = chosen_event.get('cost', 0)
-                    event_name = chosen_event.get('name') # Assume 'name' foi injetado no __init__
+                    event_name = chosen_event.get('name') 
 
                     # Processa o evento escolhido SOMENTE se couber no budget restante (B_res1)
                     # OU se o custo for não-positivo (recompensa/neutro)
@@ -112,8 +111,7 @@ def generate_room_content(
                                 if isinstance(data, dict) and data.get('rarity') in ['Common', 'Rare']
                             ]
                             
-                            if eligible_items:
-                                # --- MUDANÇA: CHANCE DE MULTI-LOOT ---
+                            if eligible_items:                                
                                 # Garante 1 item, mas pode gerar até 3
                                 num_items_to_drop = 1
                                 
@@ -141,8 +139,7 @@ def generate_room_content(
                                 found_item = random.choice(eligible_items)
                                 selected_content['items'].append(found_item)
                             # Deduz o custo do EVENTO Tesouro Mórbido (negativo)
-                            current_budget -= event_cost # Atualiza B_res2
-                            # Lembre-se: A *causa* de Morbid Treasure (Boss/Elite) é externa a esta função.
+                            current_budget -= event_cost # Atualiza B_res2                            
 
                         elif event_name != 'None':
                             # Para outros eventos (Trap, Fountain, etc.)
@@ -156,7 +153,7 @@ def generate_room_content(
                 except (IndexError, ValueError):
                     pass # Ignora erros de seleção
 
-        # --- Slot cf: Efeitos de Sala (Máximo 1) ---
+        # Slot cf: Efeitos de Sala (Máximo 1)
         elif pool_name == 'room_effects':
             if any(w > 0 for w in weights):
                 try:

@@ -10,12 +10,12 @@ import numpy as np
 
 def save_poincare_plot(karma_history: list, agent_name: str, save_path: str):
     """
-    Gera e salva a trajetória de Karma no Disco de Poincaré com visual aprimorado.
+    Gera e salva a trajetória de Karma no Disco de Poincaré
     """
     if not karma_history:
         return
 
-    # Extração de dados (suporta complex e dict)
+    # Extração de dados
     x = []
     y = []
     for k in karma_history:
@@ -28,12 +28,11 @@ def save_poincare_plot(karma_history: list, agent_name: str, save_path: str):
 
     if not x or not y:
         return
-
-    # --- Configuração da Figura ---
-    # Usamos um fundo levemente cinza no disco para destaque
+    
+    # Fundo cinza
     fig, ax = plt.subplots(figsize=(7, 7), dpi=120)
     
-    # --- 1. Desenhar o Disco e a Grid (Estilo Radar/Poincaré) ---
+    # Desenhar o Disco e a Grid (Estilo Radar/Poincaré)
     theta = np.linspace(0, 2*np.pi, 200)
     
     # Borda do limite (Círculo Unitário) - Linha grossa preta
@@ -49,19 +48,18 @@ def save_poincare_plot(karma_history: list, agent_name: str, save_path: str):
     ax.plot([-1, 1], [0, 0], color='gray', linestyle='--', linewidth=1, alpha=0.6, zorder=1) # Eixo Real
     ax.plot([0, 0], [-1, 1], color='gray', linestyle='--', linewidth=1, alpha=0.6, zorder=1) # Eixo Imag
 
-    # --- 2. Anotações dos Polos ---
-    # Definindo posições com um pequeno offset para o texto
+    # Anotações dos Polos    
     style_text = dict(fontsize=9, fontweight='bold', ha='center', va='center')
     
     # Santo (+Real)
     ax.text(1.15, 0, "SANTO", color='darkblue', **style_text)
     # Vilão (-Real)
     ax.text(-1.15, 0, "VILÃO", color='darkred', **style_text)
-    # Caos/Ordem (Eixo Imaginário - Opcional, dependendo da sua mecânica)
+    # Caos/Ordem (Eixo Imaginário)s
     ax.text(0, 1.08, "+IMAG", color='gray', fontsize=7, ha='center')
     ax.text(0, -1.08, "-IMAG", color='gray', fontsize=7, ha='center')
 
-    # --- 3. Trajetória com Gradiente de Cor (Tempo) ---
+    # Trajetória com Gradiente de Cor (Tempo) 
     # Cria segmentos de linha para aplicar gradiente (Cool -> Hot)
     points = np.array([x, y]).T.reshape(-1, 1, 2)
     segments = np.concatenate([points[:-1], points[1:]], axis=1)
@@ -76,13 +74,12 @@ def save_poincare_plot(karma_history: list, agent_name: str, save_path: str):
     lc.set_array(np.arange(len(x))) # Define a progressão para o colormap
     ax.add_collection(lc)
 
-    # --- 4. Marcadores de Início e Fim ---
     # Início (Ponto menor, cor fria)
     ax.scatter(x[0], y[0], color='#42a5f5', edgecolor='black', s=50, marker='o', label='Início', zorder=4)
     # Fim (Ponto maior, estrela, cor quente)
     ax.scatter(x[-1], y[-1], color='#ef5350', edgecolor='black', s=100, marker='*', label='Fim', zorder=5)
 
-    # --- Estilização Final ---
+    # Estilização
     ax.set_aspect('equal')
     # Margem extra para caber os textos fora do círculo
     ax.set_xlim(-1.3, 1.3)

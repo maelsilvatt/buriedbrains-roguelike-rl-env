@@ -1,6 +1,6 @@
 # buriedbrains/combat.py
 import numpy as np
-import copy # Keep copy if needed, though notebook didn't use it heavily
+import copy 
 import random
 from typing import Dict, Any, List, Optional
 
@@ -40,8 +40,7 @@ def initialize_combatant(
         'base_stats': {
             'damage_modifier': 1.0, 'flat_damage_bonus': 0.0, 'damage_reduction': 0.0,
             'crit_chance': 0.0, 'accuracy': 1.0, 'evasion_chance': 0.0,
-            'dot_potency_modifier': 1.0,
-            # Add other potential base stats if needed (e.g., speed, defense_taken)
+            'dot_potency_modifier': 1.0,            
             'speed': 1.0, # Example base speed
             'defense_taken': 1.0, # Multiplier for damage taken after reduction
         },
@@ -50,8 +49,7 @@ def initialize_combatant(
         'special_effects': {} # E.g., {'Revive': {'used': False, 'potency': Z}}
     }
 
-    # Apply passive bonuses from equipment (matching notebook loop)
-    #
+    # Apply passive bonuses from equipment    
     for item_name, item_info in combatant['equipment'].items():
         if not isinstance(item_info, dict): continue # Safety check
         for effect, value in item_info.get('passive_effects', {}).items():
@@ -60,16 +58,14 @@ def initialize_combatant(
                 combatant['max_hp'] += value
             # More robustly add to any matching base_stat key
             elif effect in combatant['base_stats']:
-                 combatant['base_stats'][effect] += value
-            # else: # Optional: Warn about unknown passive effects
-            #     print(f"Warning: Unknown passive effect '{effect}' on item '{item_name}'")
+                 combatant['base_stats'][effect] += value            
 
         if 'on_hit_effect' in item_info:
             combatant['on_hit_effects'].append(item_info['on_hit_effect'])
         if 'on_being_hit_effect' in item_info:
             combatant['on_being_hit_effects'].append(item_info['on_being_hit_effect'])
 
-        # Check for Revive specifically (notebook logic adjusted for new structure)
+        # Check for Revive specifically
         # Check both special_effect and on_being_hit_effect for Revive tag consistency
         special_tag = item_info.get('special_effect') # Old notebook structure check
         on_hit_tag = item_info.get('on_being_hit_effect', {}).get('effect_tag') # Your yaml structure check
@@ -78,13 +74,9 @@ def initialize_combatant(
                  combatant['special_effects']['Revive'] = {
                      'used': False,
                      'potency': effect_ruleset['Revive'].get('potency', 0.3) # Default 30%
-                 }
-            else:
-                # print(f"Warning: Item '{item_name}' grants Revive, but 'Revive' not found in effect_ruleset.")
-                pass
+                 }            
 
-    # Apply initial effects from room (matching notebook logic)
-    #
+    # Apply initial effects from room (matching notebook logic)    
     if room_effect_name and room_effect_name in room_effect_catalog:
         room_rule = room_effect_catalog[room_effect_name]
         if isinstance(room_rule, dict): # Ensure it's valid data
@@ -92,22 +84,20 @@ def initialize_combatant(
             if 'effect_to_apply' in room_rule:
                 effect_tag = room_rule['effect_to_apply']
                 if effect_tag in effect_ruleset:
-                    # Duration -1 indicates permanent for the combat from notebook
-                    combatant['effects'][effect_tag] = {'duration': -1}
-                # else: print(f"Warning: Room effect '{room_effect_name}' wants to apply unknown effect '{effect_tag}'")
+                    # Duration -1 indicates permanent
+                    combatant['effects'][effect_tag] = {'duration': -1}                
 
             # Apply permanent stat modifier for the combat
             if 'stat_modifier' in room_rule:
                 for stat_key, value in room_rule['stat_modifier'].items():
                     if stat_key in combatant['base_stats']:
-                        combatant['base_stats'][stat_key] += value
-                    # else: print(f"Warning: Room effect '{room_effect_name}' modifies unknown stat '{stat_key}'")
+                        combatant['base_stats'][stat_key] += value                    
 
     return combatant
 
 def get_current_stats(combatant: Dict[str, Any], catalogs: Dict[str, Any]) -> Dict[str, float]:
     """Calculates current stats including active effects (matching notebook)."""
-    #
+    
     current_stats = combatant['base_stats'].copy()
     effect_ruleset = catalogs.get('effects', {})
 
@@ -134,7 +124,7 @@ def resolve_turn_effects_and_cooldowns(combatant: Dict[str, Any], catalogs: Dict
     decrements cooldowns, checks for death from effects, and handles Revive.
     Returns (is_stunned, died_from_effects). Matches notebook logic flow.
     """
-    #
+    
     effect_ruleset = catalogs.get('effects', {})
     room_effect_catalog = catalogs.get('room_effects', {})
     stats = get_current_stats(combatant, catalogs) # Get stats *before* applying dots/hots
@@ -143,8 +133,7 @@ def resolve_turn_effects_and_cooldowns(combatant: Dict[str, Any], catalogs: Dict
     died_from_effects = False
     hp_before_effects = combatant['hp']
 
-    # Apply persistent effects from room first (e.g., Consecrated Ground heal)
-    #
+    # Apply persistent effects from room first (e.g., Consecrated Ground heal)    
     if room_effect_name and room_effect_name in room_effect_catalog:
         room_rule = room_effect_catalog[room_effect_name]
         if isinstance(room_rule, dict) and 'persistent_effect' in room_rule:
@@ -155,8 +144,7 @@ def resolve_turn_effects_and_cooldowns(combatant: Dict[str, Any], catalogs: Dict
                     heal_amount = combatant['max_hp'] * heal_per_round
                     combatant['hp'] = min(combatant['max_hp'], combatant['hp'] + heal_amount)
 
-    # Apply active status effects (DoTs, HoTs) and check for stun
-    #
+    # Apply active status effects (DoTs, HoTs) and check for stun    
     active_effects = list(combatant.get('effects', {}).keys()) # Iterate over copy
     for effect_name in active_effects:
         if effect_name not in combatant['effects']: continue # Check if removed during iteration (unlikely here)
@@ -189,8 +177,7 @@ def resolve_turn_effects_and_cooldowns(combatant: Dict[str, Any], catalogs: Dict
         # duration == -1 means permanent (from room effect or special skill)
         # duration == 0 means instant effect (shouldn't really be in 'effects' dict long)
 
-    # Check for death after DoTs and handle Revive (Notebook logic integrated)
-    #
+    # Check for death after DoTs and handle Revive (Notebook logic integrated)    
     if combatant['hp'] <= 0:
         revive_status = combatant.get('special_effects', {}).get('Revive')
         if revive_status and not revive_status.get('used', True): # Check used is explicitly False
@@ -198,9 +185,7 @@ def resolve_turn_effects_and_cooldowns(combatant: Dict[str, Any], catalogs: Dict
             combatant['hp'] = combatant['max_hp'] * revive_potency
             combatant['special_effects']['Revive']['used'] = True
             is_stunned = False # Revived combatant can act
-            died_from_effects = False # They didn't *stay* dead
-            # Maybe add a log print here?
-            # print(f"  [EFFECTS] {combatant['name']} revived!")
+            died_from_effects = False # They didn't *stay* dead            
         else:
             died_from_effects = True
             is_stunned = True # Can't act if dead
@@ -233,13 +218,11 @@ def execute_action(
     skill_catalog = catalogs.get('skills', {})
     effect_ruleset = catalogs.get('effects', {})
     
-    if action_name not in attacker.get('skills', {}):
-        # print(f"Warning: Attacker {attacker['name']} tried unknown skill '{action_name}'")        
+    if action_name not in attacker.get('skills', {}):          
         return
-    if attacker.get('cooldowns', {}).get(action_name, 0) > 0:
-        # print(f"Warning: Attacker {attacker['name']} tried skill '{action_name}' on cooldown.")
+    if attacker.get('cooldowns', {}).get(action_name, 0) > 0:        
         # In a real game, this might be an invalid action penalized by env.py
-        return # For simulation, just return
+        return 
 
     skill_info = attacker['skills'][action_name]
     attacker_stats = get_current_stats(attacker, catalogs)
@@ -272,14 +255,14 @@ def execute_action(
     else: # Single target enemy/ally
         final_targets = [random.choice(possible_targets)] # Random choice among valid targets
 
-    # --- Action Resolution Loop (Apply to each final target) ---
+    # Action Resolution Loop (Apply to each final target)
     for target in final_targets:
         if not isinstance(target, dict) or target.get('hp', 0) <= 0: continue # Double check target validity
 
         target_stats = get_current_stats(target, catalogs)
         base_damage = float(skill_info.get('damage', 0)) # Ensure float
 
-        # --- Damage/Healing Calculation (from notebook) ---
+        # Damage/Healing Calculation
         final_damage_taken = 0.0 # Track for Reflect
         
         if base_damage > 0: # DAMAGING SKILL
@@ -304,8 +287,7 @@ def execute_action(
                 # Apply Damage
                 target['hp'] -= final_damage_taken
 
-                # Apply Attacker's ON-HIT effects (to Target)
-                # Corrected logic from previous discussion
+                # Apply Attacker's ON-HIT effects (to Target)                
                 for on_hit in attacker.get('on_hit_effects', []):
                     if random.random() < on_hit.get('chance', 0.0):
                         tag = on_hit.get('effect_tag')
@@ -314,8 +296,7 @@ def execute_action(
                             if 'duration' in rule: # Apply only if it has duration
                                 target['effects'][tag] = {'duration': rule['duration']}
 
-                # Apply Target's ON-BEING-HIT effects (can affect Attacker)
-                # Corrected logic from previous discussion
+                # Apply Target's ON-BEING-HIT effects (can affect Attacker)                
                 if target['hp'] > 0: # Only if target survives
                     for on_being_hit in target.get('on_being_hit_effects', []):
                         if random.random() < on_being_hit.get('chance', 0.0):
@@ -329,16 +310,14 @@ def execute_action(
                                     pass
                                 elif 'duration' in rule: # Apply effect (e.g., Fear) to Attacker
                                     attacker['effects'][tag] = {'duration': rule['duration']}
-            # else: Missed! (Maybe add a log print?)
+            # else: Missed!
 
         elif base_damage < 0: # HEALING SKILL (Negative damage value)
             heal_amount = abs(base_damage)
             # Potentially add heal modifiers based on stats if needed
-            target['hp'] = min(target['max_hp'], target['hp'] + heal_amount)
+            target['hp'] = min(target['max_hp'], target['hp'] + heal_amount)        
 
-        # --- Apply SKILL TAGS (Buffs/Debuffs) - Moved outside hit check, applied once per skill use below ---
-
-    # --- Apply SKILL TAGS (Buffs/Debuffs etc.) - Applied ONCE per skill use ---
+    # Apply SKILL TAGS (Buffs/Debuffs etc.) - Applied ONCE per skill use
     # Moved from inside the target loop and hit check
     for tag in skill_info.get('tags', []):
         if tag in effect_ruleset:
@@ -363,8 +342,7 @@ def execute_action(
                          et['effects'][tag] = {'duration': rule['duration']}
             # else: tag might be informational (like Physical) or instant (handled by damage/heal)
 
-    # Set Cooldown (Done ONCE after the skill completes)
-    #
+    # Set Cooldown (Done ONCE after the skill completes)    
     attacker['cooldowns'][action_name] = skill_info.get('cd', 0)
 
 def check_for_death_and_revive(combatant: Dict[str, Any], catalogs: Dict[str, Any]) -> bool:
@@ -378,8 +356,7 @@ def check_for_death_and_revive(combatant: Dict[str, Any], catalogs: Dict[str, An
         if revive_status and not revive_status.get('used', True): # Check used is explicitly False
             revive_potency = revive_status.get('potency', 0.0)
             combatant['hp'] = combatant['max_hp'] * revive_potency
-            combatant['special_effects']['Revive']['used'] = True
-            # print(f"  [DEATH CHECK] {combatant['name']} revived!")
+            combatant['special_effects']['Revive']['used'] = True            
             return False # Not permanently dead
         else:
             return True # Permanently dead

@@ -66,6 +66,7 @@ def main():
     parser.add_argument('--verbose', type=int, default=0)
     parser.add_argument('--seed', nargs='?', const='random', default='random', help="Seed fixa ou 'random'")
     parser.add_argument('--num_agents', type=int, default=2)
+    parser.add_argument('--no_hall_of_fame', action='store_true', help="Desativa o salvamento de arquivos do Hall da Fama (Acelera treino)")
     args = parser.parse_args()
 
     # Lógica da Seed
@@ -88,7 +89,7 @@ def main():
     if not args.resume_path and not args.pretrained_path:
         raise ValueError("Você deve fornecer --pretrained_path (começar novo) OU --resume_path (continuar).")
 
-    # --- Configuração ---
+    # Configuração
     base_logdir = "logs_marl"
     base_models_dir = "models_marl"
     run_name = f"RecurrentPPO_{args.suffix}"
@@ -96,7 +97,7 @@ def main():
     tb_path = os.path.join(base_logdir, run_name)
     model_path = os.path.join(base_models_dir, run_name)
     
-    # --- 1. Cria o Ambiente MAE com SharedPolicyVecEnv ---            
+    # Cria o Ambiente MAE com SharedPolicyVecEnv           
     # Instancia o ambiente base
     base_env = BuriedBrainsEnv(
         max_episode_steps=args.max_episode_steps, 
@@ -114,7 +115,7 @@ def main():
     
     # Até 16 agentes:
     if na <= 16:
-        lstm_hidden_size = 256  # Memória longa (importante para POMDP)
+        lstm_hidden_size = 256  # Memória longa 
         n_steps = 512           # Trajetórias longas antes de resetar o buffer
         batch_size = 256        # Pequeno o suficiente para updates frequentes
         net_arch = {"pi": [256, 256], "vf": [256, 256]} 
@@ -125,34 +126,27 @@ def main():
         lstm_hidden_size = 128
         n_steps = 256           # Buffer Total = 32*256 = 8192
         batch_size = 1024       
-        net_arch = {"pi": [128, 128], "vf": [128, 128]} 
+        net_arch = {"pi": [512, 512], "vf": [512, 512]}
         enable_critic_lstm = False # Desliga para economizar ~30% de VRAM/Tempo
 
     # Stress Test - 128+
     # Foco em Vazão (Throughput). Não pode ter n_steps alto senão estoura a RAM (CPU).
     elif na <= 512:
-        lstm_hidden_size = 64   # Reduzido, mas funcional
-        n_steps = 128           # Buffer Total = 128*128 = 16k (Limite seguro)
-        batch_size = 1024       # Batch gigante: A GPU "come" 1024 dados de uma vez
-        net_arch = {"pi": [64, 64], "vf": [64, 64]} # Mínimo para entender o jogo
-        enable_critic_lstm = False
-
-    # Acima de 512: Apenas sobrevivência.
-    else:
-        lstm_hidden_size = 64   # 32 é burro demais para 46 inputs.
-        n_steps = 64            # Passos curtos
-        batch_size = 2048       # GPU no talo
-        net_arch = {"pi": [64, 64], "vf": [64, 64]} 
-        enable_critic_lstm = False
+        net_arch = {"pi": [512, 512], "vf": [512, 512]}
+        lstm_hidden_size = 512
+        enable_critic_lstm = False 
+        
+        n_steps = 128          # Buffer Total = 16.384
+        batch_size = 8192      # 2 Updates por Epoch
 
     lstm_params = {
         "learning_rate": 0.0001, # Seguro e estável
         "n_steps": n_steps,
         "batch_size": batch_size,
         "n_epochs": 10,          # 10 é suficiente para batches grandes, evita travar o PC
-        "gamma": 0.99,           # 0.99 valoriza mais o futuro (Barganha) que 0.98
+        "gamma": 0.99,           # 0.99 valoriza mais o futuro
         "gae_lambda": 0.95,
-        "ent_coef": 0.05,        # ALTA ENTROPIA: Crucial para sair do Mínimo Local de Traição
+        "ent_coef": 0.05,        # Alta entropia para sair do Mínimo Local de Traição
         "vf_coef": 0.5,
         "max_grad_norm": 0.5,
         "policy_kwargs": {
@@ -162,7 +156,7 @@ def main():
         }
     }
 
-    # --- 2. Carregar ou Criar Modelo ---    
+    # Carregar ou Criar Modelo   
     model = None
 
     if args.resume_path and os.path.exists(args.resume_path):
@@ -202,19 +196,19 @@ def main():
             env,
             verbose=0,
             tensorboard_log=base_logdir,
-            seed=args.seed,
+            seed=seed_val,
             **lstm_params
         )
 
         # Transferência dos pesos PvE → PvP Social
         transfer_weights(args.pretrained_path, model, verbose=1)
 
-    # --- 4. Callbacks ---
+    # Callbacks
     save_freq = max(1, 200_000 // env.num_envs) # Como estamos usando múltiplos ambientes paralelos
     checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path=model_path, name_prefix="marl_model")
-    logging_callback = LoggingCallback(verbose=0, log_interval=1)
+    logging_callback = LoggingCallback(verbose=0, log_interval=1, enable_hall_of_fame=not args.no_hall_of_fame)
 
-    # --- 5. Treino ---
+    # Treino
     print(f"Iniciando Treino por {args.total_timesteps} passos...")
     print(f"Logs: {tb_path}")
     print(f"Ambiente: {env.num_envs} agentes treinando em paralelo (Parameter Sharing).")
@@ -230,7 +224,7 @@ def main():
     except KeyboardInterrupt:
         print("Treinamento interrompido pelo usuário. Salvando...")
 
-    # 1. Garante que a pasta existe antes de tentar salvar
+    # Garante que a pasta existe antes de tentar salvar
     if not os.path.exists(model_path):
         os.makedirs(model_path, exist_ok=True)
         print(f"Diretório criado: {model_path}")

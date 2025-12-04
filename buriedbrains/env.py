@@ -32,7 +32,7 @@ class BuriedBrainsEnv(gym.Env):
                  seed: int = 42):
         super().__init__()        
         
-        # --- 1. CARREGAMENTO DE CATÁLOGOS ---
+        # Carregando catálogos
         data_path = os.path.join(os.path.dirname(__file__), 'data')
         with open(os.path.join(data_path, 'skill_and_effects.yaml'), 'r', encoding='utf-8') as f:
             skill_data = yaml.safe_load(f)
@@ -57,7 +57,7 @@ class BuriedBrainsEnv(gym.Env):
         }
         self.catalogs['artifacts'] = self.artifact_catalog
 
-        # --- 2. PARÂMETROS GLOBAIS ---
+        # Parâmetros globais
         self.max_episode_steps = max_episode_steps
         self.current_step = 0
         self.verbose = verbose 
@@ -80,7 +80,7 @@ class BuriedBrainsEnv(gym.Env):
                     if isinstance(data, dict):
                         data['name'] = name
 
-        # --- 3. DEFINIÇÕES MULTIAGENTE ---
+        # Definições multiagente
         # Gera IDs: 'a1', 'a2', 'a3', ... até num_agents
         self.agent_ids = [f"a{i+1}" for i in range(self.num_agents)]
         
@@ -96,7 +96,7 @@ class BuriedBrainsEnv(gym.Env):
             for agent_id in self.agent_ids
         }
 
-        # --- 4. ESPAÇOS DE AÇÃO E OBSERVAÇÃO (Refatorados para MAE) ---
+        # Espaços de ação e observação
         
         # Ações: 0-3 (Skills), 4 (Equipar), 5 (Social), 6-9 (Mover)
         # 0: Quick Strike, 1: Heavy Blow, 2: Stone Shield, 3: Wait
@@ -165,7 +165,7 @@ class BuriedBrainsEnv(gym.Env):
             for agent_id in self.agent_ids
         })
 
-        # --- 5. VARIÁVEIS DE ESTADO (Inicializadas vazias, preenchidas no reset) ---
+        # Variáveis de estado
         self.agent_states = {}
         self.agent_names = {}
         self.graphs = {}
@@ -193,18 +193,13 @@ class BuriedBrainsEnv(gym.Env):
         self.max_floor_reached_this_episode = {}
         self.previous_nodes = {} # Rastreia nós passados que o agente andou no Santuário
         self.arena_entry_steps = {} # Rastreia quando o agente entrou no Santuário
-        self.pve_return_floor = {} # Salva o andar anterior para o agente retornar após sair do Santuário (sem teleporte)
-        
-        # --- 6. ESTADO GLOBAL ---
-                
-        self.agents_in_arena = set()        
-
-        # ---- ESTRUTURAS PARA N AGENTES 
+        self.pve_return_floor = {} # Salva o andar anterior para o agente retornar após sair do Santuário (sem teleporte)                                
+        self.agents_in_arena = set()                
         self.matchmaking_queue = [] # Fila de espera [agent_id, agent_id, ...]
         self.active_matches = {}    # Para rastrear combates PvP ativos {match_id: (agent1_id, agent2_id)}
         self.arena_instances = {}   # Para saber em qual zona estão os agentes        
 
-        # --- 7. SISTEMA DE REPUTAÇÃO ---
+        # Reputação
         potential_params = {
             'z_saint': 0.95 + 0j, 
             'z_villain': -0.95 + 0j, 
@@ -222,7 +217,7 @@ class BuriedBrainsEnv(gym.Env):
         Orquestra a geração de nós sucessores (para P-Zone).
         """
         
-        # 1. Chamar o módulo externo para criar a topologia
+        # Cria a topologia
         graph = self.graphs[agent_id]
         counters = self.nodes_per_floor_counters[agent_id]
         
@@ -234,7 +229,7 @@ class BuriedBrainsEnv(gym.Env):
         
         self.nodes_per_floor_counters[agent_id] = updated_counters
         
-        # 2. Iterar e popular cada nó recém-criado
+        # Iterar e popular cada nó recém-criado
         for node_name in new_node_names:
             next_floor = graph.nodes[node_name].get('floor', 0)
                         
@@ -252,7 +247,7 @@ class BuriedBrainsEnv(gym.Env):
                 # Calcula o budget
                 budget = ( 100 + (next_floor * 10) ) * self.budget_multiplier
                 
-                # 3. Chamar o módulo de conteúdo
+                # Chamar o módulo de conteúdo
                 content = content_generation.generate_room_content(
                     self.catalogs,                 
                     budget, 
@@ -262,7 +257,7 @@ class BuriedBrainsEnv(gym.Env):
 
             self.graphs[agent_id].nodes[node_name]['content'] = content
             
-            # 4. Logar os resultados
+            # Logar os resultados
             enemy_log = content.get('enemies', []) or ['Nenhum']
             event_outcome_log = content.get('events', []) or ['Nenhum']
             item_generated_log = content.get('items', []) or ['Nenhum']
@@ -309,13 +304,13 @@ class BuriedBrainsEnv(gym.Env):
                 # Garante que a ordem sempre seja a mesma
                 neighbors.sort() 
         
-        # 5. Identifica o Outro Agente (para contexto social)
+        # Identifica o Outro Agente (para contexto social)
         other_agent_id = self.active_matches.get(agent_id)
 
         room_content = current_graph_to_use.nodes[current_node_id].get('content', {})
         pve_combat_state = self.combat_states.get(agent_id)
         
-        # --- Bloco Próprio (0-6) ---
+        # Bloco próprio (0-6)
         obs[0] = (agent['hp'] / agent['max_hp']) * 2 - 1 if agent['max_hp'] > 0 else -1.0
         obs[1] = (agent['level'] / self.max_level) * 2 - 1
         obs[2] = (agent['exp'] / agent['exp_to_level_up']) if agent['exp_to_level_up'] > 0 else 0.0
@@ -325,7 +320,7 @@ class BuriedBrainsEnv(gym.Env):
             current_cd = agent.get('cooldowns', {}).get(skill_name, 0)
             obs[3 + i] = (current_cd / max_cd) if max_cd > 0 else 0.0
 
-        # --- Bloco Contexto PvE (7-13) ---
+        # Bloco PvE (7-13)
         enemy_in_combat = pve_combat_state.get('enemy') if pve_combat_state else None
         items_on_floor = room_content.get('items', [])
         events_in_room = room_content.get('events', [])
@@ -353,7 +348,7 @@ class BuriedBrainsEnv(gym.Env):
             obs[12] = 1.0
             obs[13] = best_wep_arm_rarity
 
-        # --- Bloco Contexto Social/PvP (14-19 + 38-40) ---
+        # Bloco Social/PvP (14-19 + 38-40)
         is_in_arena = (agent_id in self.arena_instances)
         obs[14] = 1.0 if is_in_arena else -1.0
         
@@ -406,8 +401,7 @@ class BuriedBrainsEnv(gym.Env):
         
         base_idx = 24 
         
-        for i in range(self.MAX_NEIGHBORS): # 0 a 3
-            # AQUI ESTÁ A MUDANÇA: Multiplicamos por 4 agora, não 3
+        for i in range(self.MAX_NEIGHBORS): # 0 a 3            
             idx = base_idx + (i * 4) 
 
             # Só processa se tiver vizinho e grafo válido
@@ -459,7 +453,7 @@ class BuriedBrainsEnv(gym.Env):
                         else: 
                             danger_level = 0.33  # PERIGO MÉDIO (Amarelo / Mob comum)
                             
-                    # B. Analisa Jogadores (Arena PvP)
+                    # Analisa Jogadores (Arena PvP)
                     elif has_opponent:
                         # Outro jogador é imprevisível = Elite
                         danger_level = 0.66
@@ -514,8 +508,7 @@ class BuriedBrainsEnv(gym.Env):
     def reset(self, seed=None, options=None):
         # Chama o reset do pai (Gerencia o self.np_random interno do Gym)
         super().reset(seed=seed)
-        
-        # 2. Captura a semente gerada (ou passada)
+                
         # Se seed foi passado explicitamente, usamos ele. 
         # Se for None, pegamos do gerador interno do Gym para manter sincronia.
         if seed is not None:
@@ -529,8 +522,7 @@ class BuriedBrainsEnv(gym.Env):
         
         # Aplica a semente no Numpy Global        
         np.random.seed(int(used_seed))
-
-        # --- 1. RESETAR ESTADOS GLOBAIS E DE AGENTE ---
+        
         # Limpa todos os dicionários de estado da sessão anterior
         self.agent_states = {}
         self.agent_names = {}
@@ -538,9 +530,7 @@ class BuriedBrainsEnv(gym.Env):
         self.current_nodes = {}
         self.current_floors = {}
         self.nodes_per_floor_counters = {}
-        self.combat_states = {}
-
-        # self.movement_history[agent_id] = deque(maxlen=3)
+        self.combat_states = {}        
         
         # Métricas
         self.current_episode_logs = {}
@@ -582,7 +572,7 @@ class BuriedBrainsEnv(gym.Env):
         # Limpa os agentes do sistema de reputação da run anterior
         self.reputation_system.agent_karma = {}
         
-        # --- INICIALIZAÇÃO DINÂMICA DE ESTADOS SOCIAIS ---
+        # Inicialização de estados sociais
         self.social_flags = {agent_id: {} for agent_id in self.agent_ids}     
         self.arena_interaction_state = {
             agent_id: {'offered_peace': False} for agent_id in self.agent_ids
@@ -594,12 +584,11 @@ class BuriedBrainsEnv(gym.Env):
 
         # Gerador de nomes único para este episódio
         gerador_nomes = GeradorNomes()
-
-        # --- 2. LOOP DE INICIALIZAÇÃO POR AGENTE ---
-        # Itera sobre self.agent_ids (que agora pode ter N agentes)
+        
+        # Itera sobre todos os agentes e inicializa
         for agent_id in self.agent_ids:
             
-            # --- Criação do Agente ---
+            # Cria o agente
             agent_name = gerador_nomes.gerar_nome()
             self.agent_names[agent_id] = agent_name
             
@@ -610,7 +599,7 @@ class BuriedBrainsEnv(gym.Env):
             # Garante artefato inicial para testar barganha
             self.agent_states[agent_id]['equipment']['Artifact'] = 'Amulet of Vigor'
             
-            # --- Inicializa Métricas Individuais ---
+            # Inicializa métricas individuais
             self.current_episode_logs[agent_id] = []
             self.enemies_defeated_this_episode[agent_id] = 0
             self.invalid_action_counts[agent_id] = 0
@@ -634,14 +623,14 @@ class BuriedBrainsEnv(gym.Env):
             self.pve_combat_durations[agent_id] = [] 
             self.pvp_combat_durations[agent_id] = []
 
-            # --- ADIÇÃO AO SISTEMA DE KARMA ---
+            # Sistema de reputação
             initial_karma_state = complex(
                 self.agent_states[agent_id]['karma']['real'],
                 self.agent_states[agent_id]['karma']['imag']
             )
             self.reputation_system.add_agent(agent_id, initial_karma_state)
 
-            # --- Geração do Grafo de Progressão Individual ---
+            # Zona de progressão individual
             self.current_floors[agent_id] = 0
             self.current_nodes[agent_id] = "start"
             self.nodes_per_floor_counters[agent_id] = {0: 1}
@@ -657,8 +646,7 @@ class BuriedBrainsEnv(gym.Env):
                 guarantee_enemy=False
             )
             self.graphs[agent_id].nodes["start"]['content'] = start_content        
-            
-            # --- Logging e Retorno ---
+                        
             self._log(agent_id, f"[RESET] Novo episódio iniciado. {agent_name} (Nível {self.agent_states[agent_id]['level']}).\n")                      
 
             # Pré-gera o primeiro andar para este agente
@@ -674,7 +662,7 @@ class BuriedBrainsEnv(gym.Env):
         """Orquestra um único turno de combate PvE e retorna (recompensa, combate_terminou)."""
         
         # Pega o estado de combate PvE para ESTE agente
-        combat_state = self.combat_states.get(agent_id) # Usa .get() por segurança
+        combat_state = self.combat_states.get(agent_id) 
 
         # Se, por algum motivo, não houver estado de combate, encerra imediatamente.
         if not combat_state:            
@@ -685,7 +673,7 @@ class BuriedBrainsEnv(gym.Env):
         reward = 0
         combat_over = False
 
-        # --- 1. AGENTE AGE ---
+        # Vez do agente agir
         hp_before_enemy = enemy['hp']
         action_name = "Wait" # Padrão é esperar
 
@@ -708,9 +696,8 @@ class BuriedBrainsEnv(gym.Env):
         if damage_dealt > 0:
             self.damage_dealt_this_episode[agent_id] += damage_dealt
 
-        # --- 2. VERIFICA MORTE DO INIMIGO, ADICIONA EXP E FAZ O LEVEL UP ---
-        if combat.check_for_death_and_revive(enemy, self.catalogs):
-            # PASSO 1: Dar a recompensa pela vitória e adicionar a EXP
+        # Verifica se o inimigo morreu e aumenta o XP do agene
+        if combat.check_for_death_and_revive(enemy, self.catalogs):            
             reward += 100 # Recompensa grande por vencer
             self.enemies_defeated_this_episode[agent_id] += 1
             
@@ -719,7 +706,7 @@ class BuriedBrainsEnv(gym.Env):
             
             agent_main_state['exp'] += enemy.get('exp_yield', 50) # Ganha XP
             
-            # PASSO 2: Chamar a lógica de level up IMEDIATAMENTE
+            # Chamar a lógica de level up
             self._log(
                 agent_id, # Passa o agent_id para o log
                 f"[PVE] Inimigo '{enemy.get('name')}' derrotado. "
@@ -749,8 +736,7 @@ class BuriedBrainsEnv(gym.Env):
                 # Sincroniza os cooldowns zerados de volta para a cópia de combate
                 agent['cooldowns'] = agent_main_state['cooldowns'].copy()
 
-            # PASSO 3: AGORA combate pode ser encerrado
-
+            # Agora combate pode ser encerrado
             # Registra a duração do combate para esta luta
             duration = self.current_step - self.combat_states[agent_id]['start_step']
             self.pve_combat_durations[agent_id].append(duration)
@@ -758,11 +744,11 @@ class BuriedBrainsEnv(gym.Env):
             self.combat_states[agent_id] = None # Limpa o estado de combate deste agente
             combat_over = True
         
-        # --- 3. INIMIGO AGE (se o combate não terminou) ---
+        # Se o combate não chegou ao fim, o inimigo age
         if not combat_over:
             hp_before_agent = agent['hp']
             
-            # IA Simples (mantida)
+            # IA Simples 
             available_skills = [s for s, cd in enemy['cooldowns'].items() if cd == 0]
             enemy_action = random.choice(available_skills) if available_skills else "Wait"
             
@@ -772,14 +758,14 @@ class BuriedBrainsEnv(gym.Env):
             damage_taken = hp_before_agent - agent['hp']
             reward -= damage_taken * 0.5
 
-            # 4. VERIFICA MORTE DO AGENTE
+            # Verifica se o agente morreu
             if combat.check_for_death_and_revive(agent, self.catalogs):
                 combat_over = True # O loop principal do step() aplicará a penalidade final
 
                 # Registra a causa da morte para logs e análises
                 self.death_cause[agent_id] = f"PvE: {enemy['name']} (Lvl {enemy['level']})"
 
-        # --- 5. FIM DO TURNO: RESOLVE EFEITOS E COOLDOWNS ---
+        # Fim do turno: resolve efeitos e cooldowns
         
         # Verifica se o estado de combate deste agente ainda existe
         # (pode ter sido setado para None acima se o inimigo morreu)
@@ -813,14 +799,14 @@ class BuriedBrainsEnv(gym.Env):
         winner = None
         loser = None
 
-        # --- 2. Agente 'a1' Age ---
+        # Agente 'a1' age
         hp_before_a2 = a2_combatant['hp']
         combat.execute_action(a1_combatant, [a2_combatant], action_a1, self.catalogs)
         damage_dealt_by_a1 = hp_before_a2 - a2_combatant['hp']
         # rew_a1 += damage_dealt_by_a1 * 0.6
         # rew_a2 -= damage_dealt_by_a1 * 0.5 # Não estou priorizando DPS no PvP pra ver a memória deles do PvE em ação
         
-        # --- 3. Verifica se Agente 'a2' Morreu ---
+        # Verifica se o agente 'a2' morreu
         if combat.check_for_death_and_revive(a2_combatant, self.catalogs):
             rew_a1 += 200 # Recompensa por vencer
             rew_a2 -= 300 # Penalidade por morrer
@@ -828,16 +814,17 @@ class BuriedBrainsEnv(gym.Env):
             winner = id_a1 # Retorna o ID real
             loser = id_a2
                            
-            # 1. Resolve Karma
-            self._resolve_pvp_end_karma(winner, loser)
+            # Resolve Karma
+            karma_adjustment = self._resolve_pvp_end_karma(winner, loser)
+            rew_a1 += karma_adjustment # O vencedor recebe o bônus/multa
             
-            # 2. Dropar o Loot
+            # Dropar o Loot
             self._drop_pvp_loot(loser_id=loser, winner_id=winner)
             
-            # 3. Respawnar             
+            # Respawnar             
             # Não respawna aqui. Apenas no step() principal.
 
-        # --- 4. Agente 'a2' Age (Se o combate NÃO terminou) ---
+        # Agente 'a2' age (Se o combate NÃO terminou)
         if not combat_over:
             hp_before_a1 = a1_combatant['hp']
             combat.execute_action(a2_combatant, [a1_combatant], action_a2, self.catalogs)
@@ -845,7 +832,7 @@ class BuriedBrainsEnv(gym.Env):
             rew_a2 += damage_dealt_by_a2 * 0.6
             rew_a1 -= damage_dealt_by_a2 * 0.5
             
-            # --- 5. Verifica se Agente 'a1' Morreu ---
+            # Verifica se o agente 'a1' morreu
             if combat.check_for_death_and_revive(a1_combatant, self.catalogs):
                 rew_a2 += 200 # Recompensa por vencer
                 rew_a1 -= 300 # Penalidade por morrer
@@ -853,21 +840,21 @@ class BuriedBrainsEnv(gym.Env):
                 winner = id_a2 
                 loser = id_a1  
                                 
-                # 1. Resolve Karma
+                # Resolve Karma
                 self._resolve_pvp_end_karma(winner, loser)
                 
-                # 2. Dropar o Loot
+                # Dropar o Loot
                 self._drop_pvp_loot(loser_id=loser, winner_id=winner)
                 
-                # 3. Respawnar             
+                # Respawnar             
                 # Não respawna aqui. Apenas no step() principal.       
                 
-        # --- 6. Fim do Turno (Se o combate NÃO terminou) ---
+        # Fim do Turno (Se o combate NÃO terminou)
         if not combat_over:
             combat.resolve_turn_effects_and_cooldowns(a1_combatant, self.catalogs)
             combat.resolve_turn_effects_and_cooldowns(a2_combatant, self.catalogs)
         
-        # --- 7. Sincronização Final com o Estado Mestre ---
+        # Sincronização Final com o Estado Mestre
         # A sincronização do perdedor não é mais necessária, pois ele foi resetado.
         # Sincroniza apenas o vencedor (se houver) ou ambos (se o combate continuar).
         if loser != id_a1: # Se a1 não perdeu (ou seja, a1 venceu OU o combate continua)
@@ -1231,7 +1218,7 @@ class BuriedBrainsEnv(gym.Env):
         Dispatcher Universal: Decide a lógica baseada no estado individual de cada agente.
         """
         
-        # --- 1. Inicialização ---
+        # Inicialização
         self.current_step += 1
         
         rewards = {agent_id: 0 for agent_id in self.agent_ids}
@@ -1246,13 +1233,13 @@ class BuriedBrainsEnv(gym.Env):
         # Usamos sets para evitar processar o mesmo agente múltiplas vezes
         processed_agents = set()
 
-        # --- 2. Limpeza de Flags Sociais (Turno Anterior) ---
+        # Limpeza de flags sociais (Turno Anterior)
         for agent_id in self.agent_ids:
             self.social_flags[agent_id]['just_picked_up'] = False
             self.social_flags[agent_id]['just_dropped'] = False 
             self.social_flags[agent_id]['skipped_attack'] = False
 
-        # --- 3. Loop Principal de Agentes ---
+        # Loop principal de agentes
         for agent_id in self.agent_ids:
             
             # Se já foi processado neste loop ou já terminou
@@ -1261,7 +1248,7 @@ class BuriedBrainsEnv(gym.Env):
 
             action = actions[agent_id]
 
-            # --- CASO 1: ESTÁ EM COMBATE PVP? ---
+            # CASO 1: ESTÁ EM COMBATE PVP?
             if agent_id in self.pvp_sessions:
                 session = self.pvp_sessions[agent_id]
                 p1 = session['a1_id']
@@ -1288,19 +1275,19 @@ class BuriedBrainsEnv(gym.Env):
                     
                     self._log(winner, f"[PVP] VITÓRIA de {self.agent_names[winner]}!")
                     
-                    # --- CICLO DE VIDA: O PERDEDOR ---
-                    # 1. Define Morte
+                    # CICLO DE VIDA: O PERDEDOR
+                    # Define Morte
                     terminateds[loser] = True 
                     
-                    # 2. Remove da Arena (Transição de Estado: Arena -> PvE)
+                    # Remove da Arena (Transição de Estado: Arena -> PvE)
                     if loser in self.arena_instances: del self.arena_instances[loser]
                     if loser in self.agents_in_arena: self.agents_in_arena.discard(loser)
                     
-                    # 3. Reseta o agente derrotado
+                    # Reseta o agente derrotado
                     self._respawn_agent(loser, "PVP")
 
-                    # --- CICLO DE VIDA: O VENCEDOR ---
-                    # 1. Quebra o Pareamento (Ele agora está "Solteiro" na arena)
+                    # CICLO DE VIDA: O VENCEDOR
+                    # Quebra o Pareamento (Ele agora está "Solteiro" na arena)
                     if winner in self.active_matches: del self.active_matches[winner]
                     if loser in self.active_matches: del self.active_matches[loser]
 
@@ -1313,12 +1300,12 @@ class BuriedBrainsEnv(gym.Env):
                     if p1 in self.pvp_sessions: del self.pvp_sessions[p1]
                     if p2 in self.pvp_sessions: del self.pvp_sessions[p2]
 
-            # --- CASO 2: ESTÁ NA FILA DE ESPERA? (Sincronização) ---
+            # CASO 2: ESTÁ NA FILA DE ESPERA? (Sincronização)
             elif agent_id in self.matchmaking_queue:
                 rewards[agent_id] = 0 # Esperando...
                 # Não faz nada
 
-            # --- CASO 3: ESTÁ DENTRO DA ARENA (Interação Social)? ---
+            # CASO 3: ESTÁ DENTRO DA ARENA (Interação Social)?
             elif agent_id in self.arena_instances:
                 processed_agents.add(agent_id)
 
@@ -1330,24 +1317,24 @@ class BuriedBrainsEnv(gym.Env):
                     if steps_in_arena > 30: 
                         overtime = steps_in_arena - 30
                         
-                        # 1. Punição Exponencial no Reward (Desconforto Mental)
+                        # Punição Exponencial no Reward (Desconforto Mental)
                         # Começa em -0.1 e vai piorando rápido
                         pressure_penalty = -0.1 * (1 + (overtime * 0.1))
                         rewards[agent_id] += max(pressure_penalty, -10.0) # Teto de -10.0
                         
-                        # 2. Dano Físico (Aperto Real)
+                        # Dano Físico (Aperto Real)
                         # A cada 5 turnos extras, perde 5% da vida MÁXIMA
                         if overtime % 5 == 0:
                             damage = self.agent_states[agent_id]['max_hp'] * 0.05
                             self.agent_states[agent_id]['hp'] -= damage
                             self._log(agent_id, f"[SANCTUM] Uma atmosfera opressiva drena sua vida (-{int(damage)} HP)...")
                             
-                            # 3. Verifica Morte por Pressão
+                            # Verifica Morte por Pressão
                             if self.agent_states[agent_id]['hp'] <= 0:
                                 self.death_cause[agent_id] = "Profanação do Santuário"
                                 self._log(agent_id, "[MORTE] O agente sucumbiu à pressão do Santuário.")
                                 
-                                # --- LIMPEZA DE MORTE (Igual ao PvP) ---
+                                # Limpa ao morrer
                                 terminateds[agent_id] = True # Avisa o SB3 que acabou
                                 
                                 # Remove da Arena
@@ -1374,7 +1361,7 @@ class BuriedBrainsEnv(gym.Env):
                 # Descobre o oponente
                 opponent_id = self.active_matches.get(agent_id)                
                 
-                # A. Verifica Encontro/Porta (Rito de Passagem)
+                # Verifica Encontro/Porta (Rito de Passagem)
                 if opponent_id:
                     arena_graph = self.arena_instances[agent_id]
                     if not arena_graph.graph.get('meet_occurred', False):
@@ -1385,9 +1372,8 @@ class BuriedBrainsEnv(gym.Env):
                             rewards[agent_id] += 100
                             rewards[opponent_id] += 100                        
 
-                # B. Processa Ação (Traição, Movimento, etc)
-                
-                # B.1 Detecta Intenção de Ataque (0-3)
+                # Processa Ação (Traição, Movimento, etc)                
+                # Detecta Intenção de Ataque (0-3)
                 target_id = None
                 if 0 <= action <= 3 and opponent_id:
                     if self.current_nodes[agent_id] == self.current_nodes[opponent_id]:
@@ -1424,7 +1410,7 @@ class BuriedBrainsEnv(gym.Env):
                     self.arena_interaction_state[agent_id]['offered_peace'] = False
                     self.arena_interaction_state[target_id]['offered_peace'] = False
 
-                # B.2 Ações Pacíficas (4-9)
+                # Ações Pacíficas (4-9)
                 elif 4 <= action <= 9:                    
                     r, _ = self._handle_exploration_turn(agent_id, action)
                     rewards[agent_id] += r
@@ -1438,7 +1424,7 @@ class BuriedBrainsEnv(gym.Env):
                     if opponent_id and self.current_nodes[agent_id] == self.current_nodes[opponent_id]:
                         self.social_flags[agent_id]['skipped_attack'] = True
 
-                    # B.3 Verifica Barganha (Pós-Ação)
+                    # Verifica Barganha (Pós-Ação)
                     if opponent_id and self.current_nodes[agent_id] == self.current_nodes[opponent_id]:
                         # Minha paz ativa + Oponente pegou item AGORA
                         my_peace_accepted = self.arena_interaction_state[agent_id]['offered_peace'] and \
@@ -1479,7 +1465,7 @@ class BuriedBrainsEnv(gym.Env):
                      self.invalid_action_counts[agent_id] += 1
                      rewards[agent_id] -= 5
 
-            # --- CASO 4: ESTÁ NO PVE? ---
+            # CASO 4: ESTÁ NO PVE?
             else:
                 # Processa o passo PvE normal
                 agent_reward, agent_terminated = self._process_pve_step(
@@ -1488,7 +1474,7 @@ class BuriedBrainsEnv(gym.Env):
                 rewards[agent_id] = agent_reward
                 terminateds[agent_id] = agent_terminated
 
-        # --- 4. Finalização e Coleta ---
+        # Finalização e coleta
         
         if all(terminateds.get(aid, False) for aid in self.agent_ids) or global_truncated:
             terminateds['__all__'] = True
@@ -1519,7 +1505,7 @@ class BuriedBrainsEnv(gym.Env):
                             # Se o jogo acabou por tempo, a causa da morte pode não existir no dict
                             'death_cause': self.death_cause.get(agent_id, "Time Limit Reached"),
                             
-                            # --- Listas de Duração ---
+                            # Listas de duração
                             'pve_durations': self.pve_combat_durations.get(agent_id, []).copy(),
                             'pvp_durations': self.pvp_combat_durations.get(agent_id, []).copy(),
                             
@@ -1559,7 +1545,7 @@ class BuriedBrainsEnv(gym.Env):
         reward = 0
         terminated = False
         
-        # --- 1. Definições Comuns (Segurança) ---
+        # Definições
         current_node_id = self.current_nodes[agent_id]
         
         # Verifica se ESTE AGENTE está na Arena        
@@ -1569,8 +1555,7 @@ class BuriedBrainsEnv(gym.Env):
         # Seleciona o grafo correto
         current_graph = self.arena_instances[agent_id] if is_in_arena else self.graphs.get(agent_id)
 
-        # --- 2. Lógica das Ações ---
-        # --- Ações de Movimento (6, 7, 8, 9) ---        
+        # Lógica das ações de movimento (6, 7, 8, 9)
         if 6 <= action <= 9:
             neighbor_index = action - 6
                         
@@ -1605,7 +1590,7 @@ class BuriedBrainsEnv(gym.Env):
                 # Aplica a taxa base
                 reward += step_cost 
 
-                # --- LÓGICA DE SAÍDA DA ARENA COM TRIBUTO ---
+                # Lógica de saída da arena com tributo/pedágio
                 if is_in_arena:
                     node_data = current_graph.nodes[chosen_node]
 
@@ -1700,7 +1685,7 @@ class BuriedBrainsEnv(gym.Env):
                 self.invalid_action_counts[agent_id] += 1
                 reward = -5 
 
-        # --- Ação 4: Equipar Item (Universal + Social) ---        
+        # Ação 4: Equipar Item (Universal + Social)
         elif action == 4:
             self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} tentou Ação 4 (Equipar Item).")
             
@@ -1766,7 +1751,7 @@ class BuriedBrainsEnv(gym.Env):
                     self.invalid_action_counts[agent_id] += 1                    
                     reward = -2.0 # Chão vazio
 
-        # --- Ação 5: Dropar Artefato ---        
+        # Ação 5: Dropar Artefato      
         elif action == 5:
             if not is_in_arena:
                 self._log(agent_id, "[AÇÃO] Ação 5 inválida fora do Santuário.")
@@ -1790,7 +1775,7 @@ class BuriedBrainsEnv(gym.Env):
                     self.invalid_action_counts[agent_id] += 1
                     reward = -5.0
         
-        # --- Outras Ações ---
+        # Outras Ações
         elif 0 <= action <= 3:                
             self.invalid_action_counts[agent_id] += 1
             reward = -5.0
@@ -1809,7 +1794,7 @@ class BuriedBrainsEnv(gym.Env):
         # Pega o estado mestre do agente
         agent_main_state = self.agent_states[agent_id]
         
-        # 1. Inicializa o 'combatant' do AGENTE        
+        # Inicializa o 'combatant' do AGENTE        
         agent_combatant = combat.initialize_combatant(
             name=self.agent_names[agent_id], 
             hp=agent_main_state['hp'], 
@@ -1821,7 +1806,7 @@ class BuriedBrainsEnv(gym.Env):
         # Copia os cooldowns atuais
         agent_combatant['cooldowns'] = agent_main_state.get('cooldowns', {s: 0 for s in self.agent_skill_names}).copy()
 
-        # 2. Inicializa o 'combatant' do INIMIGO        
+        # Inicializa o 'combatant' do INIMIGO        
         enemy_combatant = agent_rules.instantiate_enemy(
             enemy_name=enemy_name,
             agent_current_floor=self.current_floors[agent_id],
@@ -1854,11 +1839,11 @@ class BuriedBrainsEnv(gym.Env):
         """
         Inicializa o combate PvP e cria uma sessão compartilhada para os dois agentes.
         """
-        # 1. Pega os estados mestres
+        # Pega os estados mestres
         attacker_main_state = self.agent_states[attacker_id]
         defender_main_state = self.agent_states[defender_id]
 
-        # 2. Inicializa combatants
+        # Inicializa combatants
         attacker_combatant = combat.initialize_combatant(
             name=self.agent_names[attacker_id], 
             hp=attacker_main_state['hp'], 
@@ -1877,7 +1862,7 @@ class BuriedBrainsEnv(gym.Env):
         )
         defender_combatant['cooldowns'] = defender_main_state.get('cooldowns', {}).copy()
 
-        # 3. Cria o objeto de estado da sessão
+        # Cria o objeto de estado da sessão
         combat_session = {
             'a1_id': attacker_id, # Guardamos os IDs reais para saber quem é quem
             'a2_id': defender_id,
@@ -1897,53 +1882,63 @@ class BuriedBrainsEnv(gym.Env):
         self._log(attacker_id, f"[PVP] {self.agent_names[attacker_id]} iniciou ataque contra {self.agent_names[defender_id]}!")
         self._log(defender_id, f"[PVP] {self.agent_names[defender_id]} está sendo atacado por {self.agent_names[attacker_id]}!")
 
-    def _resolve_pvp_end_karma(self, winner_id: str, loser_id: str):
+    def _resolve_pvp_end_karma(self, winner_id: str, loser_id: str) -> float:
         """
-        Atualiza o karma do vencedor com base no contexto da luta (Regra de Covardia).
-        Chamado pelo step() após o término de um combate PvP.        
+        Calcula as consequências morais do duelo.
+        Retorna: Um valor float para ajustar a recompensa do vencedor (bônus ou multa).
         """
+        winner_level = self.agent_states[winner_id]['level']
+        loser_level = self.agent_states[loser_id]['level']
         
-        # --- 1. Obter os Níveis dos Agentes (do estado mestre) ---
-        try:
-            winner_level = self.agent_states[winner_id]['level']
-            loser_level = self.agent_states[loser_id]['level']
-        except KeyError:
-            self._log(winner_id, "[KARMA ERROR] Não foi possível encontrar os estados dos agentes para resolver o karma.")
-            return
-
-        level_difference = winner_level - loser_level
+        diff = winner_level - loser_level
+        COWARDICE_THRESHOLD = 10
         
-        # --- 2. Definir o Limiar de "Covardia" ---        
-        COWARDICE_THRESHOLD = 10 
+        # Ajuste base da recompensa
+        reward_adjustment = 0.0
 
-        # --- 3. Aplicar Atualização de Karma ao Vencedor ---
-        action_type = 'neutral' # Padrão para uma luta justa
-
-        if level_difference > COWARDICE_THRESHOLD:
-            # --- Regra de Covardia ---
-            # O vencedor estava 10+ níveis *acima* do perdedor.
-            self._log(winner_id, f"[SOCIAL] Covardia! {self.agent_names[winner_id]} derrotou covardemente {self.agent_names[loser_id]} (Nível {winner_level} vs {loser_level}). Karma (-)")
-            action_type = 'bad'
-
-            # Registra a covardia nas estatísticas do episódio
+        # Caso 1: Covardia (Smurfing)
+        if diff > COWARDICE_THRESHOLD:
+            # Fator de Escalabilidade: Quão covarde foi?
+            # Ex: Diff 11 -> excess=1 -> scale=1
+            # Ex: Diff 50 -> excess=40 -> scale=4
+            excess = diff - COWARDICE_THRESHOLD
+            scale = 1 + (excess // 10) 
+            
+            # Punição no Karma (Repetição do update negativo)
+            # Quanto maior a covardia, mais "fundo" ele afunda no disco de Poincaré
+            for _ in range(scale):
+                self.reputation_system.update_karma(winner_id, 'bad')
+            
+            # Punição na Recompensa (Multa Moral)
+            # Se a vitória dá +200, uma multa de -100 * scale anula o lucro rápido.
+            penalty = 50.0 * scale
+            reward_adjustment = -penalty
+            
+            self._log(winner_id, f"[SOCIAL] COVARDIA ESCALÁVEL (x{scale})! Nível {winner_level} vs {loser_level}. Karma (---) Reward ({reward_adjustment})")
             self.cowardice_kills_this_episode[winner_id] += 1
+
+        # Caso 2: Virada épica
+        elif diff < -COWARDICE_THRESHOLD:
+            # Fator de Escalabilidade: Quão heroico foi?
+            excess = abs(diff) - COWARDICE_THRESHOLD
+            scale = 1 + (excess // 10)
             
-        elif level_difference < -COWARDICE_THRESHOLD:
-            # --- Regra "Davi vs. Golias" ---
-            # O vencedor estava 10+ níveis *abaixo* do perdedor.
-            self._log(winner_id, f"[SOCIAL] Vitória Heroica! {self.agent_names[winner_id]} derrotou heroicamente {self.agent_names[loser_id]} (Nível {winner_level} vs {loser_level}). Karma (+)")
-            action_type = 'good'
+            # Bônus de Karma
+            for _ in range(scale):
+                self.reputation_system.update_karma(winner_id, 'good')
             
+            # Bônus de Recompensa (Glória)
+            bonus = 100.0 * scale
+            reward_adjustment = bonus
+            
+            self._log(winner_id, f"[SOCIAL] VITÓRIA HEROICA (x{scale})! Nível {winner_level} vs {loser_level}. Karma (+++) Reward (+{reward_adjustment})")
+
+        # Caso 3: Luta justa
         else:
-            # --- Luta Justa ---
-            # A diferença de nível era pequena.
-            self._log(winner_id, f"[SOCIAL] Luta Justa. {self.agent_names[winner_id]} derrotou {self.agent_names[loser_id]} (Nível {winner_level} vs {loser_level}). Karma (Neutro)")
-            action_type = 'neutral' # O karma decairá lentamente para o centro
+            self.reputation_system.update_karma(winner_id, 'neutral')
+            self._log(winner_id, f"[SOCIAL] Luta Justa. (Nível {winner_level} vs {loser_level}). Karma (Neutro)")
             
-        # Chama o motor de reputação para atualizar o karma do VENCEDOR
-        self.reputation_system.update_karma(winner_id, action_type)
-        
-        # (O karma do perdedor não é atualizado, pois seu episódio terminou)
+        return reward_adjustment
 
     def _end_arena_encounter(self, agent_id: str):
         """
@@ -1954,11 +1949,14 @@ class BuriedBrainsEnv(gym.Env):
 
         self._log(agent_id, f"[SANCTUM] {self.agent_names[agent_id]} saiu do santuário.")
         
-        # 2. Remove o agente da arena
-        self.agents_in_arena.remove(agent_id)
+        # Remove o agente da arena
+        self.agents_in_arena.discard(agent_id)
         
         # Recupera o andar de onde o agente veio
         last_pve_floor = self.pve_return_floor.get(agent_id)
+
+        # Padrão (caso o if falhe)
+        next_p_floor = self.current_floors[agent_id] + 1 
         
         if last_pve_floor is not None:
             # O próximo andar deve ser o PVE seguinte ao que ele estava
@@ -1966,7 +1964,7 @@ class BuriedBrainsEnv(gym.Env):
             # Limpa a memória
             del self.pve_return_floor[agent_id]
         
-        # 4. Encontra/Cria o nó inicial da próxima P-Zone            
+        # Encontra/Cria o nó inicial da próxima P-Zone            
         # Garante que o contador para este novo andar exista no grafo do agente
         if next_p_floor not in self.nodes_per_floor_counters[agent_id]:
             self.nodes_per_floor_counters[agent_id][next_p_floor] = 0
@@ -1981,21 +1979,21 @@ class BuriedBrainsEnv(gym.Env):
         # Atualiza o contador de nós para este andar
         self.nodes_per_floor_counters[agent_id][next_p_floor] += 1
 
-        # 5. Move o agente para este novo nó
+        # Move o agente para este novo nó
         self.current_nodes[agent_id] = next_p_node_id
         self.current_floors[agent_id] = next_p_floor
         
-        # 6. Popula o novo nó com conteúdo (vazio, pois é um "hub" de entrada)
+        # Popula o novo nó com conteúdo (vazio, pois é um "hub" de entrada)
         start_content = content_generation.generate_room_content(
             self.catalogs, budget=0, current_floor=next_p_floor, guarantee_enemy=False
         )
         agent_graph.nodes[next_p_node_id]['content'] = start_content
         
-        # 7. Gera os primeiros sucessores da P-Zone (ex: p_22_0, p_22_1)
+        # Gera os primeiros sucessores da P-Zone (ex: p_22_0, p_22_1)
         self._generate_and_populate_successors(agent_id, next_p_node_id)        
 
-        # --- LIMPEZA N-AGENTES ---        
-        # 1. Limpa o registro do pareamento (Se o agente estava em uma partida)
+        # Limpeza dos agentes     
+        # Limpa o registro do pareamento (Se o agente estava em uma partida)
         if agent_id in self.active_matches:
             opponent_id = self.active_matches.get(agent_id)
             
@@ -2019,23 +2017,23 @@ class BuriedBrainsEnv(gym.Env):
         Processa a "morte" de um agente e limpa TODOS os vestígios dele na Arena.
         """
         
-        # 1. Loga a Morte
+        # Loga a Morte
         self._log(agent_id, f"[MORTE] {self.agent_names[agent_id]} foi derrotado por {cause}! Resetando...")
 
-        # 2. Preservar Identidade e Karma
+        # Preserva Identidade e Karma
         agent_name = self.agent_names[agent_id]
         preserved_karma_z = self.reputation_system.get_karma_state(agent_id)
         
-        # 3. Resetar o Estado Mestre
+        # Reseta o estado Mestre
         self.agent_states[agent_id] = agent_rules.create_initial_agent(agent_name)
         self.agent_states[agent_id]['skills'] = self.agent_skill_names
         self.agent_states[agent_id]['equipment']['Artifact'] = 'Amulet of Vigor'
         
-        # 4. RE-APLICAR Karma
+        # RE-APLICA Karma
         self.agent_states[agent_id]['karma']['real'] = preserved_karma_z.real
         self.agent_states[agent_id]['karma']['imag'] = preserved_karma_z.imag
         
-        # 5. Resetar Métricas da Run
+        # Reseta métricas da Run
         self.current_episode_logs[agent_id] = []
         self.enemies_defeated_this_episode[agent_id] = 0
         self.damage_dealt_this_episode[agent_id] = 0.0
@@ -2055,10 +2053,10 @@ class BuriedBrainsEnv(gym.Env):
         self.previous_nodes[agent_id] = []
         self.pve_return_floor[agent_id] = []
         
-        # 6. LIMPEZA TOTAL DE ESTADOS DA ARENA
+        # Limpa estados da arena (caso tenha fantasmas)
         self.combat_states[agent_id] = None 
         
-        # Limpa Sessão PvP
+        # Limpa sessão PvP
         if agent_id in self.pvp_sessions:
              session = self.pvp_sessions[agent_id]
              p1 = session['a1_id']
@@ -2066,29 +2064,28 @@ class BuriedBrainsEnv(gym.Env):
              self.pvp_sessions.pop(p1, None)
              self.pvp_sessions.pop(p2, None)
 
-        # Limpa Pareamento (Active Match)
+        # Limpa pareamento (Active Match)
         if agent_id in self.active_matches:
             opponent_id = self.active_matches[agent_id]
             # Desfaz o par para o oponente também
             if opponent_id in self.active_matches:
-                del self.active_matches[opponent_id]
-                # Opcional: Se o oponente ficou sozinho, ele deve sair?
+                del self.active_matches[opponent_id]                
                 # No design atual, o vencedor sai via _end_arena, então ok.
             del self.active_matches[agent_id]
 
-        # Limpa Instância de Arena
+        # Limpa instância de arena
         if agent_id in self.arena_instances:
             del self.arena_instances[agent_id] 
 
-        # Limpa Fila de Espera
+        # Limpa fila de espera
         if agent_id in self.matchmaking_queue:
             self.matchmaking_queue.remove(agent_id)
 
-        # Limpa Lista de Presença
+        # Limpa lista de presença
         if agent_id in self.agents_in_arena:
             self.agents_in_arena.remove(agent_id)
 
-        # 7. Criar uma Nova P-Zone (Volta para casa)
+        # Cria uma nova P-Zone (Volta para casa)
         self.current_floors[agent_id] = 0
         self.current_nodes[agent_id] = "start" # <--- Força a posição para o início
         self.nodes_per_floor_counters[agent_id] = {0: 1}
@@ -2097,7 +2094,7 @@ class BuriedBrainsEnv(gym.Env):
 
         self._log(agent_id, f"[RESPAWN] {agent_name} (Nível 1) voltou a estaca zero.")
         
-        # 8. Popular e Gerar
+        # Popula 
         start_content = content_generation.generate_room_content(
             self.catalogs, budget=0, current_floor=0, guarantee_enemy=False
         )
