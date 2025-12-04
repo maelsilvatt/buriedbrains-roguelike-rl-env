@@ -817,8 +817,8 @@ class BuriedBrainsEnv(gym.Env):
         hp_before_a2 = a2_combatant['hp']
         combat.execute_action(a1_combatant, [a2_combatant], action_a1, self.catalogs)
         damage_dealt_by_a1 = hp_before_a2 - a2_combatant['hp']
-        rew_a1 += damage_dealt_by_a1 * 0.6
-        rew_a2 -= damage_dealt_by_a1 * 0.5
+        # rew_a1 += damage_dealt_by_a1 * 0.6
+        # rew_a2 -= damage_dealt_by_a1 * 0.5 # Não estou priorizando DPS no PvP pra ver a memória deles do PvE em ação
         
         # --- 3. Verifica se Agente 'a2' Morreu ---
         if combat.check_for_death_and_revive(a2_combatant, self.catalogs):
@@ -1026,7 +1026,7 @@ class BuriedBrainsEnv(gym.Env):
             
             new_arena = map_generation.generate_k_zone_topology(
                 floor_level=base_floor,
-                num_nodes=5,
+                num_nodes=9,
                 connectivity_prob=0.4 
             )
             
@@ -1333,12 +1333,12 @@ class BuriedBrainsEnv(gym.Env):
                         # 1. Punição Exponencial no Reward (Desconforto Mental)
                         # Começa em -0.1 e vai piorando rápido
                         pressure_penalty = -0.1 * (1 + (overtime * 0.1))
-                        rewards[agent_id] += max(pressure_penalty, -15.0) # Teto de -15.0
+                        rewards[agent_id] += max(pressure_penalty, -10.0) # Teto de -10.0
                         
                         # 2. Dano Físico (Aperto Real)
-                        # A cada 5 turnos extras, perde 7.5% da vida MÁXIMA
-                        if overtime % 7.5 == 0:
-                            damage = self.agent_states[agent_id]['max_hp'] * 0.075
+                        # A cada 5 turnos extras, perde 5% da vida MÁXIMA
+                        if overtime % 5 == 0:
+                            damage = self.agent_states[agent_id]['max_hp'] * 0.05
                             self.agent_states[agent_id]['hp'] -= damage
                             self._log(agent_id, f"[SANCTUM] Uma atmosfera opressiva drena sua vida (-{int(damage)} HP)...")
                             
@@ -1544,7 +1544,7 @@ class BuriedBrainsEnv(gym.Env):
         }
         
         # Coleta de Karma periódico
-        if self.current_step % 100 == 0:
+        if self.current_step % 10 == 0:
              for agent_id in self.agent_ids:
                  z = self.reputation_system.get_karma_state(agent_id)
                  self.karma_history[agent_id].append({'real': z.real, 'imag': z.imag})
@@ -1570,7 +1570,6 @@ class BuriedBrainsEnv(gym.Env):
         current_graph = self.arena_instances[agent_id] if is_in_arena else self.graphs.get(agent_id)
 
         # --- 2. Lógica das Ações ---
-
         # --- Ações de Movimento (6, 7, 8, 9) ---        
         if 6 <= action <= 9:
             neighbor_index = action - 6
@@ -1601,7 +1600,7 @@ class BuriedBrainsEnv(gym.Env):
                      if not is_in_arena:
                          reward += 0.5 # PvE: Incentiva explorar
                      else:
-                         reward += 0.0 # Arena: ZERO incentivo para passear.
+                         reward += 0.5 # Arena: Incentiva explorar (necessário pra ativar encontros e saída)
                 
                 # Aplica a taxa base
                 reward += step_cost 
@@ -1748,27 +1747,31 @@ class BuriedBrainsEnv(gym.Env):
                 self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} equipou: '{best_item_to_equip}' (Tipo: {best_item_type}, Raridade: {qualidade}).")
 
                 # Recompensa pela raridade do item pego
-                reward = 75 + (max_rarity_diff * 100) # Incentivo PvE
+                base_pve_reward = 75 + (max_rarity_diff * 100)
+                
+                # Se for social, garante um mínimo de 10 pts mesmo se downgrade
+                if is_in_arena and best_item_type == 'Artifact':
+                    reward = max(10.0, base_pve_reward)
+                else:
+                    reward = base_pve_reward
                 
                 # Flag de pick-up para barganha
                 if best_item_type == 'Artifact':
                     self.social_flags[agent_id]['just_picked_up'] = True                
 
-                if is_in_arena:
-                    reward -= 2.0  # Custa pontos ficar pegando de volta
             else:
                 if room_items:
-                    reward = -10.0 # Itens ignorados
+                    reward = -5.0 # Itens ignorados
                 else:
                     self.invalid_action_counts[agent_id] += 1                    
-                    reward = -5.0 # Chão vazio
+                    reward = -2.0 # Chão vazio
 
         # --- Ação 5: Dropar Artefato ---        
         elif action == 5:
             if not is_in_arena:
                 self._log(agent_id, "[AÇÃO] Ação 5 inválida fora do Santuário.")
                 self.invalid_action_counts[agent_id] += 1
-                reward = -5.0
+                reward = -2.0
             else:
                 equipped = self.agent_states[agent_id]['equipment'].get('Artifact')
                 if equipped:

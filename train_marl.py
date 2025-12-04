@@ -109,60 +109,52 @@ def main():
     # Aplica o wrapper para Shared Policy
     env = SharedPolicyVecEnv(base_env) 
 
-    # Ajustes dinâmicos baseados no número de agentes
+    # Ajustes feitos baseados no número de agentes
     na = args.num_agents
+    
+    # Até 16 agentes:
+    if na <= 16:
+        lstm_hidden_size = 256  # Memória longa (importante para POMDP)
+        n_steps = 512           # Trajetórias longas antes de resetar o buffer
+        batch_size = 256        # Pequeno o suficiente para updates frequentes
+        net_arch = {"pi": [256, 256], "vf": [256, 256]} 
+        enable_critic_lstm = True # Ajuda a estabilizar a Value Function
 
-    # Defaults seguros
-    lstm_hidden_size = 128
-    n_steps = 512
-    batch_size = 256
-    enable_critic_lstm = False
-    net_arch = {"pi": [128, 128], "vf": [128, 128]}
-
-    # 1 - Quase nenhum agente → pode usar rede maior
-    if na <= 4:
+    # "Sweet Spot" - 32 a 64
+    elif na <= 64:
         lstm_hidden_size = 128
-        n_steps = 512
-        batch_size = 128
-        net_arch = {"pi": [64, 64], "vf": [64, 64]}
+        n_steps = 256           # Buffer Total = 32*256 = 8192
+        batch_size = 1024       
+        net_arch = {"pi": [128, 128], "vf": [128, 128]} 
+        enable_critic_lstm = False # Desliga para economizar ~30% de VRAM/Tempo
 
-    elif na <= 16:
-        lstm_hidden_size = 128
-        n_steps = 512
-        batch_size = 256
-        net_arch = {"pi": [128, 128], "vf": [128, 128]}
-
-    # 2 - Média escala (32–128 agentes)
-    elif na <= 128:
-        lstm_hidden_size = 64
-        n_steps = 256
-        batch_size = 256
-        net_arch = {"pi": [128, 128], "vf": [128, 128]}
-
-    # 3 - Grande escala (128–1000 agentes)
-    elif na <= 1000:
-        lstm_hidden_size = 48
-        n_steps = 128
-        batch_size = 128
-        net_arch = {"pi": [64, 64], "vf": [64, 64]}
-
-    # 4 - Enorme escala (1000+ agentes)
-    else:
-        lstm_hidden_size = 32
-        n_steps = 64
-        batch_size = 64
+    # Stress Test - 128+
+    # Foco em Vazão (Throughput). Não pode ter n_steps alto senão estoura a RAM (CPU).
+    elif na <= 512:
+        lstm_hidden_size = 64   # Reduzido, mas funcional
+        n_steps = 128           # Buffer Total = 128*128 = 16k (Limite seguro)
+        batch_size = 1024       # Batch gigante: A GPU "come" 1024 dados de uma vez
+        net_arch = {"pi": [64, 64], "vf": [64, 64]} # Mínimo para entender o jogo
         enable_critic_lstm = False
-        net_arch = {"pi": [32, 32], "vf": [32, 32]}
+
+    # Acima de 512: Apenas sobrevivência.
+    else:
+        lstm_hidden_size = 64   # 32 é burro demais para 46 inputs.
+        n_steps = 64            # Passos curtos
+        batch_size = 2048       # GPU no talo
+        net_arch = {"pi": [64, 64], "vf": [64, 64]} 
+        enable_critic_lstm = False
 
     lstm_params = {
-        "learning_rate": 0.0001,
+        "learning_rate": 0.0001, # Seguro e estável
         "n_steps": n_steps,
         "batch_size": batch_size,
-        "n_epochs": 10,
-        "gamma": 0.98,
-        "gae_lambda": 0.92,
-        "ent_coef": 0.03,
-        "vf_coef": 0.4,
+        "n_epochs": 10,          # 10 é suficiente para batches grandes, evita travar o PC
+        "gamma": 0.99,           # 0.99 valoriza mais o futuro (Barganha) que 0.98
+        "gae_lambda": 0.95,
+        "ent_coef": 0.05,        # ALTA ENTROPIA: Crucial para sair do Mínimo Local de Traição
+        "vf_coef": 0.5,
+        "max_grad_norm": 0.5,
         "policy_kwargs": {
             "net_arch": net_arch,
             "lstm_hidden_size": lstm_hidden_size,
@@ -177,12 +169,28 @@ def main():
         print(f"\nResumindo treinamento MARL...")
         print(f"Carregando checkpoint: {args.resume_path}")
 
+        # Carrega o modelo, mas força os parâmetros atuais
         model = RecurrentPPO.load(
             args.resume_path, 
             env=env,
-            device='cuda'
+            device='cuda',
+            # Isso diz ao SB3 para ignorar os kwargs salvos e usar os novos
+            custom_objects={
+                'learning_rate': lstm_params['learning_rate'],
+                'n_steps': lstm_params['n_steps'],
+                'batch_size': lstm_params['batch_size'],
+                'n_epochs': lstm_params['n_epochs'],
+                'gamma': lstm_params['gamma'],
+                'gae_lambda': lstm_params['gae_lambda'],
+                'ent_coef': lstm_params['ent_coef'],
+                'vf_coef': lstm_params['vf_coef'],
+                'max_grad_norm': lstm_params['max_grad_norm'],                
+            }
         )
-
+        # Reforça a atualização (Redundância segura)
+        model.n_steps = lstm_params['n_steps']
+        model.batch_size = lstm_params['batch_size']
+        model.ent_coef = lstm_params['ent_coef']
     else:
         if not args.pretrained_path:
             raise ValueError("Para iniciar um treino novo você deve fornecer --pretrained_path.")

@@ -14,7 +14,7 @@ def saint_villain_drift(z: complex, action_type: str, params: Dict[str, Any]) ->
     z_saint = params.get('z_saint', 0.95 + 0j) 
     z_villain = params.get('z_villain', -0.95 + 0j)
     
-    speed = params.get('speed', 8.0)
+    speed = params.get('speed', 1.0)
     
     target = 0j # Padrão: Centro (Decaimento)
 
