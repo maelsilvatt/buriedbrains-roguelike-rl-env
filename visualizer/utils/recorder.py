@@ -8,7 +8,7 @@ class BuriedBrainsRecorder:
         vec_env: Instância do SharedPolicyVecEnv
         """
         self.vec_env = vec_env
-        self.base_env = vec_env.env  # O BuriedBrainsEnv real (sem wrapper)
+        self.base_env = vec_env.env  
         self.save_path = save_path
         self.frames = []
 
@@ -32,36 +32,47 @@ class BuriedBrainsRecorder:
             full_log = self.base_env.current_episode_logs.get(agent_id, [])
             last_logs = full_log[-2:] if full_log else []
 
+            # Karma
             k = state.get('karma', {'real': 0.0, 'imag': 0.0})
-            
             if isinstance(k, dict):
                 k_real = k.get('real', 0.0)
                 k_imag = k.get('imag', 0.0)
             else:
-                # Assume que é um número complexo (complex)
                 k_real = k.real
                 k_imag = k.imag
-
-            # Determina o modo da cena
-            in_combat = self.base_env.combat_states.get(agent_id) is not None
+            
+            # Captura o contexto de cena            
+            in_pvp_session = agent_id in self.base_env.pvp_sessions
+            in_queue = agent_id in self.base_env.matchmaking_queue
             in_arena = agent_id in self.base_env.arena_instances
             
+            # Só considera PvE se tiver estado de combate E NÃO estiver na Arena (evita falsos positivos)
+            combat_state = self.base_env.combat_states.get(agent_id)
+            in_pve = (combat_state is not None)
+
             scene_mode = "EXPLORATION"
-            if in_combat: scene_mode = "COMBAT_PVE"
-            elif in_arena: scene_mode = "ARENA"
-            elif agent_id in self.base_env.pvp_sessions: scene_mode = "COMBAT_PVP" # Prioridade para PvP
+            
+            if in_pvp_session: 
+                scene_mode = "COMBAT_PVP"  # PvP tem prioridade máxima na Arena
+            elif in_queue:
+                scene_mode = "WAITING"    
+            elif in_arena: 
+                scene_mode = "ARENA"      
+            elif in_pve: 
+                scene_mode = "COMBAT_PVE" 
 
             # Dados de Localização
             current_node = self.base_env.current_nodes.get(agent_id, "Unknown")
             current_floor = self.base_env.current_floors.get(agent_id, 0)
             
-            # --- Captura Vizinhos, Efeito Atual e Itens na Sala ---
+            # Captura Vizinhos, Efeito Atual e Itens na Sala
             neighbors_data, current_effect, room_items = self._get_context_view(agent_id, in_arena, current_node)
 
-            # --- Captura Dados de Combate (HP Inimigo) ---
+            # Dados de combate
             enemy_stats = None
-            if in_combat:
-                combat_data = self.base_env.combat_states[agent_id]['enemy']
+            
+            if scene_mode == "COMBAT_PVE" and combat_state:
+                combat_data = combat_state['enemy']
                 enemy_stats = {
                     "name": combat_data['name'],
                     "hp": float(combat_data['hp']),
@@ -79,7 +90,7 @@ class BuriedBrainsRecorder:
                         "max_hp": float(opp_state.get('max_hp', 100))
                     }
 
-            # --- Ação Tomada ---
+            # Ação Tomada
             action_taken = actions_dict.get(agent_id) if actions_dict else None
             if hasattr(action_taken, "item"): 
                 action_taken = action_taken.item()
@@ -91,32 +102,35 @@ class BuriedBrainsRecorder:
             elif action_taken is not None:
                 action_name = f"Action {action_taken}"
 
-            # --- Raw Obs (Vetor Neural) ---
+            # Raw Obs
             raw_obs_array = self.base_env._get_observation(agent_id)
             if hasattr(raw_obs_array, 'tolist'):
                 raw_obs_list = raw_obs_array.tolist()
             else:
                 raw_obs_list = list(raw_obs_array)
 
-            # --- Topologia da Arena (Se estiver nela) ---
-            arena_config = None
-            if scene_mode == "ARENA":
+            # Topologia da Arena (Se estiver nela ou em PvP nela)
+            arena_edges = []
+            if in_arena: # Envia o mapa sempre que estiver na arena, mesmo lutando
                 current_graph = self.base_env.arena_instances.get(agent_id)
                 if current_graph:
-                    edges = []
                     for u, v in current_graph.edges():
                         try:
                             u_idx = int(u.split('_')[-1])
                             v_idx = int(v.split('_')[-1])
-                            edges.append([u_idx, v_idx])
+                            arena_edges.append([u_idx, v_idx])
                         except: pass
-                    
-                    arena_config = {
-                        "edges": edges,
-                        "meet_occurred": current_graph.graph.get('meet_occurred', False)
-                    }
+            
+            # Pega o oponente
+            opponent_id = None
+            if in_pvp_session:
+                session = self.base_env.pvp_sessions.get(agent_id)
+                if session:
+                    opponent_id = session['a2_id'] if session['a1_id'] == agent_id else session['a1_id']
+            elif in_arena:
+                opponent_id = self.base_env.active_matches.get(agent_id)
 
-            # --- Monta o objeto do agente ---
+            # Monta o objeto do agente
             frame_snapshot["agents"][agent_id] = {
                 "name": self.base_env.agent_names.get(agent_id, "Unknown"),
                 "hp": float(state.get('hp', 0)),
@@ -136,7 +150,9 @@ class BuriedBrainsRecorder:
                 "location_node": current_node,
                 "floor": current_floor,
                 "scene_mode": scene_mode,
-                "arena_config": arena_config,
+                
+                "arena_edges": arena_edges, 
+                "opponent_id": opponent_id, 
                 
                 "neighbors": neighbors_data,
                 "current_effect": current_effect,
@@ -167,17 +183,18 @@ class BuriedBrainsRecorder:
             graph = self.base_env.graphs.get(agent_id)
         
         if graph and graph.has_node(current_node):
-            # 1. Dados da Sala Atual
+            # Dados da Sala Atual
             curr_content = graph.nodes[current_node].get('content', {})
             
-            # --- Verificação de Efeitos ---
+            # Verificação de Efeitos
             effs = curr_content.get('room_effects', [])
             if effs and len(effs) > 0:
                 current_effect = effs[0]
             
             room_items = curr_content.get('items', [])
 
-            # 2. Pega vizinhos
+            # Pega vizinhos
+            succ = []
             if in_arena:
                 try: 
                     succ = list(graph.neighbors(current_node))
@@ -191,7 +208,7 @@ class BuriedBrainsRecorder:
             for n_node in succ:
                 n_content = graph.nodes[n_node].get('content', {})
                 
-                # --- Verificação de Efeitos do Vizinho ---                
+                # Verificação de Efeitos do Vizinho                
                 n_effs = n_content.get('room_effects', [])
                 n_effect_val = n_effs[0] if n_effs and len(n_effs) > 0 else None
 
@@ -210,10 +227,7 @@ class BuriedBrainsRecorder:
     def save_to_json(self, filename=None):
         """
         Salva o replay. 
-        Se filename terminar com .js, salva como variável const REPLAY_DATA.
-        Se terminar com .json, salva como JSON puro.
         """
-        # Atualiza o caminho se um nome for passado
         target_file = filename if filename else self.save_path
         
         print(f"Salvando replay com {len(self.frames)} frames em {target_file}...")
@@ -224,12 +238,10 @@ class BuriedBrainsRecorder:
             
         try:
             with open(target_file, "w", encoding='utf-8') as f:
-                # Modo Compatível com Web (var global)
                 if target_file.endswith('.js'):
                     f.write("const REPLAY_DATA = ") 
                     json.dump(self.frames, f, default=np_encoder) 
                     f.write(";") 
-                # Modo JSON Padrão
                 else:
                     json.dump(self.frames, f, default=np_encoder, indent=2)
                     

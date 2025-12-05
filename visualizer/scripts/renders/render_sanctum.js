@@ -1,4 +1,4 @@
-// scripts/render_sanctum.js
+// scripts/renders/render_sanctum.js
 function renderSanctuaryScene(container, frame) {
     container.innerHTML = '';
 
@@ -18,76 +18,87 @@ function renderSanctuaryScene(container, frame) {
     sanctumWrapper.appendChild(svgLayer);
 
     const gridLayer = document.createElement('div');
-    gridLayer.className = 'sanctuary-grid';
+    gridLayer.className = 'sanctuary-grid';    
     
-    // Lógica de Ocupação e Arestas
     const nodeOccupancy = {}; 
     const itemsOnFloor = {}; 
     let edgesToDraw = [];
 
-    // Identifica quem estamos assistindo (Câmera)
+    // Identifica a Câmera
     const cameraAgentId = window.selectedAgentId || Object.keys(frame.agents)[0];
     const cameraAgent = frame.agents[cameraAgentId];
 
-    // Define quem deve aparecer (Eu + Meu Oponente)
-    const visibleAgentsIds = [cameraAgentId];
+    // Busca o Mapa (Arestas) em QUALQUER agente    
+    Object.values(frame.agents).forEach(ag => {
+        if (ag.arena_edges && ag.arena_edges.length > 0) {
+            edgesToDraw = ag.arena_edges;
+        }
+    });
+
+    // Define quem desenhar (Lista VIP ou Todos)
+    let agentsToDraw = [];
+    
+    // Tenta modo restrito (Eu + Oponente)
     if (cameraAgent && cameraAgent.opponent_id) {
-        visibleAgentsIds.push(cameraAgent.opponent_id);
+        agentsToDraw.push(cameraAgentId);
+        agentsToDraw.push(cameraAgent.opponent_id);
+    } else {
+        // Fallback: Se não sei quem é o oponente, desenha TODO MUNDO que está na arena
+        // Isso evita a tela vazia
+        agentsToDraw = Object.keys(frame.agents);
     }
 
-    // Pega o mapa da Arena (usando a visão da câmera)
-    if (cameraAgent && cameraAgent.arena_edges) {
-        edgesToDraw = cameraAgent.arena_edges;
-    }
-
-    // Processa apenas os agentes visíveis
-    visibleAgentsIds.forEach(agentId => {
+    // Processamento de Posições
+    agentsToDraw.forEach(agentId => {
         const ag = frame.agents[agentId];
-        
-        // Segurança: se o oponente não existir no frame ou não estiver na arena
-        if (!ag) return; 
-        
+        if (!ag) return;
+
         // Verifica se está visualmente na arena (nó k_...)
         const isInSanctumNode = ag.location_node && ag.location_node.startsWith('k_');
-        if (!isInSanctumNode && ag.scene_mode !== 'ARENA' && ag.scene_mode !== 'COMBAT_PVP') return;
+        
+        // Se não está num nó 'k_', ignora (está em outro lugar/waiting)
+        if (!isInSanctumNode) return;
 
         const nodeIdx = parseKNodeIndex(ag.location_node);
         
         if (nodeIdx !== null) {
-            // Adiciona Agente ao Nó
             if (!nodeOccupancy[nodeIdx]) nodeOccupancy[nodeIdx] = [];
             nodeOccupancy[nodeIdx].push({...ag, id: agentId});
 
-            // Adiciona Itens do Chão (apenas se for a câmera ou relevante)
             if (ag.room_items && ag.room_items.length > 0) {
                 itemsOnFloor[nodeIdx] = ag.room_items;
             }
         }
     });
-    // Desenha Linhas (Baseado no JSON real do mapa)
-    edgesToDraw.forEach(edge => {
-        const [u, v] = edge;
-        const line = createSvgLine(u, v);
-        svgLayer.appendChild(line);
-    });
+
+    // Desenha Linhas (Arestas)
+    if (edgesToDraw.length > 0) {
+        edgesToDraw.forEach(edge => {
+            const [u, v] = edge;
+            const line = createSvgLine(u, v);
+            svgLayer.appendChild(line);
+        });
+    } else {
+        console.warn("Aviso: Nenhuma aresta de arena encontrada no JSON para este frame.");
+    }
 
     // Desenha Nós (0 a 8)
     for (let i = 0; i < 9; i++) {
         const nodeDiv = document.createElement('div');
         nodeDiv.className = `k-node`;
+        
         const floorDiv = document.createElement('div');
         floorDiv.className = 'k-room-floor';
         
-        // Verifica saída 
-        // Se houve encontro, a sala atual brilha
-        const hasAgents = nodeOccupancy[i] && nodeOccupancy[i].length > 0;
-        const isMeeting = nodeOccupancy[i] && nodeOccupancy[i].length > 1;
-
-        if (hasAgents) {
+        // Renderiza Agentes
+        if (nodeOccupancy[i]) {
             nodeDiv.classList.add('has-agent');
-            if (isMeeting) nodeDiv.classList.add('has-exit'); // Encontro = Brilho
+            
+            // Se tem mais de 1 agente, é um encontro -> Brilha
+            if (nodeOccupancy[i].length > 1) {
+                nodeDiv.classList.add('has-exit'); 
+            }
 
-            // Desenha Agentes
             nodeOccupancy[i].forEach((ag, idx) => {
                 const img = document.createElement('img');
                 if (window.AssetManager) {
@@ -95,22 +106,23 @@ function renderSanctuaryScene(container, frame) {
                 }
                 img.className = 'k-avatar';
                 
-                // Offset para não sobrepor se houver 2
+                // Offset visual para não sobrepor bonecos na mesma sala
                 if (nodeOccupancy[i].length > 1) {
-                    const offset = idx === 0 ? -10 : 10;
+                    const offset = idx === 0 ? -12 : 12;
                     img.style.transform = `translateX(${offset}px)`;
                     img.style.zIndex = idx + 10;
+                    // Borda colorida para diferenciar (Vermelho vs Azul)
+                    img.style.borderColor = idx === 0 ? 'var(--accent-soul)' : 'var(--accent-blood)';
                 }
                 floorDiv.appendChild(img);
             });
         }
 
-        // Desenha Itens Dropados (Ação Social)
+        // Renderiza Itens
         if (itemsOnFloor[i]) {
             const itemIcon = document.createElement('div');
             itemIcon.className = 'k-item';
-            // Se for artefato, ícone de anel, senão baú
-            const isArtifact = itemsOnFloor[i].some(it => it.includes('Amulet') || it.includes('Ring'));
+            const isArtifact = itemsOnFloor[i].some(it => it.toLowerCase().includes('amulet') || it.toLowerCase().includes('ring'));
             itemIcon.innerHTML = `<i class="fa-solid ${isArtifact ? 'fa-ring' : 'fa-box-open'}"></i>`;
             itemIcon.title = `Chão: ${itemsOnFloor[i].join(', ')}`;
             floorDiv.appendChild(itemIcon);
@@ -124,14 +136,15 @@ function renderSanctuaryScene(container, frame) {
     container.appendChild(sanctumWrapper);
 }
 
-// Auxiliares
+// Funções auxiliares
 function createSvgLine(u, v) {
     const getCoord = (idx) => {
         const row = Math.floor(idx / 3);
         const col = idx % 3;
-        // Centros: 16.66%, 50%, 83.33%
+        // Coordenadas centrais (em %)
         return { x: (col * 33.33) + 16.66, y: (row * 33.33) + 16.66 };
     };
+
     const p1 = getCoord(u);
     const p2 = getCoord(v);
 
@@ -141,10 +154,13 @@ function createSvgLine(u, v) {
     line.setAttribute("x2", `${p2.x}%`);
     line.setAttribute("y2", `${p2.y}%`);
     line.classList.add("connection-line", "active");
+    
     return line;
 }
 
 function parseKNodeIndex(nodeId) {
     if (!nodeId || !nodeId.startsWith('k_')) return null;
-    return parseInt(nodeId.split('_')[2]);
+    const parts = nodeId.split('_');
+    // Formato: k_{floor}_{index}
+    return parseInt(parts[parts.length - 1]);
 }

@@ -47,17 +47,17 @@ body {
 .main-container {
     width: 100%;
     max-width: 1024px;
-    height: 95vh;
+    height: 95vh;      
     background-color: var(--bg-color);
     border: 2px solid #333;
     border-radius: 4px; /* Bordas menos arredondadas (mais rústico) */
     display: flex;
-    flex-direction: column;
+    flex-direction: column;     
     flex-direction: row; /* Muda layout para ter lateral */
     flex-wrap: wrap;     /* Permite que o footer desça */
     box-shadow: 0 0 50px rgba(0,0,0,0.9);
     position: relative;
-    overflow: hidden;
+    overflow: hidden; 
 }
 
 /* Ajuste do Palco para dividir espaço */
@@ -67,14 +67,13 @@ body {
 }
 
 .brain-panel {
-    flex: 1; /* Ocupa 25% */
+    flex: 0 0 330px; /* não cresce, não encolhe, largura fixa */
     background: #050508;
     display: flex;
     flex-direction: column;
     padding: 10px;
     border-left: 1px solid #333;
     overflow: hidden;
-    min-width: 250px;
 }
 
 .brain-header, .monitor-header {
@@ -427,8 +426,8 @@ h1 {
 .k-avatar { width: 65px; height: 65px; border-radius: 50%; border: 2px solid #fff; position: absolute; z-index: 10; transition: all 0.3s ease; box-shadow: 0 0 5px #000; }
 
 /* HUD / FOOTER */
-footer {
-    height: 160px;
+footer {    
+    height: 160px;    
     background: var(--bb-black);
     border-top: 1px solid #333;
     display: flex;
@@ -437,7 +436,13 @@ footer {
 }
 
 /* Avatar e Barras */
-.agent-panel { flex: 2; display: flex; gap: 15px; align-items: center; }
+.agent-panel {    
+    flex: 0 0 400px;     
+    min-width: 400px;
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
 #agent-avatar {
     width: 80px; height: 80px;
     border-radius: 4px; /* Retrato quadrado combina mais */
@@ -534,10 +539,10 @@ footer {
 }
 
 /* Controles */
-.controls {
+.controls {    
     position: relative; bottom: auto; margin-top: auto;
     background: var(--bb-black);
-    border-top: 1px solid #333;    
+    border-top: 1px solid #333;
     z-index: 10;
     width: 100%; /* Garante que use a largura toda do pai */
     box-sizing: border-box; /* Garante que o padding não estoure a largura */
