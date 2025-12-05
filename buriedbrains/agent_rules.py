@@ -23,7 +23,7 @@ def create_initial_agent(name: str = "Player") -> Dict[str, Any]:
         'exp_to_level_up': 30,
         'equipment': {'Artifact': 'Amulet of Vigor'
         },        
-        'skills': [],
+        'skills': ["Quick Strike", "Heavy Blow", "Stone Shield", "Wait"],
     }
     return agent
 

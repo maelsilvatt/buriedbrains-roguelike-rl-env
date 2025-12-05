@@ -104,42 +104,58 @@ def generate_room_content(
                     # Processa o evento escolhido SOMENTE se couber no budget restante (B_res1)
                     # OU se o custo for não-positivo (recompensa/neutro)
                     if event_cost <= 0 or current_budget >= event_cost:
-                        if event_name == 'Treasure':
-                            # Filtra equipamentos Comuns ou Raros
-                            eligible_items = [
-                                name for name, data in equipment_catalog.items()
-                                if isinstance(data, dict) and data.get('rarity') in ['Common', 'Rare']
-                            ]
+                        if event_name == 'Treasure':                            
+                            # 15% de chance de ser um livro em vez de equipamento
+                            is_tome = random.random() < 0.15
                             
-                            if eligible_items:                                
-                                # Garante 1 item, mas pode gerar até 3
-                                num_items_to_drop = 1
+                            if is_tome:
+                                # Busca Grimórios Comuns/Raros
+                                tome_candidates = [
+                                    name for name, data in equipment_catalog.items()
+                                    if data.get('type') == 'SkillTome' and data.get('rarity') in ['Common', 'Rare']
+                                ]
+                                if tome_candidates:
+                                     selected_content['items'].append(random.choice(tome_candidates))
+                            else:
+                                # Lógica Antiga (Equipamento Normal)
+                                eligible_items = [
+                                    name for name, data in equipment_catalog.items()
+                                    if isinstance(data, dict) and data.get('rarity') in ['Common', 'Rare'] 
+                                    and data.get('type') != 'SkillTome' 
+                                ]
                                 
-                                # 20% de chance de ter um segundo item
-                                if random.random() < 0.20: 
-                                    num_items_to_drop += 1
-                                    # Se tiver o segundo, 10% de chance de ter um terceiro (total 2% chance)
-                                    if random.random() < 0.10: 
-                                        num_items_to_drop += 1
-                                
-                                for _ in range(num_items_to_drop):
-                                    found_item = random.choice(eligible_items)
-                                    selected_content['items'].append(found_item)                                
+                                if eligible_items:                                    
+                                    num_items_to_drop = 1
+                                    if random.random() < 0.20: num_items_to_drop += 1
+                                    if random.random() < 0.10: num_items_to_drop += 1
+                                    
+                                    for _ in range(num_items_to_drop):
+                                        selected_content['items'].append(random.choice(eligible_items))
 
-                            # Deduz o custo (apenas uma vez, para não punir o budget demais)
                             current_budget -= event_cost
 
-                        elif event_name == 'Morbid Treasure':
-                            # Filtra equipamentos Épicos ou Lendários
-                            eligible_items = [
-                                name for name, data in equipment_catalog.items()
-                                if isinstance(data, dict) and data.get('rarity') in ['Epic', 'Legendary']
-                            ]
-                            if eligible_items:
-                                found_item = random.choice(eligible_items)
-                                selected_content['items'].append(found_item)
-                            # Deduz o custo do EVENTO Tesouro Mórbido (negativo)
-                            current_budget -= event_cost # Atualiza B_res2                            
+                        elif event_name == 'Morbid Treasure':                            
+                            # 30% de chance de grimório épico ou lendário
+                            is_tome = random.random() < 0.30
+                            
+                            if is_tome:
+                                 tome_candidates = [
+                                    name for name, data in equipment_catalog.items()
+                                    if data.get('type') == 'SkillTome' and data.get('rarity') in ['Epic', 'Legendary']
+                                 ]
+                                 if tome_candidates:
+                                     selected_content['items'].append(random.choice(tome_candidates))
+                            else:
+                                # Equipamento Épico/Lendário Normal
+                                eligible_items = [
+                                    name for name, data in equipment_catalog.items()
+                                    if isinstance(data, dict) and data.get('rarity') in ['Epic', 'Legendary']
+                                    and data.get('type') != 'SkillTome'
+                                ]
+                                if eligible_items:
+                                    selected_content['items'].append(random.choice(eligible_items))
+                            
+                            current_budget -= event_cost                        
 
                         elif event_name != 'None':
                             # Para outros eventos (Trap, Fountain, etc.)

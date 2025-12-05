@@ -385,3 +385,188 @@ equipment_catalog:
     passive_effects:
       damage_modifier: 0.18
       flat_hp_bonus: 20
+
+  # Grimórios de Habilidade (NOVO!)
+  # Comuns (Dano Básico / Utilitários Simples)
+  Tome of Quick Strike:
+    type: SkillTome
+    skill_name: Quick Strike
+    rarity: Common
+    cost: 50
+
+  Tome of Wind Slash:
+    type: SkillTome
+    skill_name: Wind Slash
+    rarity: Common
+    cost: 60
+
+  Tome of Poison Shot:
+    type: SkillTome
+    skill_name: Poison Shot
+    rarity: Common
+    cost: 60
+
+  Tome of Frostbite:
+    type: SkillTome
+    skill_name: Frostbite
+    rarity: Common
+    cost: 60
+
+  # Raros (Dano Moderado / Controle Leve / Buffs)
+  Tome of Heavy Blow:
+    type: SkillTome
+    skill_name: Heavy Blow
+    rarity: Rare
+    cost: 120
+
+  Tome of Shield Bash:
+    type: SkillTome
+    skill_name: Shield Bash
+    rarity: Rare
+    cost: 150
+
+  Tome of Arcane Barrage:
+    type: SkillTome
+    skill_name: Arcane Barrage
+    rarity: Rare
+    cost: 140
+
+  Tome of Fireball:
+    type: SkillTome
+    skill_name: Fireball
+    rarity: Rare
+    cost: 150
+
+  Tome of Blinding Light:
+    type: SkillTome
+    skill_name: Blinding Light
+    rarity: Rare
+    cost: 130
+
+  Tome of Shadow Step:
+    type: SkillTome
+    skill_name: Shadow Step
+    rarity: Rare
+    cost: 160
+
+  Tome of Stone Shield:
+    type: SkillTome
+    skill_name: Stone Shield
+    rarity: Rare
+    cost: 150
+
+  # Épicos (AoE / DoT Forte / Debuffs Pesados / Cura)
+  Tome of Arcane Explosion:
+    type: SkillTome
+    skill_name: Arcane Explosion
+    rarity: Epic
+    cost: 300
+
+  Tome of Thunder Clap:
+    type: SkillTome
+    skill_name: Thunder Clap
+    rarity: Epic
+    cost: 350
+
+  Tome of Ice Spike:
+    type: SkillTome
+    skill_name: Ice Spike
+    rarity: Epic
+    cost: 320
+
+  Tome of Blade of Chaos:
+    type: SkillTome
+    skill_name: Blade of Chaos
+    rarity: Epic
+    cost: 380
+
+  Tome of War Cry:
+    type: SkillTome
+    skill_name: War Cry
+    rarity: Epic
+    cost: 300
+
+  Tome of Poison Cloud:
+    type: SkillTome
+    skill_name: Poison Cloud
+    rarity: Epic
+    cost: 350
+
+  Tome of Flame Burst:
+    type: SkillTome
+    skill_name: Flame Burst
+    rarity: Epic
+    cost: 350
+
+  Tome of Soul Drain:
+    type: SkillTome
+    skill_name: Soul Drain
+    rarity: Epic
+    cost: 400
+
+  Tome of Vampiric Touch:
+    type: SkillTome
+    skill_name: Vampiric Touch
+    rarity: Epic
+    cost: 420
+
+  Tome of Healing Wave:
+    type: SkillTome
+    skill_name: Healing Wave
+    rarity: Epic
+    cost: 450
+
+  Tome of Natures Grasp:
+    type: SkillTome
+    skill_name: "Natures' Grasp"
+    rarity: Epic
+    cost: 400
+
+  # Lendários
+  Grimoire of Shadow Strike:
+    type: SkillTome
+    skill_name: Shadow Strike
+    rarity: Legendary
+    cost: 800
+
+  Grimoire of Celestial Strike:
+    type: SkillTome
+    skill_name: Celestial Strike
+    rarity: Legendary
+    cost: 850
+
+  Grimoire of Meteor:
+    type: SkillTome
+    skill_name: Meteor Strike
+    rarity: Legendary
+    cost: 1000
+
+  Grimoire of Earthquake:
+    type: SkillTome
+    skill_name: Earthquake
+    rarity: Legendary
+    cost: 950
+
+  Grimoire of Stunning Hammer:
+    type: SkillTome
+    skill_name: Stunning Hammer
+    rarity: Legendary
+    cost: 750
+
+  Grimoire of Frost Nova:
+    type: SkillTome
+    skill_name: Frost Nova
+    rarity: Legendary
+    cost: 900
+
+  Grimoire of Divine Light:
+    type: SkillTome
+    skill_name: Divine Light
+    rarity: Legendary
+    cost: 1200
+
+  Grimoire of Berserker Rage:
+    type: SkillTome
+    skill_name: Berserker Rage
+    rarity: Legendary
+    cost: 800

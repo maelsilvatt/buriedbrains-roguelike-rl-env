@@ -14,6 +14,7 @@ from . import combat
 from . import content_generation
 from . import map_generation
 from . import reputation
+from . import skill_encoder
 from .gerador_nomes import GeradorNomes
 
 class BuriedBrainsEnv(gym.Env):
@@ -57,6 +58,9 @@ class BuriedBrainsEnv(gym.Env):
         }
         self.catalogs['artifacts'] = self.artifact_catalog
 
+        # Instancia o encoder de skills
+        self.skill_encoder = skill_encoder.SkillEncoder()
+
         # Parâmetros globais
         self.max_episode_steps = max_episode_steps
         self.current_step = 0
@@ -83,8 +87,7 @@ class BuriedBrainsEnv(gym.Env):
         # Definições multiagente
         # Gera IDs: 'a1', 'a2', 'a3', ... até num_agents
         self.agent_ids = [f"a{i+1}" for i in range(self.num_agents)]
-        
-        self.agent_skill_names = ["Quick Strike", "Heavy Blow", "Stone Shield", "Wait"]
+            
         self.MAX_NEIGHBORS = 4 
 
         self.pvp_sessions = {}
@@ -97,7 +100,6 @@ class BuriedBrainsEnv(gym.Env):
         }
 
         # Espaços de ação e observação
-        
         # Ações: 0-3 (Skills), 4 (Equipar), 5 (Social), 6-9 (Mover)
         # 0: Quick Strike, 1: Heavy Blow, 2: Stone Shield, 3: Wait
         # 4: Equipar Item
@@ -108,54 +110,49 @@ class BuriedBrainsEnv(gym.Env):
         # 9: Mover Vizinho 3
         ACTION_SHAPE = 10 
                 
-        # Bloco Próprio (7) + Contexto PvE (7) + Contexto Social (10) + 
-        # Vizinhos (16) + Self-Equip/Flags (6) = 46 Total
-        OBS_SHAPE = (46,)
+        # DEFINIÇÃO DO ESPAÇO DE OBSERVAÇÃO (OBS_SHAPE = 82)        
+        #
+        # 1. BLOCO DE SKILLS (0-39) [4 Slots * 10 Features]
+        #    Cada slot tem: [9 features do Encoder] + [1 Cooldown Atual]
+        #
+        # 2. BLOCO PRÓPRIO (40-42) [3 Estados]
+        #    40: HP Ratio
+        #    41: Level Ratio
+        #    42: EXP Ratio
+        #
+        # 3. BLOCO CONTEXTO PvE (43-49) [7 Estados]
+        #    43: In Combat?
+        #    44: Item/Evento?
+        #    45: Sala Vazia?
+        #    46: Enemy HP Ratio
+        #    47: Enemy Level Ratio
+        #    48: Equip no chão?
+        #    49: Raridade Equip Chão
+        #
+        # 4. BLOCO SOCIAL/PvP (50-59) [10 Estados]
+        #    50: In Arena?
+        #    51: Other Agent Present?
+        #    52: Other HP Ratio
+        #    53: Level Diff
+        #    54: Other Karma (Real)
+        #    55: Other Karma (Imag)
+        #    56: Artifact Floor?
+        #    57: Has Artifact?
+        #    58: Other Dropped?
+        #    59: In PvP Combat?
+        #
+        # 5. BLOCO MOVIMENTO (60-75) [16 Estados]
+        #    60-75: 4 Vizinhos * 4 Features [Valid, Enemy, Reward, Danger]
+        #
+        # 6. BLOCO FINAL (76-81) [6 Estados]
+        #    76: Self Weapon Rarity
+        #    77: Self Armor Rarity
+        #    78: Other Gear Score
+        #    79: Other Just Dropped?
+        #    80: Other Skipped Attack?
+        #    81: Door Open?        
         
-        # --- Detalhamento do Espaço de Observação (36 estados) ---
-        # Bloco Próprio (7 estados):
-        # 0: HP Ratio, 1: Level Ratio, 2: EXP Ratio
-        # 3: Skill 0 Cooldown, 4: Skill 1 Cooldown, 5: Skill 2 Cooldown, 6: Skill 3 (Wait) Cooldown
-        #
-        # Bloco Contexto PvE (7 estados):
-        # 7: Flag: In Combat (PvE)?
-        # 8: Flag: Item/Evento na sala?
-        # 9: Flag: Sala Vazia/Segura?
-        # 10: Combat: HP Ratio Inimigo PvE
-        # 11: Combat: Level Ratio Inimigo PvE
-        # 12: Floor: Flag: Equipamento no chão?
-        # 13: Floor: Raridade Equipamento
-        #
-        # Bloco Contexto Social/PvP (10 estados):
-        # 14: Flag: Está em Zona K (Arena)?
-        # 15: Flag: Outro Agente (Player) na sala?
-        # 16: PvP: HP Ratio Outro Agente
-        # 17: PvP: Diferença de Nível
-        # 18: PvP: Karma Outro Agente (Real)
-        # 19: PvP: Karma Outro Agente (Imag)
-        # 20: Social: Flag: Artefato no chão?
-        # 21: Social: Flag: Eu possuo Artefato?
-        # 22: Social: Flag (Evento): Outro Agente dropou? (1-step)
-        # 23: Social: Flag: Em combate PvP comigo?
-        #
-        # Bloco Contexto Movimento (12 estados = 4 vizinhos * 3 features)
-        # (is_valid, has_enemy, has_reward)
-        # 24-26: Vizinho 0 (is_valid, has_enemy, has_reward)
-        # 27-29: Vizinho 1 (is_valid, has_enemy, has_reward)
-        # 30-32: Vizinho 2 (is_valid, has_enemy, has_reward)
-        # 33-35: Vizinho 3 (is_valid, has_enemy, has_reward)        
-        #
-        # Bloco Contexto Self-Equip (2 estados):
-        # 36: Self: Raridade da Arma *Equipada* (0.0 a 1.0)
-        # 37: Self: Raridade da Armadura *Equipada* (0.0 a 1.0)
-        # 38: Social: Score de equipamentos do outro agente (0.0 a 1.0)
-        #   
-        # Flags Sociais Adicionais (2 estados):
-        # 39: Flag: Oponente acabou de dropar item? (1.0 se sim)
-        # 40: Flag: Oponente "pulou" ataque (estava na sala e não atacou)? (1.0 se sim)
-        # 
-        # 41: Flag Global: "A heavy door has opened..." 
-        # (1.0 = Encontro ocorreu, saída liberada. -1.0 = Saída trancada).
+        OBS_SHAPE = (82,)
 
         self.action_space = spaces.Dict({
             agent_id: spaces.Discrete(ACTION_SHAPE) for agent_id in self.agent_ids
@@ -271,211 +268,178 @@ class BuriedBrainsEnv(gym.Env):
 
     def _get_observation(self, agent_id: str) -> np.ndarray:
         """
-        Coleta e retorna a observação de 46 estados para o agente especificado.        
+        Coleta e retorna a observação de 78 estados (46 antigos + 32 novos de skills).
         """
-        # Começa com -1.0 (default)
+        # O shape deve ser (78,)
         obs = np.full(self.observation_space[agent_id].shape, -1.0, dtype=np.float32) 
         
         if agent_id not in self.agent_states:
             return obs
 
         agent = self.agent_states[agent_id]
-        current_node_id = self.current_nodes.get(agent_id) 
+                
+        # BLOCO DE SKILLS (Índices 0 a 39) - [4 Slots * 10 Features]        
+        # Cada skill vira um vetor de 10 números: 
+        # [Dano, MaxCD, Tag1, Tag2...Tag7, CurrentCD_Ratio]
         
-        # Verifica o contexto do agente
+        skills_vector = []
+        for i in range(4):
+            # Pega o nome da skill no slot 'i' (do deck do agente)
+            skill_name = agent['active_skills'][i]
+            
+            # Pega os dados estáticos (Dano, Tipo, etc) e encoda
+            skill_data = self.catalogs['skills'].get(skill_name, {})
+            embedding = self.skill_encoder.encode(skill_data) # Retorna 9 floats
+            
+            # Pega o estado dinâmico (Cooldown Atual)
+            current_cd = agent.get('cooldowns', {}).get(skill_name, 0)
+            max_cd = skill_data.get('cd', 1)
+            norm_current_cd = (current_cd / max_cd) if max_cd > 0 else 0.0
+            
+            full_skill_data = np.append(embedding, norm_current_cd)
+            skills_vector.extend(full_skill_data)
+
+        # INJETA NO OBS (0 a 39)
+        obs[0:40] = np.array(skills_vector, dtype=np.float32)        
+        
+        # Contexto
+        current_node_id = self.current_nodes.get(agent_id) 
         is_in_arena = agent_id in self.arena_instances
         
-        # Seleciona o grafo correto
+        # Grafo
         if is_in_arena:
             current_graph_to_use = self.arena_instances[agent_id]
         else:
-            # Pega do dicionário de grafos PvE
             current_graph_to_use = self.graphs.get(agent_id)
 
-        # Identifica a sala atual
-        current_node_id = self.current_nodes.get(agent_id)
-
-        # Busca os nós vizinhos
+        # Vizinhos
         neighbors = []
-        if current_graph_to_use and current_node_id:
-            if current_graph_to_use.has_node(current_node_id):
-                # Pega a lista de IDs dos nós disponíveis
+        if current_graph_to_use and current_node_id and current_graph_to_use.has_node(current_node_id):
+            # Usa .neighbors para grafos não direcionados (Arena) e direcionados (PvE - compatível)
+            try:
                 neighbors = list(current_graph_to_use.neighbors(current_node_id))
-                # Garante que a ordem sempre seja a mesma
                 neighbors.sort() 
-        
-        # Identifica o Outro Agente (para contexto social)
+            except: pass
+
         other_agent_id = self.active_matches.get(agent_id)
-
-        room_content = current_graph_to_use.nodes[current_node_id].get('content', {})
+        room_content = current_graph_to_use.nodes[current_node_id].get('content', {}) if current_graph_to_use and current_node_id else {}
         pve_combat_state = self.combat_states.get(agent_id)
-        
-        # Bloco próprio (0-6)
-        obs[0] = (agent['hp'] / agent['max_hp']) * 2 - 1 if agent['max_hp'] > 0 else -1.0
-        obs[1] = (agent['level'] / self.max_level) * 2 - 1
-        obs[2] = (agent['exp'] / agent['exp_to_level_up']) if agent['exp_to_level_up'] > 0 else 0.0
-        for i in range(4):
-            skill_name = self.agent_skill_names[i]
-            max_cd = self.catalogs['skills'].get(skill_name, {}).get('cd', 1)
-            current_cd = agent.get('cooldowns', {}).get(skill_name, 0)
-            obs[3 + i] = (current_cd / max_cd) if max_cd > 0 else 0.0
 
-        # Bloco PvE (7-13)
+        # --- Bloco Próprio (40-42) ---        
+        obs[40] = (agent['hp'] / agent['max_hp']) * 2 - 1 if agent['max_hp'] > 0 else -1.0
+        obs[41] = (agent['level'] / self.max_level) * 2 - 1
+        obs[42] = (agent['exp'] / agent['exp_to_level_up']) if agent['exp_to_level_up'] > 0 else 0.0        
+
+        # --- Bloco PvE (43-49) ---        
+        idx_pve = 43
+        
         enemy_in_combat = pve_combat_state.get('enemy') if pve_combat_state else None
         items_on_floor = room_content.get('items', [])
         events_in_room = room_content.get('events', [])
         
         if enemy_in_combat:
-            obs[7] = 1.0
-            obs[10] = (enemy_in_combat['hp'] / enemy_in_combat['max_hp']) * 2 - 1 if enemy_in_combat['max_hp'] > 0 else -1.0
-            obs[11] = (enemy_in_combat.get('level', 1) / self.max_level) * 2 - 1
+            obs[idx_pve + 0] = 1.0 # In Combat
+            obs[idx_pve + 3] = (enemy_in_combat['hp'] / enemy_in_combat['max_hp']) * 2 - 1 if enemy_in_combat['max_hp'] > 0 else -1.0
+            obs[idx_pve + 4] = (enemy_in_combat.get('level', 1) / self.max_level) * 2 - 1
         elif items_on_floor or (events_in_room and 'None' not in events_in_room):
-            obs[8] = 1.0
+            obs[idx_pve + 1] = 1.0 # Item/Evento
         else:
-            obs[9] = 1.0
+            obs[idx_pve + 2] = 1.0 # Vazio
 
-        # Itens no Chão (Weapon/Armor)
+        # Itens no Chão
         best_wep_arm_rarity = 0.0
         found_wep_arm = False
         for item_name in items_on_floor:
             if item_name in self.equipment_catalog_no_artifacts: 
                 found_wep_arm = True
                 rarity = self.rarity_map.get(self.catalogs['equipment'][item_name].get('rarity'), 0.0)
-                if rarity > best_wep_arm_rarity:
-                    best_wep_arm_rarity = rarity
+                if rarity > best_wep_arm_rarity: best_wep_arm_rarity = rarity
         
         if found_wep_arm:
-            obs[12] = 1.0
-            obs[13] = best_wep_arm_rarity
+            obs[idx_pve + 5] = 1.0
+            obs[idx_pve + 6] = best_wep_arm_rarity
 
-        # Bloco Social/PvP (14-19 + 38-40)
-        is_in_arena = (agent_id in self.arena_instances)
-        obs[14] = 1.0 if is_in_arena else -1.0
+        # --- Bloco Social/PvP (50-59) ---
+        idx_soc = 50
+        obs[idx_soc + 0] = 1.0 if is_in_arena else -1.0 # In Arena
         
-        # Identificação do Oponente
-        other_agent_id = self.active_matches.get(agent_id)
-        
-        if other_agent_id and is_in_arena:
-            # Verifica se estão na mesma sala
-            if self.current_nodes[agent_id] == self.current_nodes[other_agent_id]:
-                other_agent_state = self.agent_states.get(other_agent_id)
+        if other_agent_id and is_in_arena and self.current_nodes.get(agent_id) == self.current_nodes.get(other_agent_id):
+             other_agent_state = self.agent_states.get(other_agent_id)
+             if other_agent_state:
+                obs[idx_soc + 1] = 1.0 # Outro presente
+                obs[idx_soc + 2] = (other_agent_state['hp'] / other_agent_state['max_hp']) * 2 - 1
+                obs[idx_soc + 3] = (agent['level'] - other_agent_state['level']) / 100.0
                 
-                if other_agent_state:
-                    obs[15] = 1.0 # Flag: Outro Agente na sala
-                    obs[16] = (other_agent_state['hp'] / other_agent_state['max_hp']) * 2 - 1
-                    obs[17] = (agent['level'] - other_agent_state['level']) / 100.0
-                    
-                    opponent_karma_z = self.reputation_system.get_karma_state(other_agent_id)
-                    obs[18] = opponent_karma_z.real 
-                    obs[19] = opponent_karma_z.imag
-
-        # Artefatos (20-21)
-        best_artifact_rarity = 0.0
-        found_artifact_floor = False
-        for item_name in items_on_floor:
-            if item_name in self.artifact_catalog: 
-                found_artifact_floor = True
-                rarity = self.rarity_map.get(self.catalogs['equipment'][item_name].get('rarity'), 0.0)
-                if rarity > best_artifact_rarity:
-                    best_artifact_rarity = rarity
+                k = self.reputation_system.get_karma_state(other_agent_id)
+                obs[idx_soc + 4] = k.real
+                obs[idx_soc + 5] = k.imag
         
-        if found_artifact_floor:
-            obs[20] = 1.0
-            obs[21] = best_artifact_rarity
-
-        # Meu Artefato Equipado (22)
-        my_equipped_artifact_name = agent['equipment'].get('Artifact')
-        obs[22] = self.rarity_map.get(self.catalogs['equipment'][my_equipped_artifact_name].get('rarity'), 0.0) if my_equipped_artifact_name else 0.0
-
-        # Em Combate PvP (23)
+        # Artefatos chão
+        best_art = 0.0
+        found_art = False
+        for item in items_on_floor:
+            if item in self.artifact_catalog:
+                found_art = True
+                r = self.rarity_map.get(self.catalogs['equipment'][item].get('rarity'), 0.0)
+                if r > best_art: best_art = r
+        
+        if found_art:
+            obs[idx_soc + 6] = 1.0
+            obs[idx_soc + 7] = best_art
+            
+        # Meu Artefato
+        my_art = agent['equipment'].get('Artifact')
+        obs[idx_soc + 8] = self.rarity_map.get(self.catalogs['equipment'][my_art].get('rarity'), 0.0) if my_art else 0.0
+        
         if agent_id in self.pvp_sessions:
-            obs[23] = 1.0
+            obs[idx_soc + 9] = 1.0
 
-        # --- Bloco Contexto Movimento (24-35) ---
-        # Agora são 4 features por vizinho: [Valido?, Inimigo?, Loot?, PERIGO?]
-        # Índices: 
-        # Vizinho 0: 24, 25, 26, 27
-        # Vizinho 1: 28, 29, 30, 31
-        # Vizinho 2: 32, 33, 34, 35
-        # Vizinho 3: 36, 37, 38, 39
-        
-        base_idx = 24 
-        
-        for i in range(self.MAX_NEIGHBORS): # 0 a 3            
-            idx = base_idx + (i * 4) 
-
-            # Só processa se tiver vizinho e grafo válido
-            if i < len(neighbors) and current_graph_to_use:
-                neighbor_node_id = neighbors[i]
-                
-                # Double check: vizinho existe no grafo?
-                if current_graph_to_use.has_node(neighbor_node_id):
-                    neighbor_content = current_graph_to_use.nodes[neighbor_node_id].get('content', {})
+        # --- Bloco Movimento (60-75) [16 slots] ---
+        idx_mov = 60
+        for i in range(self.MAX_NEIGHBORS):
+            curr_idx = idx_mov + (i * 4)
+            if i < len(neighbors):
+                nid = neighbors[i]
+                if current_graph_to_use.has_node(nid):
+                    n_content = current_graph_to_use.nodes[nid].get('content', {})
                     
-                    # [Feature 0] É Válido?
-                    obs[idx + 0] = 1.0 
+                    obs[curr_idx + 0] = 1.0 # Valido
                     
-                    # Verifica presença de inimigos e jogadores
-                    enemy_list = neighbor_content.get('enemies', [])
-                    has_opponent = (other_agent_id and self.current_nodes.get(other_agent_id) == neighbor_node_id)
-                    
-                    # [Feature 1] Tem Inimigo/Oponente?
-                    if enemy_list or has_opponent:
-                        obs[idx + 1] = 1.0 
-                    
-                    # [Feature 2] Tem Recompensa?
-                    # (Loot, Eventos Positivos ou Saída destrancada na arena)
-                    has_loot = neighbor_content.get('items')
-                    has_good_event = any(evt in neighbor_content.get('events', []) for evt in ['Treasure', 'Morbid Treasure', 'Fountain of Life'])
-                    
-                    is_exit_open = False
-                    if is_in_arena and current_graph_to_use.nodes[neighbor_node_id].get('is_exit', False):
-                        if current_graph_to_use.graph.get('meet_occurred', False):
-                            is_exit_open = True
-                            
-                    if has_loot or has_good_event or is_exit_open:
-                        obs[idx + 2] = 1.0 
-
-                    # Nível de Perigo (Danger Tier)
-                    danger_level = 0.0
-                    
-                    # A. Analisa Monstros
-                    if enemy_list:
-                        enemy_name = enemy_list[0]
-                        # Tenta pegar tags do catálogo
-                        enemy_data = self.catalogs['enemies'].get(enemy_name, {})
-                        tags = enemy_data.get('tags', [])
+                    # Inimigo/Oponente
+                    has_opp = (other_agent_id and self.current_nodes.get(other_agent_id) == nid)
+                    if n_content.get('enemies') or has_opp:
+                        obs[curr_idx + 1] = 1.0
                         
-                        if 'Boss' in tags: 
-                            danger_level = 1.0   # PERIGO MÁXIMO (Vermelho / Lava Golem)
-                        elif 'Elite' in tags: 
-                            danger_level = 0.66  # PERIGO ALTO (Laranja)
-                        else: 
-                            danger_level = 0.33  # PERIGO MÉDIO (Amarelo / Mob comum)
-                            
-                    # Analisa Jogadores (Arena PvP)
-                    elif has_opponent:
-                        # Outro jogador é imprevisível = Elite
-                        danger_level = 0.66
+                    # Reward
+                    if n_content.get('items') or any(e in n_content.get('events', []) for e in ['Treasure', 'Morbid Treasure']):
+                         obs[curr_idx + 2] = 1.0
+                    if is_in_arena and current_graph_to_use.nodes[nid].get('is_exit') and current_graph_to_use.graph.get('meet_occurred'):
+                         obs[curr_idx + 2] = 1.0
+                         
+                    # Danger Tier
+                    d_level = 0.0
+                    if n_content.get('enemies'):
+                        ename = n_content['enemies'][0]
+                        tags = self.catalogs['enemies'].get(ename, {}).get('tags', [])
+                        if 'Boss' in tags: d_level = 1.0
+                        elif 'Elite' in tags: d_level = 0.66
+                        else: d_level = 0.33
+                    elif has_opp:
+                        d_level = 0.66
                     
-                    obs[idx + 3] = danger_level                                
-            
-        # [Index 40] Self Weapon Rarity
-        current_eq = self.agent_states[agent_id]['equipment']
+                    obs[curr_idx + 3] = d_level
 
-        w_name = current_eq.get('Weapon')
-        if w_name:
-            r_str = self.catalogs['equipment'].get(w_name, {}).get('rarity', 'Common')
-            obs[40] = self.rarity_map.get(r_str, 0.0)
-            
-        # [Index 41] Self Armor Rarity
-        a_name = current_eq.get('Armor')
-        if a_name:
-            r_str = self.catalogs['equipment'].get(a_name, {}).get('rarity', 'Common')
-            obs[41] = self.rarity_map.get(r_str, 0.0)
-
-        # [Index 42] Social Score do Outro (Se visível)
-        if other_agent_id:
+        # --- Bloco Final (76-81) ---
+        idx_end = 76
+        
+        # Self Gear (76, 77)
+        w = agent['equipment'].get('Weapon')
+        a = agent['equipment'].get('Armor')
+        obs[idx_end + 0] = self.rarity_map.get(self.catalogs['equipment'][w].get('rarity'), 0.0) if w else 0.0
+        obs[idx_end + 1] = self.rarity_map.get(self.catalogs['equipment'][a].get('rarity'), 0.0) if a else 0.0
+        
+        # Outros Sociais - Gear Score (78)
+        if other_agent_id:                     
             other_eq = self.agent_states[other_agent_id]['equipment']
             total_rarity = 0.0
             count = 0
@@ -485,24 +449,22 @@ class BuriedBrainsEnv(gym.Env):
                     rst = self.catalogs['equipment'].get(it, {}).get('rarity')
                     total_rarity += self.rarity_map.get(rst, 0.0)
                     count += 1
-            if count > 0:
-                obs[42] = total_rarity / 2.0 # Média
+            if count > 0:                
+                obs[idx_end + 2] = total_rarity / 2.0 
         
-        # [Index 43] Oponente dropou item recentemente?
-        if other_agent_id and self.social_flags[other_agent_id].get('just_dropped'):
-            obs[43] = 1.0
-            
-        # [Index 44] Oponente pulou ataque (sinal de paz)?
-        if other_agent_id and self.social_flags[other_agent_id].get('skipped_attack'):
-            obs[44] = 1.0
-            
-        # [Index 45] Encontro Ocorreu? (Global Flag)
-        # Avisa ao agente que a porta está destrancada
-        if is_in_arena and current_graph_to_use.graph.get('meet_occurred', False):
-            obs[45] = 1.0
-        elif is_in_arena: # Se está na arena mas não encontrou
-            obs[45] = -1.0
+        # Outros Sociais - Flags (79, 80)
+        if other_agent_id:
+             if self.social_flags[other_agent_id].get('just_dropped'):                 
+                 obs[idx_end + 3] = 1.0
+                 
+             if self.social_flags[other_agent_id].get('skipped_attack'):
+                 
+                 obs[idx_end + 4] = 1.0             
         
+        # Porta (81)
+        if is_in_arena and current_graph_to_use.graph.get('meet_occurred'):
+            obs[idx_end + 5] = 1.0 
+            
         return obs
     
     def reset(self, seed=None, options=None):
@@ -593,11 +555,7 @@ class BuriedBrainsEnv(gym.Env):
             self.agent_names[agent_id] = agent_name
             
             # Cria estado inicial
-            self.agent_states[agent_id] = agent_rules.create_initial_agent(agent_name) 
-            self.agent_states[agent_id]['skills'] = self.agent_skill_names 
-            
-            # Garante artefato inicial para testar barganha
-            self.agent_states[agent_id]['equipment']['Artifact'] = 'Amulet of Vigor'
+            self.agent_states[agent_id] = agent_rules.create_initial_agent(agent_name)                         
             
             # Inicializa métricas individuais
             self.current_episode_logs[agent_id] = []
@@ -679,7 +637,7 @@ class BuriedBrainsEnv(gym.Env):
 
         # Ações 0-3 são skills de combate. Ações 4-9 são inválidas em combate.
         if 0 <= action <= 3: 
-            action_name = self.agent_skill_names[action] # Mapeia 0-3 para ["Quick Strike", ..., "Wait"]
+            action_name = agent['active_skills'][action]
         else:
             # Ação é inválida DENTRO DO COMBATE (tentou mover, equipar, etc.)
             self.invalid_action_counts[agent_id] += 1
@@ -1258,8 +1216,22 @@ class BuriedBrainsEnv(gym.Env):
                 processed_agents.add(p2)
                 
                 # Pega as ações
-                act_p1 = self.agent_skill_names[actions[p1]] if 0 <= actions[p1] <= 3 else "Wait"
-                act_p2 = self.agent_skill_names[actions[p2]] if 0 <= actions[p2] <= 3 else "Wait"
+                state_p1 = self.agent_states[p1]
+                state_p2 = self.agent_states[p2]
+
+                # Pega a skill do deck do agente (ou 'Wait' se a ação for inválida para combate)                
+                idx_p1 = actions[p1].item() if hasattr(actions[p1], 'item') else actions[p1]
+                idx_p2 = actions[p2].item() if hasattr(actions[p2], 'item') else actions[p2]
+
+                if 0 <= idx_p1 <= 3:
+                    act_p1 = state_p1['active_skills'][idx_p1]
+                else:
+                    act_p1 = "Wait"
+
+                if 0 <= idx_p2 <= 3:
+                    act_p2 = state_p2['active_skills'][idx_p2]
+                else:
+                    act_p2 = "Wait"
 
                 # Resolve o turno PvP
                 rew1, rew2, over, winner, loser = self._handle_pvp_combat_turn(session, act_p1, act_p2)
@@ -1685,71 +1657,119 @@ class BuriedBrainsEnv(gym.Env):
                 self.invalid_action_counts[agent_id] += 1
                 reward = -5 
 
-        # Ação 4: Equipar Item (Universal + Social)
+        # --- Ação 4: Equipar Item (Grimórios, Equipamentos e Artefatos) ---        
         elif action == 4:
-            self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} tentou Ação 4 (Equipar Item).")
+            self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} tentou Ação 4 (Equipar/Aprender).")
             
+            # Segurança de nó
             if not current_graph.has_node(current_node_id) or 'content' not in current_graph.nodes[current_node_id]:
                  self.invalid_action_counts[agent_id] += 1
                  return -5.0, terminated
 
             room_items = current_graph.nodes[current_node_id]['content'].setdefault('items', [])
             
-            best_item_to_equip = None
-            max_rarity_diff = 0.0 
-            best_item_type = None
+            item_consumed = False # Flag para saber se já fez algo nesta ação
 
+            # Tenta aprender primeiro skills
             for item_name in room_items:
-                details = self.catalogs['equipment'].get(item_name)
-                if details and details.get('type') in ['Weapon', 'Armor', 'Artifact']:
-                    item_type = details.get('type')
-                    floor_rarity = self.rarity_map.get(details.get('rarity'), 0.0)
+                details = self.catalogs['equipment'].get(item_name, {})
+                if details.get('type') == 'SkillTome':
+                    new_skill_name = details.get('skill_name')
                     
-                    equipped_name = self.agent_states[agent_id]['equipment'].get(item_type)
-                    equipped_rarity = 0.0
-                    if equipped_name:
-                        r_str = self.catalogs['equipment'].get(equipped_name, {}).get('rarity')
-                        equipped_rarity = self.rarity_map.get(r_str, 0.0)
-                    
-                    diff = floor_rarity - equipped_rarity
-                    
-                    # Lógica Social: Aceita qualquer artefato SE estiver na Arena
-                    is_social_artifact = (item_type == 'Artifact' and is_in_arena)
-                    
-                    # Equipa se for Upgrade OU se for um artefato social na arena
-                    if diff > max_rarity_diff or (is_social_artifact and max_rarity_diff <= 0.0):
-                        max_rarity_diff = diff
-                        best_item_to_equip = item_name
-                        best_item_type = item_type
+                    # Verifica se já conhece a skill
+                    if new_skill_name not in self.agent_states[agent_id]['active_skills']:
+                        
+                        # Heurística de Substituição:
+                        # Tenta substituir skills básicas primeiro, preserva slots avançados se possível
+                        current_skills = self.agent_states[agent_id]['active_skills']
+                        slot_to_replace = -1
+                        
+                        # Prioridade 1: Substituir 'Quick Strike' ou 'Heavy Blow' (Básicas)
+                        for i in range(3): # Olha slots 0, 1, 2 (O 3 geralmente é Wait/Utility)
+                            if current_skills[i] in ['Quick Strike', 'Heavy Blow']:
+                                slot_to_replace = i
+                                break
+                        
+                        # Prioridade 2: Se não tiver básicas, substitui aleatório entre 0 e 2
+                        if slot_to_replace == -1:
+                            import random
+                            slot_to_replace = random.randint(0, 2)
+                        
+                        old_skill = current_skills[slot_to_replace]
+                        
+                        # EFETUA O APRENDIZADO
+                        self.agent_states[agent_id]['active_skills'][slot_to_replace] = new_skill_name
+                        self.agent_states[agent_id]['cooldowns'][new_skill_name] = 0 # Zera CD
+                        
+                        # Remove o livro
+                        room_items.remove(item_name)
+                        
+                        self._log(agent_id, f"[UPGRADE] Aprendeu '{new_skill_name}' (Raridade: {details.get('rarity')}) substituindo '{old_skill}'.")
+                        
+                        reward += 100.0 # Grande incentivo para evoluir
+                        item_consumed = True
+                        break # Uma ação = Um livro lido
+                        
+            # Equipar armas ou armaduras (agora que o livro já foi)
+            if not item_consumed:
+                best_item_to_equip = None
+                max_rarity_diff = 0.0 
+                best_item_type = None
 
-            if best_item_to_equip:
-                self.agent_states[agent_id]['equipment'][best_item_type] = best_item_to_equip
-                room_items.remove(best_item_to_equip)
-                
-                # Registra a troca
-                self.equipment_swaps_this_episode[agent_id] += 1
-                qualidade = self.catalogs['equipment'][best_item_to_equip]['rarity']
-                self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} equipou: '{best_item_to_equip}' (Tipo: {best_item_type}, Raridade: {qualidade}).")
+                for item_name in room_items:
+                    details = self.catalogs['equipment'].get(item_name)
+                    
+                    # Filtra apenas equipamentos
+                    if details and details.get('type') in ['Weapon', 'Armor', 'Artifact']:
+                        item_type = details.get('type')
+                        floor_rarity = self.rarity_map.get(details.get('rarity'), 0.0)
+                        
+                        # Compara com o que já tem
+                        equipped_name = self.agent_states[agent_id]['equipment'].get(item_type)
+                        equipped_rarity = 0.0
+                        if equipped_name:
+                            r_str = self.catalogs['equipment'].get(equipped_name, {}).get('rarity')
+                            equipped_rarity = self.rarity_map.get(r_str, 0.0)
+                        
+                        diff = floor_rarity - equipped_rarity
+                        
+                        # Lógica Social: Na Arena, pega qualquer artefato (para barganha)
+                        is_social_artifact = (item_type == 'Artifact' and is_in_arena)
+                        
+                        # Critério de Troca: É melhor? OU É um artefato na arena (mesmo que igual/pior)?
+                        if diff > max_rarity_diff or (is_social_artifact and max_rarity_diff <= 0.0):
+                            max_rarity_diff = diff
+                            best_item_to_equip = item_name
+                            best_item_type = item_type
 
-                # Recompensa pela raridade do item pego
-                base_pve_reward = 75 + (max_rarity_diff * 100)
-                
-                # Se for social, garante um mínimo de 10 pts mesmo se downgrade
-                if is_in_arena and best_item_type == 'Artifact':
-                    reward = max(10.0, base_pve_reward)
+                if best_item_to_equip:
+                    # Realiza a troca
+                    self.agent_states[agent_id]['equipment'][best_item_type] = best_item_to_equip
+                    room_items.remove(best_item_to_equip)
+                    
+                    # Métricas
+                    self.equipment_swaps_this_episode[agent_id] += 1
+                    qualidade = self.catalogs['equipment'][best_item_to_equip]['rarity']
+                    
+                    self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} equipou: '{best_item_to_equip}' (Tipo: {best_item_type}, Raridade: {qualidade}).")
+
+                    # Flag Social
+                    if best_item_type == 'Artifact':
+                        self.social_flags[agent_id]['just_picked_up'] = True                
+
+                    # PvE: Incentivo por melhoria (75 base + bonus por salto de raridade)
+                    reward = 75 + (max_rarity_diff * 100) 
+
+                    # Taxa de Manuseio na Arena (Desencoraja ficar trocando item no chão do santuário)
+                    if is_in_arena:
+                        reward -= 2.0  
                 else:
-                    reward = base_pve_reward
-                
-                # Flag de pick-up para barganha
-                if best_item_type == 'Artifact':
-                    self.social_flags[agent_id]['just_picked_up'] = True                
-
-            else:
-                if room_items:
-                    reward = -5.0 # Itens ignorados
-                else:
-                    self.invalid_action_counts[agent_id] += 1                    
-                    reward = -2.0 # Chão vazio
+                    # Falhou: Não tinha nada útil ou sala vazia
+                    if room_items:
+                        reward = -10.0 # Punição Alta: Deixou itens no chão (Anti-Hoarding reverso / Incentivo a limpar)
+                    else:
+                        self.invalid_action_counts[agent_id] += 1                    
+                        reward = -5.0 # Chão vazio
 
         # Ação 5: Dropar Artefato      
         elif action == 5:
@@ -1799,12 +1819,15 @@ class BuriedBrainsEnv(gym.Env):
             name=self.agent_names[agent_id], 
             hp=agent_main_state['hp'], 
             equipment=list(agent_main_state.get('equipment', {}).values()), 
-            skills=self.agent_skill_names, 
+            skills=agent_main_state['active_skills'], 
             team=1, 
             catalogs=self.catalogs
         )
-        # Copia os cooldowns atuais
-        agent_combatant['cooldowns'] = agent_main_state.get('cooldowns', {s: 0 for s in self.agent_skill_names}).copy()
+        # Copia os cooldowns atuais        
+        current_skills = agent_main_state['active_skills']
+        default_cooldowns = {s: 0 for s in current_skills}
+
+        agent_combatant['cooldowns'] = agent_main_state.get('cooldowns', default_cooldowns).copy()
 
         # Inicializa o 'combatant' do INIMIGO        
         enemy_combatant = agent_rules.instantiate_enemy(
@@ -1842,36 +1865,45 @@ class BuriedBrainsEnv(gym.Env):
         # Pega os estados mestres
         attacker_main_state = self.agent_states[attacker_id]
         defender_main_state = self.agent_states[defender_id]
+        
+        # Atacante: Cria defaults baseados nas skills atuais
+        att_skills = attacker_main_state['active_skills']
+        att_default_cd = {s: 0 for s in att_skills}
 
-        # Inicializa combatants
         attacker_combatant = combat.initialize_combatant(
             name=self.agent_names[attacker_id], 
             hp=attacker_main_state['hp'], 
             equipment=list(attacker_main_state.get('equipment', {}).values()), 
-            skills=self.agent_skill_names, 
+            skills=att_skills,
             team=1, catalogs=self.catalogs
         )
-        attacker_combatant['cooldowns'] = attacker_main_state.get('cooldowns', {}).copy()
+        # Carrega cooldowns salvos ou usa o default zerado
+        attacker_combatant['cooldowns'] = attacker_main_state.get('cooldowns', att_default_cd).copy()
+        
+        # Defensor: Cria defaults baseados nas skills atuais dele
+        def_skills = defender_main_state['active_skills']
+        def_default_cd = {s: 0 for s in def_skills}
 
         defender_combatant = combat.initialize_combatant(
             name=self.agent_names[defender_id], 
             hp=defender_main_state['hp'], 
             equipment=list(defender_main_state.get('equipment', {}).values()), 
-            skills=self.agent_skill_names, 
+            skills=def_skills,
             team=2, catalogs=self.catalogs
         )
-        defender_combatant['cooldowns'] = defender_main_state.get('cooldowns', {}).copy()
+        # Carrega cooldowns salvos ou usa o default zerado
+        defender_combatant['cooldowns'] = defender_main_state.get('cooldowns', def_default_cd).copy()
 
         # Cria o objeto de estado da sessão
         combat_session = {
-            'a1_id': attacker_id, # Guardamos os IDs reais para saber quem é quem
+            'a1_id': attacker_id, 
             'a2_id': defender_id,
-            'a1': attacker_combatant, # Combatant do Atacante
-            'a2': defender_combatant, # Combatant do Defensor
+            'a1': attacker_combatant, 
+            'a2': defender_combatant, 
             'start_step': self.current_step
         }
         
-        # 4. Registra a sessão para AMBOS os agentes
+        # Registra a sessão
         self.pvp_sessions[attacker_id] = combat_session
         self.pvp_sessions[defender_id] = combat_session
         
@@ -2026,8 +2058,6 @@ class BuriedBrainsEnv(gym.Env):
         
         # Reseta o estado Mestre
         self.agent_states[agent_id] = agent_rules.create_initial_agent(agent_name)
-        self.agent_states[agent_id]['skills'] = self.agent_skill_names
-        self.agent_states[agent_id]['equipment']['Artifact'] = 'Amulet of Vigor'
         
         # RE-APLICA Karma
         self.agent_states[agent_id]['karma']['real'] = preserved_karma_z.real

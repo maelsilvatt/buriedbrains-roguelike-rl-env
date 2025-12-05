@@ -1,7 +1,6 @@
 import random
 import time
 
-
 class GeradorNomes:
     """
     Gera nomes únicos e variados para agentes de um jogo roguelike ou simulação.
