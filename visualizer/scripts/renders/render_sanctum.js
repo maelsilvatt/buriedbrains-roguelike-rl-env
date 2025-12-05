@@ -2,17 +2,17 @@
 function renderSanctuaryScene(container, frame) {
     container.innerHTML = '';
 
-    // 1. Título
+    // Título
     const titleDiv = document.createElement('div');
     titleDiv.className = 'room-title-display';
     titleDiv.innerHTML = '<span style="color:var(--accent-blood)">SANCTUM ZONE</span>';
     container.appendChild(titleDiv);
 
-    // 2. Wrapper
+    // Wrapper
     const sanctumWrapper = document.createElement('div');
     sanctumWrapper.className = 'sanctuary-container';
 
-    // 3. Camadas
+    // Camadas
     const svgLayer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svgLayer.classList.add("sanctuary-svg");
     sanctumWrapper.appendChild(svgLayer);
@@ -20,27 +20,27 @@ function renderSanctuaryScene(container, frame) {
     const gridLayer = document.createElement('div');
     gridLayer.className = 'sanctuary-grid';
     
-    // 4. Lógica de Ocupação e Arestas
+    // Lógica de Ocupação e Arestas
     const nodeOccupancy = {}; 
     const itemsOnFloor = {}; 
     let edgesToDraw = [];
 
-    // A. Identifica quem estamos assistindo (Câmera)
+    // Identifica quem estamos assistindo (Câmera)
     const cameraAgentId = window.selectedAgentId || Object.keys(frame.agents)[0];
     const cameraAgent = frame.agents[cameraAgentId];
 
-    // B. Define quem deve aparecer (Eu + Meu Oponente)
+    // Define quem deve aparecer (Eu + Meu Oponente)
     const visibleAgentsIds = [cameraAgentId];
     if (cameraAgent && cameraAgent.opponent_id) {
         visibleAgentsIds.push(cameraAgent.opponent_id);
     }
 
-    // C. Pega o mapa da Arena (usando a visão da câmera)
+    // Pega o mapa da Arena (usando a visão da câmera)
     if (cameraAgent && cameraAgent.arena_edges) {
         edgesToDraw = cameraAgent.arena_edges;
     }
 
-    // D. Processa apenas os agentes visíveis
+    // Processa apenas os agentes visíveis
     visibleAgentsIds.forEach(agentId => {
         const ag = frame.agents[agentId];
         
@@ -64,14 +64,14 @@ function renderSanctuaryScene(container, frame) {
             }
         }
     });
-    // 5. Desenha Linhas (Baseado no JSON real do mapa)
+    // Desenha Linhas (Baseado no JSON real do mapa)
     edgesToDraw.forEach(edge => {
         const [u, v] = edge;
         const line = createSvgLine(u, v);
         svgLayer.appendChild(line);
     });
 
-    // 6. Desenha Nós (0 a 8)
+    // Desenha Nós (0 a 8)
     for (let i = 0; i < 9; i++) {
         const nodeDiv = document.createElement('div');
         nodeDiv.className = `k-node`;

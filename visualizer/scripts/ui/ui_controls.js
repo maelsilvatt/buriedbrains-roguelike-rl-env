@@ -1,6 +1,6 @@
 // scripts/ui_controls.js
 const PlaybackManager = {
-    // --- ESTADO ---
+    // Estado
     currentFrame: 0,
     isPlaying: false,
     playInterval: null,
@@ -12,7 +12,7 @@ const PlaybackManager = {
     data: [],
     renderFn: null, // Será a função renderFrame do main.js
 
-    // --- INICIALIZAÇÃO ---
+    // Inicialização
     init: function(data, renderFunction) {
         this.data = data;
         this.renderFn = renderFunction;
@@ -32,7 +32,7 @@ const PlaybackManager = {
         this.render();
     },
 
-    // --- LÓGICA DE CONTROLE ---
+    // Controle de velocidade
     getDelay: function() {
         return this.baseDelay / this.SPEEDS[this.speedIndex];
     },
@@ -75,7 +75,7 @@ const PlaybackManager = {
         }
     },
 
-    // --- RENDERIZAÇÃO INTERNA ---
+    // Renderização interna
     render: function() {
         // Atualiza a barra visualmente
         document.getElementById('timeline').value = this.currentFrame;
@@ -83,7 +83,7 @@ const PlaybackManager = {
         if (this.renderFn) this.renderFn(this.currentFrame);
     },
 
-    // --- LISTENERS ---
+    // Gatilhos
     setupListeners: function() {        
         document.getElementById('btn-play').onclick = () => this.isPlaying ? this.pause() : this.play();
         document.getElementById('btn-pause').onclick = () => this.pause();

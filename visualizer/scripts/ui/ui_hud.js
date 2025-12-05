@@ -133,7 +133,7 @@ function updateLogs(logs) {
     container.scrollTop = container.scrollHeight;
 }
 
-// --- CONTROLE DE CÂMERA ---
+// Controle de câmera
 function setupCameraControl(data, onCameraChange) {
     const select = document.getElementById('agent-select');
     if (!select || !data || data.length === 0) return null;

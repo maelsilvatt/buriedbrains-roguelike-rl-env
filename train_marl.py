@@ -87,7 +87,7 @@ def main():
 
     # Validação básica
     if not args.resume_path and not args.pretrained_path:
-        raise ValueError("Você deve fornecer --pretrained_path (começar novo) OU --resume_path (continuar).")
+        print("\nAVISO: Nenhum caminho fornecido. Iniciando treino LSTM DO ZERO (Scratch).")
 
     # Configuração
     base_logdir = "logs_marl"
@@ -185,10 +185,7 @@ def main():
         model.n_steps = lstm_params['n_steps']
         model.batch_size = lstm_params['batch_size']
         model.ent_coef = lstm_params['ent_coef']
-    else:
-        if not args.pretrained_path:
-            raise ValueError("Para iniciar um treino novo você deve fornecer --pretrained_path.")
-
+    else:                        
         print(f"\nIniciando novo treino MARL")
 
         model = RecurrentPPO(
@@ -200,8 +197,13 @@ def main():
             **lstm_params
         )
 
-        # Transferência dos pesos PvE → PvP Social
-        transfer_weights(args.pretrained_path, model, verbose=1)
+        # Transfer Learning é opcional
+        if args.pretrained_path:
+            # Se forneceu caminho, transfere os pesos (Caminho Rápido/Expert)
+            transfer_weights(args.pretrained_path, model, verbose=1)
+        else:
+            # Se não forneceu, treina do zero (Grupo de Controle / Tabula Rasa)
+            print("\nTreinando LSTM do zero (sem Transfer Learning)")            
 
     # Callbacks
     save_freq = max(1, 200_000 // env.num_envs) # Como estamos usando múltiplos ambientes paralelos

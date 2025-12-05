@@ -4,7 +4,7 @@ const RECORD_PATH = 'recordings/sanctum_floor_25_expert_recording.json';
 window.replayData = [];
 let selectedAgentId = null;
 
-// --- RENDERIZADOR MASTER ---
+// Render mestre
 function renderFrame(index) {
     if (!window.replayData || index >= window.replayData.length) return;
     
@@ -14,7 +14,7 @@ function renderFrame(index) {
 
     if (!agent) return;
 
-    // 1. Atualiza HUD e UI
+    // Atualiza HUD e UI
     document.getElementById('floor-display').innerText = `FLOOR ${agent.floor}`;
     document.getElementById('turn-display').innerText = frame.turn;
     
@@ -22,7 +22,7 @@ function renderFrame(index) {
     drawKarma(agent.karma);                 
     updateLogs(agent.logs);                 
 
-    // 2. Atualiza Palco (Roteador de Cenas)
+    // Atualiza Palco (Roteador de Cenas)
     const stage = document.getElementById('stage');
     
     if (agent.scene_mode === "WAITING") {
@@ -35,11 +35,11 @@ function renderFrame(index) {
         renderExplorationScene(stage, agent, index); 
     }
 
-    // 3. Atualiza Brain
+    // Atualiza a rede neural
     renderNeuralNet(agent);
 }
 
-// --- BOOT ---
+// Inicialização
 function initSystem(data) {
     window.replayData = data;
     console.log(`Dados carregados: ${data.length} frames.`);
