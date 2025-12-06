@@ -1,5 +1,6 @@
 # buriedbrains/agent_rules.py
 from typing import Dict, Any
+from . import combat 
 
 def create_initial_agent(name: str = "Player") -> Dict[str, Any]:
     """
@@ -53,14 +54,12 @@ def check_for_level_up(agent: Dict[str, Any]) -> bool:
 
     return leveled_up
 
-def instantiate_enemy(enemy_name: str, agent_current_floor: int, catalogs: Dict[str, Any]) -> Dict[str, Any]:
+def instantiate_enemy(enemy_name: str, agent_current_floor: int, catalogs: Dict[str, Any], room_effect_name: str = None) -> Dict[str, Any]:
     """
     Cria uma instância de um inimigo com stats escalonados pela profundidade do andar.
     Usa as fórmulas de balanceamento da Fase 2 (Hardcore Mode).
-    """
-    # Importação local para evitar ciclo se 'combat' importar 'agent_rules'
-    from . import combat 
-
+    """    
+    
     enemies_catalog = catalogs.get('enemies', {})
     enemy_base = enemies_catalog.get(enemy_name)
     
@@ -81,7 +80,8 @@ def instantiate_enemy(enemy_name: str, agent_current_floor: int, catalogs: Dict[
         equipment=enemy_base.get('equipment', []),
         skills=enemy_base.get('skills', []),
         team=2,
-        catalogs=catalogs
+        catalogs=catalogs,
+        room_effect_name=room_effect_name
     )
     
     # Escalonamento de Dano (12.5% por andar efetivo)

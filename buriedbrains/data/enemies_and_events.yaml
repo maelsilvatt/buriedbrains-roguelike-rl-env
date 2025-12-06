@@ -231,7 +231,7 @@ pools:
       cost: 25 
       weight: 15 
       tags: [Elite, Thermal, Area_Damage] 
-      hp: 320
+      hp: 220 # Nerf: -100 HP (era 320)
       skills: ['Heavy Blow', 'Flame Burst', 'Earthquake', 'Wait']
       equipment: ['Warhammer'] 
       exp_yield: 90
@@ -242,7 +242,7 @@ pools:
       cost: 35 
       weight: 5 # Peso baixo, deve aparecer mais tarde
       tags: [Boss, Beast, Aggressive, Heavy] 
-      hp: 400 # Era 550
+      hp: 250 # Nerf: -150 HP (era 400)
       skills: ['Heavy Blow', 'Berserker Rage', 'Wait'] # Berserker Rage CD original: 5
       # Mudar skill Berserker Rage para ter CD 6 (no skill_catalog.yaml ou aqui)
       equipment: ['Ragnar’s Wrath'] 
@@ -322,8 +322,7 @@ pools:
       exp_yield: 480
       min_floor: 400
 
-  events:
-    # --- Recompensas ---
+  events: # Mantido.    
     Treasure:      # Baú comum, mais frequente das recompensas
       cost: -5
       weight: 60   # Aumentado para ser a recompensa padrão
@@ -338,15 +337,14 @@ pools:
       cost: -10
       weight: 25   # Peso intermediário, mais comum que Morbid Treasure
       tags: [Reward, Healing, Sanctuary]
-
-    # --- Vazio ---
-    None:          # O resultado mais provável
+    
+    None:          
       cost: 0
       weight: 100  # Ajustado para balancear (Total = 60+15+25+100 = 200)
       tags: []
 
-  room_effects:
-    # --- Efeitos Negativos ---
+  room_effects: 
+    # Efeitos Negativos:
     'Slow Terrain': # (REFEITO - Aplica Slow real, menos comum)
       cost: 5
       weight: 20 # (Reduzido de 30)
@@ -368,8 +366,7 @@ pools:
       description: "A neblina densa aplica 'Blind' em todos no início do combate."
       tags: [Visibility, Debuff]
       effect_to_apply: Blind
-
-    # --- NOVO Efeito Negativo Temático ---
+    
     'Weakening Field':
       cost: 6
       weight: 10 # Raro
@@ -377,7 +374,7 @@ pools:
       tags: [Cursed, Debuff, Healing_Debuff]
       # Implementação: No combate, verificar se esse efeito está ativo e reduzir curas
 
-    # --- Efeitos Positivos ---
+    # Efeitos Positivos:
     'Evasion Zone': # (Mais Comum)
       cost: -4
       weight: 30 # (Aumentado de 25)
@@ -408,75 +405,9 @@ pools:
       cost: -2 # Ligeiramente positivo por permitir estratégias de burst
       weight: 10 # Raro
       description: "A energia arcana no ar aumenta todo o dano mágico causado e recebido em 25%."
-      tags: [Magical, Risk_Reward]
-      # Implementação: No combate, verificar se efeito está ativo e modificar dano mágico
+      tags: [Magical, Risk_Reward]  
 
-    # --- Vazio ---
     None:
       cost: 0
       weight: 115 # (Aumentado de 100) - Compensa as adições e ajustes
       tags: []
-
-conditional_rules:
-  # --- SINERGIAS TEMÁTICAS FORTES (Mantidas ou Levemente Ajustadas) ---
-  # Chefes e Elites moldam o ambiente
-  - if_tag: Boss   # Bosses ainda atraem eventos mórbidos/perigosos
-    then_tag: Morbid
-    multiplier: 2.5 # (Reduzido de 3.0)
-  - if_tag: Elite  # Elites ainda aparecem mais em terrenos táticos
-    then_tag: Terrain
-    multiplier: 2.0 # (Reduzido de 2.5)
-
-  # Sinergias Elementais/Tipo
-  - if_tag: Thermal # Sinergia forte mantida, mas menos extrema
-    then_tag: Heat
-    multiplier: 6.0 # (Reduzido de 10.0)
-  - if_tag: Heat    # Sinergia inversa também reduzida
-    then_tag: Thermal
-    multiplier: 3.0 # (Reduzido de 4.0)
-  - if_tag: Undead  # Mortos-vivos e maldições continuam ligados
-    then_tag: Cursed
-    multiplier: 4.0
-  - if_tag: Cursed  # Maldições e ambientes mórbidos também
-    then_tag: Morbid
-    multiplier: 3.5
-  - if_tag: Poison  # Veneno ainda prefere baixa visibilidade
-    then_tag: Visibility
-    multiplier: 2.0
-  - if_tag: Stealth # Furtividade também prefere baixa visibilidade
-    then_tag: Visibility
-    multiplier: 1.8
-  - if_tag: Illusion # Ilusões também se beneficiam da baixa visibilidade
-    then_tag: Visibility
-    multiplier: 2.5
-
-  # Sinergias Comportamentais/Táticas
-  - if_tag: Beast   # Bestas ainda podem emboscar
-    then_tag: Surprise_Attack
-    multiplier: 3.0
-  - if_tag: Human   # Humanos também podem emboscar
-    then_tag: Surprise_Attack
-    multiplier: 2.2
-  - if_tag: Aggressive # Agressivos aparecem mais em terrenos abertos/simples (Invertido!)
-    then_tag: Terrain
-    multiplier: 0.7 # (Invertido de 1.5 - faz mais sentido tático?)
-  - if_tag: Control # Habilidades de controle combinam com efeitos de sala de Debuff
-    then_tag: Debuff
-    multiplier: 2.5 # (Levemente reduzido de 3.0)
-
-  # --- SINERGIAS POSITIVAS / ANTI-SINERGIAS (Mantidas) ---
-  - if_tag: Sanctuary # Lugares sagrados curam
-    then_tag: Healing
-    multiplier: 5.0
-  - if_tag: Sanctuary # Lugares sagrados evitam perigos
-    then_tag: Hazard
-    multiplier: 0.1
-  - if_tag: Sanctuary # Lugares sagrados repelem mortos-vivos
-    then_tag: Undead
-    multiplier: 0.05
-  - if_tag: Healing  # Onde há cura, há menos perigo direto
-    then_tag: Hazard
-    multiplier: 0.3
-  - if_tag: Poison   # Veneno e cura não combinam
-    then_tag: Healing
-    multiplier: 0.2

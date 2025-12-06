@@ -16,6 +16,7 @@ from . import map_generation
 from . import reputation
 from . import skill_encoder
 from . import item_encoder
+from . import effect_encoder
 from .gerador_nomes import GeradorNomes
 
 class BuriedBrainsEnv(gym.Env):
@@ -64,6 +65,9 @@ class BuriedBrainsEnv(gym.Env):
 
         # Instancia o encoder de itens
         self.item_encoder = item_encoder.ItemEncoder()
+
+        # Instancia o encoder de efeitos de sala
+        self.effect_encoder = effect_encoder.EffectEncoder()
 
         # Parâmetros globais
         self.max_episode_steps = max_episode_steps
@@ -145,24 +149,27 @@ class BuriedBrainsEnv(gym.Env):
         #    58: Other Dropped?
         #    59: In PvP Combat?
         #
-        # 5. BLOCO MOVIMENTO (60-75) [16 Estados]
-        #    60-75: 4 Vizinhos * 4 Features [Valid, Enemy, Reward, Danger]
+        # 5. BLOCO MOVIMENTO & AMBIENTE (60-111) [52 Estados]
+        #    Para cada vizinho (N, S, L, O) -> 13 Features:
+        #    [0-3]: Básico [Valid, Enemy, Reward, Danger]
+        #    [4-12]: Efeito de Sala (One-Hot Encoding de 9 tipos)
         #
-        # 6. BLOCO FINAL (76-81) [6 Estados]
-        #    76: Self Weapon Rarity
-        #    77: Self Armor Rarity
-        #    78: Other Gear Score
-        #    79: Other Just Dropped?
-        #    80: Other Skipped Attack?
-        #    81: Door Open?
+        # 6. BLOCO FINAL (112-117) [6 Estados]
+        #    (Deslocado de 76 para 112)
+        #    112: Self Weapon Rarity
+        #    113: Self Armor Rarity
+        #    114: Other Gear Score
+        #    115: Other Just Dropped?
+        #    116: Other Skipped Attack?
+        #    117: Door Open?
         #
-        # 7. BLOCO DETALHADO DE ITENS (82-135) [3 Slots * 18 Features]
-        #    Permite à IA entender sinergias (ex: Arma de Veneno + Skill de DoT).
-        #    Cada slot tem 18 floats: [Stats(5) + Tipo(3) + Tags de Efeito(10)]
-        #    82-99:   Weapon Embedding
-        #    100-117: Armor Embedding
-        #    118-135: Artifact Embedding        
-        OBS_SHAPE = (136,)
+        # 7. BLOCO DETALHADO DE ITENS (118-171) [54 Estados]
+        #    (Deslocado de 82 para 118)
+        #    3 Slots * 18 Features
+        #    118-135: Weapon Embedding
+        #    136-153: Armor Embedding
+        #    154-171: Artifact Embedding      
+        OBS_SHAPE = (172,)
 
         self.action_space = spaces.Dict({
             agent_id: spaces.Discrete(ACTION_SHAPE) for agent_id in self.agent_ids
@@ -403,27 +410,35 @@ class BuriedBrainsEnv(gym.Env):
         if agent_id in self.pvp_sessions:
             obs[idx_soc + 9] = 1.0
 
-        # Bloco Movimento (60-75) [16 slots]
+        # Bloco Movimento (60-75)
         idx_mov = 60
-        for i in range(self.MAX_NEIGHBORS):
-            curr_idx = idx_mov + (i * 4)
-            if i < len(neighbors):
-                nid = neighbors[i]
-                if current_graph_to_use.has_node(nid):
-                    n_content = current_graph_to_use.nodes[nid].get('content', {})
+        for i in range(self.MAX_NEIGHBORS):            
+            curr_idx = idx_mov + (i * 13)
+            
+            # Preenche com zeros/default primeiro pra evitar lixo            
+            obs[curr_idx : curr_idx + 13] = 0.0
+
+            if i < len(neighbors) and current_graph_to_use:
+                neighbor_node_id = neighbors[i]
+                
+                # Verifica existência
+                if current_graph_to_use.has_node(neighbor_node_id):
+                    n_content = current_graph_to_use.nodes[neighbor_node_id].get('content', {})
                     
-                    obs[curr_idx + 0] = 1.0 # Valido
+                    # Features básicas
+                    # Sala válida?
+                    obs[curr_idx + 0] = 1.0 
                     
-                    # Inimigo/Oponente
-                    has_opp = (other_agent_id and self.current_nodes.get(other_agent_id) == nid)
+                    # Inimigo
+                    has_opp = (other_agent_id and self.current_nodes.get(other_agent_id) == neighbor_node_id)
                     if n_content.get('enemies') or has_opp:
                         obs[curr_idx + 1] = 1.0
                         
                     # Reward
                     if n_content.get('items') or any(e in n_content.get('events', []) for e in ['Treasure', 'Morbid Treasure']):
                          obs[curr_idx + 2] = 1.0
-                    if is_in_arena and current_graph_to_use.nodes[nid].get('is_exit') and current_graph_to_use.graph.get('meet_occurred'):
-                         obs[curr_idx + 2] = 1.0
+                    if is_in_arena and current_graph_to_use.nodes[neighbor_node_id].get('is_exit') and current_graph_to_use.graph.get('meet_occurred'):
+                         obs[curr_idx + 2] = 1.0 # Saída Destrancada conta como Reward
                          
                     # Danger Tier
                     d_level = 0.0
@@ -435,20 +450,29 @@ class BuriedBrainsEnv(gym.Env):
                         else: d_level = 0.33
                     elif has_opp:
                         d_level = 0.66
-                    
                     obs[curr_idx + 3] = d_level
 
-        # Bloco Final (76-81)
-        idx_end = 76
+                    # Features Ambientais
+                    # Pega o efeito da sala vizinha e encoda
+                    n_effects = n_content.get('room_effects', [])
+                    eff_name = n_effects[0] if n_effects else 'None'
+                    
+                    eff_vec = self.effect_encoder.encode(eff_name) # Retorna vetor de tamanho 9
+                    
+                    # Injeta nos slots 4 a 12 deste vizinho
+                    obs[curr_idx + 4 : curr_idx + 13] = eff_vec
         
-        # Self Gear (76, 77)
+        # BLOCO FINAL (Deslocado para 112-117)                
+        idx_end = 112
+        
+        # Self Gear
         w = agent['equipment'].get('Weapon')
         a = agent['equipment'].get('Armor')
         obs[idx_end + 0] = self.rarity_map.get(self.catalogs['equipment'][w].get('rarity'), 0.0) if w else 0.0
         obs[idx_end + 1] = self.rarity_map.get(self.catalogs['equipment'][a].get('rarity'), 0.0) if a else 0.0
         
-        # Outros Sociais - Gear Score (78)
-        if other_agent_id:                     
+        # Other Gear Score
+        if other_agent_id:
             other_eq = self.agent_states[other_agent_id]['equipment']
             total_rarity = 0.0
             count = 0
@@ -458,49 +482,31 @@ class BuriedBrainsEnv(gym.Env):
                     rst = self.catalogs['equipment'].get(it, {}).get('rarity')
                     total_rarity += self.rarity_map.get(rst, 0.0)
                     count += 1
-            if count > 0:                
+            if count > 0:
                 obs[idx_end + 2] = total_rarity / 2.0 
         
-        # Outros Sociais - Flags (79, 80)
+        # Flags Sociais
         if other_agent_id:
-             if self.social_flags[other_agent_id].get('just_dropped'):                 
+             if self.social_flags[other_agent_id].get('just_dropped'):
                  obs[idx_end + 3] = 1.0
-                 
              if self.social_flags[other_agent_id].get('skipped_attack'):
-                 
                  obs[idx_end + 4] = 1.0             
         
-        # Porta (81)
+        # Porta
         if is_in_arena and current_graph_to_use.graph.get('meet_occurred'):
             obs[idx_end + 5] = 1.0 
-                    
-        # BLOCO DE EQUIPAMENTOS DETALHADOS (Índices 82 a 135)
-        # [3 Slots * 18 Features] -> Weapon, Armor, Artifact
         
-        # Pega os nomes dos itens equipados
-        w_name = agent['equipment'].get('Weapon')
-        a_name = agent['equipment'].get('Armor')
-        art_name = agent['equipment'].get('Artifact')
+        # Bloco de itens (118 - 172)
+        # 118 = Weapon, 136 = Armor, 154 = Artifact. Fim = 172.
         
-        # Pega os dados do catálogo
-        w_data = self.catalogs['equipment'].get(w_name, {})
-        a_data = self.catalogs['equipment'].get(a_name, {})
-        art_data = self.catalogs['equipment'].get(art_name, {})
+        w_data = self.catalogs['equipment'].get(w, {})
+        a_data = self.catalogs['equipment'].get(a, {})
+        art = agent['equipment'].get('Artifact')
+        art_data = self.catalogs['equipment'].get(art, {})
         
-        # Gera os vetores (Embeddings)
-        w_vec = self.item_encoder.encode(w_data)
-        a_vec = self.item_encoder.encode(a_data)
-        art_vec = self.item_encoder.encode(art_data)
-        
-        # Injeta no vetor de observação (concatenando)
-        # Slot Weapon: 82 a 99
-        obs[82:100] = w_vec
-        
-        # Slot Armor: 100 a 117
-        obs[100:118] = a_vec
-        
-        # Slot Artifact: 118 a 135
-        obs[118:136] = art_vec
+        obs[118:136] = self.item_encoder.encode(w_data)
+        obs[136:154] = self.item_encoder.encode(a_data)
+        obs[154:172] = self.item_encoder.encode(art_data)        
                 
         return obs
     
@@ -913,6 +919,7 @@ class BuriedBrainsEnv(gym.Env):
         """
         Log colorido no terminal, mais fácil de ler.
         Categorias são detectadas automaticamente: AÇÃO, PVP, KARMA, WARN, ERRO, etc.
+        Além disso, nomes de itens e raridades são destacados com cores específicas.
         """
         # ANSI Color Codes
         COLORS = {
@@ -971,6 +978,7 @@ class BuriedBrainsEnv(gym.Env):
             self.current_episode_logs[agent_id] = []
 
         self.current_episode_logs[agent_id].append(message + "\n")
+
 
     def _transition_to_arena(self, agent_id: str):
         """
@@ -1086,6 +1094,11 @@ class BuriedBrainsEnv(gym.Env):
         # 3. Verifica Morte do Agente
         if self.agent_states[agent_id]['hp'] <= 0:                        
             agent_reward = -300 
+
+            # Captura o vetor de observação do estado de morte (antes de virar Nível 1)
+            # A rede neural precisa ver "zeros" na vida e a sala onde morreu.
+            terminal_obs = self._get_observation(agent_id)
+            infos[agent_id]['terminal_observation'] = terminal_obs
             
             cause = "Dano Ambiental"
             if self.combat_states.get(agent_id):
@@ -1860,54 +1873,54 @@ class BuriedBrainsEnv(gym.Env):
     def _start_combat(self, agent_id: str, enemy_name: str):
         """
         Inicializa o estado de combate PvE para um agente específico.
-        Cria cópias 'combatant' do agente e do inimigo.
+        Cria cópias 'combatant' do agente e do inimigo, aplicando Efeitos de Sala.
         """
         
-        # Pega o estado mestre do agente
+        # Pega o estado mestre do agente e localização
         agent_main_state = self.agent_states[agent_id]
-        
-        # Inicializa o 'combatant' do AGENTE        
+        current_node = self.current_nodes[agent_id]
+                
+        # Recupera os dados da sala atual no grafo PvE
+        room_data = self.graphs[agent_id].nodes[current_node]
+        room_effects = room_data.get('content', {}).get('room_effects', [])
+        active_effect = room_effects[0] if room_effects else None
+
+        # Inicializa o agente
         agent_combatant = combat.initialize_combatant(
             name=self.agent_names[agent_id], 
             hp=agent_main_state['hp'], 
             equipment=list(agent_main_state.get('equipment', {}).values()), 
             skills=agent_main_state['active_skills'], 
             team=1, 
-            catalogs=self.catalogs
+            catalogs=self.catalogs,
+            room_effect_name=active_effect 
         )
-        # Copia os cooldowns atuais        
+        
+        # Copia e reseta cooldowns
         current_skills = agent_main_state['active_skills']
         default_cooldowns = {s: 0 for s in current_skills}
-
         agent_combatant['cooldowns'] = agent_main_state.get('cooldowns', default_cooldowns).copy()
-
-        # Inicializa o 'combatant' do INIMIGO        
+        
+        # Inicializa o inimigo
         enemy_combatant = agent_rules.instantiate_enemy(
-            enemy_name=enemy_name,
-            agent_current_floor=self.current_floors[agent_id],
-            catalogs=self.catalogs
+             enemy_name=enemy_name,
+             agent_current_floor=self.current_floors[agent_id],
+             catalogs=self.catalogs,
+             room_effect_name=active_effect 
         )
 
-        # Fallback de Segurança (Caso o nome do inimigo esteja errado no YAML)
-        if enemy_combatant is None:
-            self._log(agent_id, f"[ERRO] Inimigo '{enemy_name}' não encontrado ou inválido. Gerando Dummy.")
-            # Cria um boneco de treino fraco para não quebrar o jogo
-            enemy_combatant = combat.initialize_combatant(
-                name="Dummy", hp=50, equipment=[], skills=[], team=2, catalogs=self.catalogs
-            )
-
-        # 3. Armazena o estado de combate
+        # Armazena o estado de combate
         self.combat_states[agent_id] = {
             'agent': agent_combatant,
             'enemy': enemy_combatant,
             'start_step': self.current_step
         }
         
-        # Loga o início
         self._log(
             agent_id,
             f"[COMBATE] {self.agent_names[agent_id]} (Nível {agent_main_state['level']}, HP {agent_combatant['hp']}) "
-            f"vs. {enemy_combatant['name']} (Nível {enemy_combatant['level']}, HP {enemy_combatant['hp']})"
+            f"vs. {enemy_combatant['name']} (Nível {enemy_combatant['level']}, HP {enemy_combatant['hp']}) "
+            f"[Efeito: {active_effect if active_effect else 'Nenhum'}]"
         )
 
     def _initiate_pvp_combat(self, attacker_id: str, defender_id: str):
@@ -1917,6 +1930,13 @@ class BuriedBrainsEnv(gym.Env):
         # Pega os estados mestres
         attacker_main_state = self.agent_states[attacker_id]
         defender_main_state = self.agent_states[defender_id]
+
+        # Pega o efeito da sala atual
+        current_node = self.current_nodes[attacker_id]        
+        current_arena = self.arena_instances[attacker_id]
+        room_data = current_arena.nodes[current_node]
+        room_effects = room_data.get('content', {}).get('room_effects', [])
+        active_effect = room_effects[0] if room_effects else None
         
         # Atacante: Cria defaults baseados nas skills atuais
         att_skills = attacker_main_state['active_skills']
@@ -1927,7 +1947,9 @@ class BuriedBrainsEnv(gym.Env):
             hp=attacker_main_state['hp'], 
             equipment=list(attacker_main_state.get('equipment', {}).values()), 
             skills=att_skills,
-            team=1, catalogs=self.catalogs
+            team=1, 
+            catalogs=self.catalogs,
+            room_effect_name=active_effect
         )
         # Carrega cooldowns salvos ou usa o default zerado
         attacker_combatant['cooldowns'] = attacker_main_state.get('cooldowns', att_default_cd).copy()
@@ -1941,7 +1963,9 @@ class BuriedBrainsEnv(gym.Env):
             hp=defender_main_state['hp'], 
             equipment=list(defender_main_state.get('equipment', {}).values()), 
             skills=def_skills,
-            team=2, catalogs=self.catalogs
+            team=2, 
+            catalogs=self.catalogs,
+            room_effect_name=active_effect
         )
         # Carrega cooldowns salvos ou usa o default zerado
         defender_combatant['cooldowns'] = defender_main_state.get('cooldowns', def_default_cd).copy()

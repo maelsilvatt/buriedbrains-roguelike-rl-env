@@ -80,7 +80,9 @@ class SharedPolicyVecEnv(VecEnv):
             # Info extra necessária para o SB3
             info = info_dict[agent_id].copy()
             if is_done:
-                info['terminal_observation'] = obs_dict[agent_id]
+                # Só sobrescreve se o env.py NÃO tiver mandado a observação correta.
+                if 'terminal_observation' not in info:
+                    info['terminal_observation'] = obs_dict[agent_id] # Fallback (comportamento antigo)
             infos_list.append(info)
 
         self.last_obs = np.stack(obs_list)

@@ -112,47 +112,21 @@ def main():
 
     # Ajustes feitos baseados no número de agentes
     na = args.num_agents
-    
-    # Até 16 agentes:
-    if na <= 16:
-        lstm_hidden_size = 256  # Memória longa 
-        n_steps = 512           # Trajetórias longas antes de resetar o buffer
-        batch_size = 256        # Pequeno o suficiente para updates frequentes
-        net_arch = {"pi": [256, 256], "vf": [256, 256]} 
-        enable_critic_lstm = True # Ajuda a estabilizar a Value Function
-
-    # "Sweet Spot" - 32 a 64
-    elif na <= 64:
-        lstm_hidden_size = 128
-        n_steps = 256           # Buffer Total = 32*256 = 8192
-        batch_size = 1024       
-        net_arch = {"pi": [512, 512], "vf": [512, 512]}
-        enable_critic_lstm = False # Desliga para economizar ~30% de VRAM/Tempo
-
-    # Stress Test - 128+
-    # Foco em Vazão (Throughput). Não pode ter n_steps alto senão estoura a RAM (CPU).
-    elif na <= 512:
-        net_arch = {"pi": [512, 512], "vf": [512, 512]}
-        lstm_hidden_size = 512
-        enable_critic_lstm = False 
-        
-        n_steps = 128          # Buffer Total = 16.384
-        batch_size = 8192      # 2 Updates por Epoch
 
     lstm_params = {
-        "learning_rate": 0.0001, # Seguro e estável
-        "n_steps": n_steps,
-        "batch_size": batch_size,
-        "n_epochs": 10,          # 10 é suficiente para batches grandes, evita travar o PC
-        "gamma": 0.99,           # 0.99 valoriza mais o futuro
+        "learning_rate": 3e-4,          # 0.0001 é seguro, mas 3e-4 costuma convergir melhor em PPO
+        "n_steps": 512,                 # Horizonte longo essencial para a mecânica de paz
+        "batch_size": 2048,             # n_steps * num_agents // n_minibatches
+        "n_epochs": 10,
+        "gamma": 0.995,                 # Aumente Gamma! 0.99 pode ser míope para recompensas sociais longas.
         "gae_lambda": 0.95,
-        "ent_coef": 0.05,        # Alta entropia para sair do Mínimo Local de Traição
+        "ent_coef": 0.03,               # Levemente reduzido, mas ainda alto.
         "vf_coef": 0.5,
         "max_grad_norm": 0.5,
         "policy_kwargs": {
-            "net_arch": net_arch,
-            "lstm_hidden_size": lstm_hidden_size,
-            "enable_critic_lstm": enable_critic_lstm
+            "net_arch": dict(pi=[256, 256], vf=[256, 256]), # 512 é overkill para obs=172 se usar LSTM
+            "lstm_hidden_size": 256,    # Memória suficiente para o contexto social
+            "enable_critic_lstm": False 
         }
     }
 

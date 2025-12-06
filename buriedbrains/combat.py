@@ -1,12 +1,7 @@
 # buriedbrains/combat.py
-import numpy as np
-import copy 
 import random
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional      
 
-# NOTE: Assumes 'catalogs' dictionary passed in contains keys:
-# 'skills', 'equipment', 'effects', 'room_effects'
-# matching the YAML structures.
 
 def initialize_combatant(
     name: str,
