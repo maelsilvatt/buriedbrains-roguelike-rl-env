@@ -5,6 +5,9 @@ def create_initial_agent(name: str = "Player") -> Dict[str, Any]:
     """
     Cria e retorna o dicionário de estado para um agente iniciante.
     """
+
+    starting_skills = ["Quick Strike", "Heavy Blow", "Stone Shield", "Wait"]
+
     agent = {
         'name': name,
         'level': 1,
@@ -23,7 +26,8 @@ def create_initial_agent(name: str = "Player") -> Dict[str, Any]:
         'exp_to_level_up': 30,
         'equipment': {'Artifact': 'Amulet of Vigor'
         },        
-        'skills': ["Quick Strike", "Heavy Blow", "Stone Shield", "Wait"],
+        'active_skills': starting_skills,
+        'cooldowns': {skill: 0 for skill in starting_skills}
     }
     return agent
 

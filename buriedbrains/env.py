@@ -15,6 +15,7 @@ from . import content_generation
 from . import map_generation
 from . import reputation
 from . import skill_encoder
+from . import item_encoder
 from .gerador_nomes import GeradorNomes
 
 class BuriedBrainsEnv(gym.Env):
@@ -60,6 +61,9 @@ class BuriedBrainsEnv(gym.Env):
 
         # Instancia o encoder de skills
         self.skill_encoder = skill_encoder.SkillEncoder()
+
+        # Instancia o encoder de itens
+        self.item_encoder = item_encoder.ItemEncoder()
 
         # Parâmetros globais
         self.max_episode_steps = max_episode_steps
@@ -110,7 +114,7 @@ class BuriedBrainsEnv(gym.Env):
         # 9: Mover Vizinho 3
         ACTION_SHAPE = 10 
                 
-        # DEFINIÇÃO DO ESPAÇO DE OBSERVAÇÃO (OBS_SHAPE = 82)        
+        # DEFINIÇÃO DO ESPAÇO DE OBSERVAÇÃO (OBS_SHAPE = 136)        
         #
         # 1. BLOCO DE SKILLS (0-39) [4 Slots * 10 Features]
         #    Cada slot tem: [9 features do Encoder] + [1 Cooldown Atual]
@@ -150,9 +154,15 @@ class BuriedBrainsEnv(gym.Env):
         #    78: Other Gear Score
         #    79: Other Just Dropped?
         #    80: Other Skipped Attack?
-        #    81: Door Open?        
-        
-        OBS_SHAPE = (82,)
+        #    81: Door Open?
+        #
+        # 7. BLOCO DETALHADO DE ITENS (82-135) [3 Slots * 18 Features]
+        #    Permite à IA entender sinergias (ex: Arma de Veneno + Skill de DoT).
+        #    Cada slot tem 18 floats: [Stats(5) + Tipo(3) + Tags de Efeito(10)]
+        #    82-99:   Weapon Embedding
+        #    100-117: Armor Embedding
+        #    118-135: Artifact Embedding        
+        OBS_SHAPE = (136,)
 
         self.action_space = spaces.Dict({
             agent_id: spaces.Discrete(ACTION_SHAPE) for agent_id in self.agent_ids
@@ -176,6 +186,7 @@ class BuriedBrainsEnv(gym.Env):
         self.last_milestone_floors = {}
         self.damage_dealt_this_episode = {}
         self.equipment_swaps_this_episode = {}
+        self.skill_upgrades_this_episode = {}
         self.death_cause = {}
         self.arena_encounters_this_episode = {}
         self.pvp_combats_this_episode = {}
@@ -268,9 +279,8 @@ class BuriedBrainsEnv(gym.Env):
 
     def _get_observation(self, agent_id: str) -> np.ndarray:
         """
-        Coleta e retorna a observação de 78 estados (46 antigos + 32 novos de skills).
-        """
-        # O shape deve ser (78,)
+        Coleta e retorna a observação de 136 estados
+        """        
         obs = np.full(self.observation_space[agent_id].shape, -1.0, dtype=np.float32) 
         
         if agent_id not in self.agent_states:
@@ -314,8 +324,7 @@ class BuriedBrainsEnv(gym.Env):
 
         # Vizinhos
         neighbors = []
-        if current_graph_to_use and current_node_id and current_graph_to_use.has_node(current_node_id):
-            # Usa .neighbors para grafos não direcionados (Arena) e direcionados (PvE - compatível)
+        if current_graph_to_use and current_node_id and current_graph_to_use.has_node(current_node_id):            
             try:
                 neighbors = list(current_graph_to_use.neighbors(current_node_id))
                 neighbors.sort() 
@@ -325,12 +334,12 @@ class BuriedBrainsEnv(gym.Env):
         room_content = current_graph_to_use.nodes[current_node_id].get('content', {}) if current_graph_to_use and current_node_id else {}
         pve_combat_state = self.combat_states.get(agent_id)
 
-        # --- Bloco Próprio (40-42) ---        
+        # Bloco Próprio (40-42)
         obs[40] = (agent['hp'] / agent['max_hp']) * 2 - 1 if agent['max_hp'] > 0 else -1.0
         obs[41] = (agent['level'] / self.max_level) * 2 - 1
         obs[42] = (agent['exp'] / agent['exp_to_level_up']) if agent['exp_to_level_up'] > 0 else 0.0        
 
-        # --- Bloco PvE (43-49) ---        
+        # Bloco PvE (43-49)        
         idx_pve = 43
         
         enemy_in_combat = pve_combat_state.get('enemy') if pve_combat_state else None
@@ -359,7 +368,7 @@ class BuriedBrainsEnv(gym.Env):
             obs[idx_pve + 5] = 1.0
             obs[idx_pve + 6] = best_wep_arm_rarity
 
-        # --- Bloco Social/PvP (50-59) ---
+        # Bloco Social/PvP (50-59)
         idx_soc = 50
         obs[idx_soc + 0] = 1.0 if is_in_arena else -1.0 # In Arena
         
@@ -394,7 +403,7 @@ class BuriedBrainsEnv(gym.Env):
         if agent_id in self.pvp_sessions:
             obs[idx_soc + 9] = 1.0
 
-        # --- Bloco Movimento (60-75) [16 slots] ---
+        # Bloco Movimento (60-75) [16 slots]
         idx_mov = 60
         for i in range(self.MAX_NEIGHBORS):
             curr_idx = idx_mov + (i * 4)
@@ -429,7 +438,7 @@ class BuriedBrainsEnv(gym.Env):
                     
                     obs[curr_idx + 3] = d_level
 
-        # --- Bloco Final (76-81) ---
+        # Bloco Final (76-81)
         idx_end = 76
         
         # Self Gear (76, 77)
@@ -464,7 +473,35 @@ class BuriedBrainsEnv(gym.Env):
         # Porta (81)
         if is_in_arena and current_graph_to_use.graph.get('meet_occurred'):
             obs[idx_end + 5] = 1.0 
-            
+                    
+        # BLOCO DE EQUIPAMENTOS DETALHADOS (Índices 82 a 135)
+        # [3 Slots * 18 Features] -> Weapon, Armor, Artifact
+        
+        # Pega os nomes dos itens equipados
+        w_name = agent['equipment'].get('Weapon')
+        a_name = agent['equipment'].get('Armor')
+        art_name = agent['equipment'].get('Artifact')
+        
+        # Pega os dados do catálogo
+        w_data = self.catalogs['equipment'].get(w_name, {})
+        a_data = self.catalogs['equipment'].get(a_name, {})
+        art_data = self.catalogs['equipment'].get(art_name, {})
+        
+        # Gera os vetores (Embeddings)
+        w_vec = self.item_encoder.encode(w_data)
+        a_vec = self.item_encoder.encode(a_data)
+        art_vec = self.item_encoder.encode(art_data)
+        
+        # Injeta no vetor de observação (concatenando)
+        # Slot Weapon: 82 a 99
+        obs[82:100] = w_vec
+        
+        # Slot Armor: 100 a 117
+        obs[100:118] = a_vec
+        
+        # Slot Artifact: 118 a 135
+        obs[118:136] = art_vec
+                
         return obs
     
     def reset(self, seed=None, options=None):
@@ -555,8 +592,8 @@ class BuriedBrainsEnv(gym.Env):
             self.agent_names[agent_id] = agent_name
             
             # Cria estado inicial
-            self.agent_states[agent_id] = agent_rules.create_initial_agent(agent_name)                         
-            
+            self.agent_states[agent_id] = agent_rules.create_initial_agent(agent_name)        
+
             # Inicializa métricas individuais
             self.current_episode_logs[agent_id] = []
             self.enemies_defeated_this_episode[agent_id] = 0
@@ -565,6 +602,7 @@ class BuriedBrainsEnv(gym.Env):
             self.combat_states[agent_id] = None
             self.damage_dealt_this_episode[agent_id] = 0.0
             self.equipment_swaps_this_episode[agent_id] = 0
+            self.skill_upgrades_this_episode[agent_id] = 0
             self.death_cause[agent_id] = "Sobreviveu (Time Limit)"
 
             self.arena_encounters_this_episode[agent_id] = 0
@@ -637,7 +675,7 @@ class BuriedBrainsEnv(gym.Env):
 
         # Ações 0-3 são skills de combate. Ações 4-9 são inválidas em combate.
         if 0 <= action <= 3: 
-            action_name = agent['active_skills'][action]
+            action_name = self.agent_states[agent_id]['active_skills'][action]
         else:
             # Ação é inválida DENTRO DO COMBATE (tentou mover, equipar, etc.)
             self.invalid_action_counts[agent_id] += 1
@@ -879,16 +917,17 @@ class BuriedBrainsEnv(gym.Env):
         # ANSI Color Codes
         COLORS = {
             "reset": "\033[0m",
-            "agent": "\033[96m",     # ciano
-            "action": "\033[92m",    # verde
-            "pvp": "\033[91m",       # vermelho
-            "karma_pos": "\033[92m", # verde
-            "karma_neg": "\033[91m", # vermelho
-            "karma_neu": "\033[93m", # amarelo
-            "warn": "\033[93m",      # amarelo
-            "error": "\033[91m",     # vermelho
-            "arena": "\033[95m",     # magenta
-            "map": "\033[94m",       # azul
+            "agent": "\033[96m",      # ciano
+            "action": "\033[92m",     # verde
+            "pvp": "\033[91m",        # vermelho
+            "karma_pos": "\033[92m",  # verde
+            "karma_neg": "\033[91m",  # vermelho
+            "karma_neu": "\033[93m",  # amarelo
+            "warn": "\033[93m",       # amarelo
+            "error": "\033[91m",      # vermelho
+            "arena": "\033[95m",      # magenta
+            "map": "\033[94m",        # azul
+            "upgrade": "\033[38;5;214m",  # laranja/dourado 
         }
 
         def colorize(text, color):
@@ -899,6 +938,8 @@ class BuriedBrainsEnv(gym.Env):
 
         if "[ERRO]" in msg_upper or "ERROR" in msg_upper:
             color = "error"
+        elif "UPGRADE" in msg_upper:
+            color = "upgrade"
         elif "[WARN]" in msg_upper:
             color = "warn"
         elif "[SOCIAL]" in msg_upper:
@@ -930,7 +971,6 @@ class BuriedBrainsEnv(gym.Env):
             self.current_episode_logs[agent_id] = []
 
         self.current_episode_logs[agent_id].append(message + "\n")
-
 
     def _transition_to_arena(self, agent_id: str):
         """
@@ -1145,6 +1185,8 @@ class BuriedBrainsEnv(gym.Env):
                     'exp': self.agent_states[agent_id]['exp'],
                     'damage_dealt': self.damage_dealt_this_episode.get(agent_id, 0.0),
                     'equipment_swaps': self.equipment_swaps_this_episode.get(agent_id, 0),
+                    'skill_upgrades': self.skill_upgrades_this_episode.get(agent_id, 0),
+                    'active_skills': self.agent_states[agent_id]['active_skills'].copy(), 
                     
                     # Segurança caso death_cause não tenha sido setado ainda
                     'death_cause': self.death_cause.get(agent_id, "Desconhecido"),
@@ -1473,6 +1515,8 @@ class BuriedBrainsEnv(gym.Env):
                             'exp': self.agent_states[agent_id]['exp'],
                             'damage_dealt': self.damage_dealt_this_episode.get(agent_id, 0.0),
                             'equipment_swaps': self.equipment_swaps_this_episode.get(agent_id, 0),
+                            'skill_upgrades': self.skill_upgrades_this_episode.get(agent_id, 0), 
+                            'active_skills': self.agent_states[agent_id]['active_skills'].copy(), 
                             
                             # Se o jogo acabou por tempo, a causa da morte pode não existir no dict
                             'death_cause': self.death_cause.get(agent_id, "Time Limit Reached"),
@@ -1700,6 +1744,9 @@ class BuriedBrainsEnv(gym.Env):
                         # EFETUA O APRENDIZADO
                         self.agent_states[agent_id]['active_skills'][slot_to_replace] = new_skill_name
                         self.agent_states[agent_id]['cooldowns'][new_skill_name] = 0 # Zera CD
+
+                        # Incrementa o contador de upgrade de skills
+                        self.skill_upgrades_this_episode[agent_id] += 1
                         
                         # Remove o livro
                         room_items.remove(item_name)
@@ -1741,6 +1788,7 @@ class BuriedBrainsEnv(gym.Env):
                             max_rarity_diff = diff
                             best_item_to_equip = item_name
                             best_item_type = item_type
+                            best_diff = diff
 
                 if best_item_to_equip:
                     # Realiza a troca
@@ -1751,7 +1799,11 @@ class BuriedBrainsEnv(gym.Env):
                     self.equipment_swaps_this_episode[agent_id] += 1
                     qualidade = self.catalogs['equipment'][best_item_to_equip]['rarity']
                     
-                    self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} equipou: '{best_item_to_equip}' (Tipo: {best_item_type}, Raridade: {qualidade}).")
+                            # Se foi um upgrade (raridade maior), log especial
+                    if best_diff > 0:
+                        self._log(agent_id, f"[UPGRADE] {self.agent_names[agent_id]} trocou para: '{best_item_to_equip}' (Tipo: {best_item_type}, Raridade: {qualidade}).")
+                    else:
+                        self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} equipou: '{best_item_to_equip}' (Tipo: {best_item_type}, Raridade: {qualidade}).")
 
                     # Flag Social
                     if best_item_type == 'Artifact':
@@ -2068,6 +2120,7 @@ class BuriedBrainsEnv(gym.Env):
         self.enemies_defeated_this_episode[agent_id] = 0
         self.damage_dealt_this_episode[agent_id] = 0.0
         self.equipment_swaps_this_episode[agent_id] = 0
+        self.skill_upgrades_this_episode[agent_id] = 0
         self.max_floor_reached_this_episode[agent_id] = 0
         
         self.arena_encounters_this_episode[agent_id] = 0
