@@ -3,76 +3,72 @@ import os
 import argparse
 import torch
 import torch.nn as nn
+import math
 from stable_baselines3 import PPO
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.utils import set_random_seed
+from stable_baselines3.common.vec_env import VecNormalize 
 
 # Imports locais
 from buriedbrains.env import BuriedBrainsEnv
 from buriedbrains.logging_callbacks import LoggingCallback
 from buriedbrains.wrappers import SharedPolicyVecEnv
 
-# Arquitetura do AutoEncoder (Self-Attention)
+# Arquitetura do AutoEncoder 
 class AttentionFeatureExtractor(BaseFeaturesExtractor):
-    """
-    Extrator de características que usa Self-Attention para filtrar e
-    relacionar os 172 inputs antes de passá-los para a política (PPO ou LSTM).
-    """
     def __init__(self, observation_space, features_dim=256):
         super().__init__(observation_space, features_dim)
-        
         input_dim = observation_space.shape[0] # 172
         
-        # Projeção Linear
+        # Projeção Linear 
         self.linear_in = nn.Linear(input_dim, 256)
         self.act = nn.ReLU()
         
         # Configuração do Self-Attention
-        # Transformamos o vetor de 256 em 16 tokens de dimensão 16
         self.num_heads = 4
         self.embed_dim = 16
         self.seq_len = 16
-        
         self.attention = nn.MultiheadAttention(
             embed_dim=self.embed_dim, 
             num_heads=self.num_heads, 
             batch_first=True
         )
         
-        # Normalização e saída
+        # Normalização e Saída
         self.layer_norm = nn.LayerNorm(256)
         self.linear_out = nn.Linear(256, features_dim)
 
     def forward(self, observations):
-        # Projeção linear das features
         x = self.act(self.linear_in(observations))
-        
-        # Tokenização virtual (reshape para sequência)
         batch_size = x.shape[0]
         x_seq = x.view(batch_size, self.seq_len, self.embed_dim)
-        
-        # Self-Attention 
         attn_output, _ = self.attention(x_seq, x_seq, x_seq)
-        
-        # Flatten e Conexão Residual
         x_flat = attn_output.reshape(batch_size, -1)
         x_final = self.layer_norm(x + x_flat)
-        
-        # Saída
         return self.linear_out(x_final)
 
+def get_dynamic_hyperparams(num_agents, n_steps=512):
+    total_buffer_size = num_agents * n_steps
+    target_minibatches = 8 
+    ideal_batch_size = total_buffer_size // target_minibatches
+    batch_size = 2 ** round(math.log2(max(256, ideal_batch_size)))
+    if batch_size > total_buffer_size:
+        batch_size = int(2 ** math.floor(math.log2(total_buffer_size)))
+
+    if num_agents >= 64:
+        learning_rate = 1e-4  
+        ent_coef = 0.01       
+    else:
+        learning_rate = 3e-4  
+        ent_coef = 0.03       
+
+    return batch_size, learning_rate, ent_coef
+
 def transfer_weights(old_model_path, new_model, verbose=0):
-    """
-    Transfere pesos de um modelo para outro (ex: PvE Expert -> MARL).
-    Funciona melhor se as arquiteturas forem compatíveis.
-    """
     if verbose >= 1:
         print(f"\n--- INICIANDO TRANSFER LEARNING ---")
-        print(f"Carregando pesos de: {old_model_path}")
-
-    # Tenta carregar genericamente (PPO ou RecurrentPPO)
     try:
         temp_model = RecurrentPPO.load(old_model_path, device='cpu')
     except:
@@ -89,7 +85,6 @@ def transfer_weights(old_model_path, new_model, verbose=0):
                 if old_param.shape == new_param.shape:
                     new_param.copy_(old_param)
                 elif len(old_param.shape) == 2 and old_param.shape[0] == new_param.shape[0]:
-                    # Lógica para shapes parciais (se necessário)
                     input_size_old = old_param.shape[1]
                     input_size_new = new_param.shape[1]
                     if input_size_old < input_size_new:
@@ -103,9 +98,9 @@ def main():
     
     # Seletor de algoritmo
     parser.add_argument('--algo', type=str, required=True, choices=['ppo', 'lstm'], 
-                        help="Escolha o algoritmo: 'ppo' (Baseline sem memória) ou 'lstm' (Com memória)")
+                        help="Escolha o algoritmo: 'ppo' ou 'lstm'")
     
-    # Argumentos do parser
+    # Argumentos Gerais
     parser.add_argument('--total_timesteps', type=int, default=5_000_000)
     parser.add_argument('--suffix', type=str, default="Experiment")
     parser.add_argument('--max_episode_steps', type=int, default=50_000)
@@ -119,28 +114,31 @@ def main():
     
     args = parser.parse_args()
 
-    # Configuração de Seed
+    # Definição da seed
     seed_val = None
     if args.seed is not None and str(args.seed).lower() != "random":
         try:
             seed_val = int(args.seed)
-            print(f"\nModo determinístico: seed global {seed_val}")
+            print(f"\n[CONFIG] Modo Determinístico: Seed {seed_val}")
             set_random_seed(seed_val)
         except ValueError:
-            print("Seed inválida. Usando aleatória.")
+            print("[WARN] Seed inválida. Usando aleatória.")
     
-    # Configuração de caminhos
-    algo_name = args.algo.upper() # "PPO" ou "LSTM"
+    # Caminho
+    algo_name = args.algo.upper() 
     run_name = f"{algo_name}_{args.suffix}"
     
-    base_logdir = "logs_marl"
-    base_models_dir = "models_marl"
+    base_logdir = "logs"
+    base_models_dir = "models"
     
     tb_path = os.path.join(base_logdir, run_name)
     model_path = os.path.join(base_models_dir, run_name)
+    
+    # Caminho para salvar/carregar as estatísticas de normalização
+    vec_norm_path = os.path.join(model_path, "vec_normalize.pkl")
 
     # Inicialização do ambiente
-    print(f"\nInicializando BuriedBrains (com {args.num_agents} Agentes)...")
+    print(f"\n[ENV] Inicializando BuriedBrains ({args.num_agents} Agentes)...")
     base_env = BuriedBrainsEnv(
         max_episode_steps=args.max_episode_steps, 
         sanctum_floor=args.sanctum_floor,
@@ -150,54 +148,77 @@ def main():
     )
     env = SharedPolicyVecEnv(base_env)
 
-    # Hiperparâmetros 
-    # Ambos os algoritmos usarão a mesma base para comparação justa
+    # Envolvendo com VecNormalize para acabar com o "Dente de Serra"
+    # norm_obs=False: a AttentionNet já lida com os dados brutos/flags. Não queremos estragar os bools.
+    # norm_reward=True: ESSENCIAL. Transforma -300/+400 em uma escala digerível (ex: -2 a +2).
+    # clip_reward=10.0: Segurança contra exploding gradients.
+    print("[ENV] Aplicando Normalização de Recompensa (VecNormalize)...")
+    env = VecNormalize(env, norm_obs=False, norm_reward=True, clip_reward=10.0)
+
+    # Hiperparâmetros Dinâmicos
+    auto_batch, auto_lr, auto_ent = get_dynamic_hyperparams(args.num_agents, n_steps=512)
+
+    print(f"\n[AUTO-TUNING] Configuração para {args.num_agents} Agentes:")
+    print(f"  - Batch Size: {auto_batch}")
+    print(f"  - Learning Rate: {auto_lr}")
+    print(f"  - Entropy Coef: {auto_ent}")
+
     common_params = {
-        "learning_rate": 3e-4,
-        "n_steps": 512,         # Horizonte de coleta
-        "batch_size": 2048,     # Tamanho do lote de treino
+        "learning_rate": auto_lr,
+        "n_steps": 512,         
+        "batch_size": auto_batch,   
         "n_epochs": 10,
-        "gamma": 0.995,         # Foco no longo prazo (social)
+        "gamma": 0.995,         
         "gae_lambda": 0.95,
-        "ent_coef": 0.03,       # Exploração alta
+        "ent_coef": auto_ent,       
         "vf_coef": 0.5,
         "max_grad_norm": 0.5,
     }
 
-    # Definição da Arquitetura Neural com self attention
     policy_kwargs = {
         "features_extractor_class": AttentionFeatureExtractor,
         "features_extractor_kwargs": {"features_dim": 256},
-        "net_arch": dict(pi=[256, 256], vf=[256, 256]), # MLP pós-atenção
+        "net_arch": dict(pi=[256, 256], vf=[256, 256]), 
     }
 
-    # Ajustes específicos do LSTM
     if args.algo == 'lstm':
         policy_kwargs["lstm_hidden_size"] = 256
         policy_kwargs["enable_critic_lstm"] = False
         policy_name = "MlpLstmPolicy"
         ModelClass = RecurrentPPO
     else:
-        # PPO Padrão (Sem LSTM)
         policy_name = "MlpPolicy"
         ModelClass = PPO
 
-    # Injeta kwargs finais
     common_params["policy_kwargs"] = policy_kwargs
 
-    # Inicialização do modelo
+    # Inicialização do Modelo
     model = None
     
-    # Resumir treino anterior
+    # Resumir Treino
     if args.resume_path and os.path.exists(args.resume_path):
         print(f"\n[LOAD] Carregando checkpoint: {args.resume_path}")
+        
+        # Carregar estatísticas do VecNormalize se existirem        
+        resume_dir = os.path.dirname(args.resume_path)
+        stats_path = os.path.join(resume_dir, "vec_normalize.pkl")
+        
+        if os.path.exists(stats_path):
+            print(f"[LOAD] Carregando estatísticas de normalização: {stats_path}")
+            env = VecNormalize.load(stats_path, env)
+            # Garante que continua treinando e normalizando
+            env.training = True 
+            env.norm_reward = True
+        else:
+            print("[WARN] Arquivo vec_normalize.pkl não encontrado! O treino pode ficar instável.")
+
         model = ModelClass.load(
             args.resume_path, 
             env=env,
             device='cuda',
-            custom_objects=common_params # Força os novos hiperparâmetros
+            custom_objects=common_params 
         )
-    # Novo treino do zero
+    # Novo Treino
     else:
         print(f"\n[INIT] Criando novo agente {algo_name} com Attention...")
         model = ModelClass(
@@ -211,14 +232,29 @@ def main():
         
         if args.pretrained_path:
             transfer_weights(args.pretrained_path, model, verbose=1)
+    
+    # Callback customizado para salvar o VecNormalize periodicamente
+    from stable_baselines3.common.callbacks import BaseCallback
+    class SaveVecNormalizeCallback(BaseCallback):
+        def __init__(self, save_path, verbose=0):
+            super().__init__(verbose)
+            self.save_path = save_path
+        def _on_step(self) -> bool:
+            if self.n_calls % save_freq == 0:
+                self.training_env.save(os.path.join(self.save_path, "vec_normalize.pkl"))
+            return True
 
-    # Callbacks
     save_freq = max(1, 200_000 // env.num_envs)
+    
     checkpoint_callback = CheckpointCallback(
         save_freq=save_freq, 
         save_path=model_path, 
         name_prefix=f"{args.algo}_model"
     )
+    
+    # Salva as estatísticas do ambiente junto com o modelo
+    vec_norm_callback = SaveVecNormalizeCallback(model_path)
+    
     logging_callback = LoggingCallback(
         verbose=0, 
         log_interval=1, 
@@ -233,7 +269,7 @@ def main():
     try:
         model.learn(
             total_timesteps=args.total_timesteps,
-            callback=CallbackList([checkpoint_callback, logging_callback]),
+            callback=CallbackList([checkpoint_callback, logging_callback, vec_norm_callback]),
             tb_log_name=run_name,
             progress_bar=True,
             reset_num_timesteps=False 
@@ -250,9 +286,13 @@ def main():
     full_save_path = os.path.join(model_path, save_filename)
     
     model.save(full_save_path)
-    print(f"\n[DONE] Modelo salvo em: {full_save_path}")
     
-    # Hall of Fame
+    # Salva o arquivo de normalização final
+    env.save(vec_norm_path)
+    print(f"\n[DONE] Modelo salvo em: {full_save_path}")
+    print(f"[DONE] Estatísticas de normalização salvas em: {vec_norm_path}")
+    
+    # Salva ou não o hall da fama
     if not args.no_hall_of_fame:
         hof_path = os.path.join(tb_path, "hall_of_fame")
         os.makedirs(hof_path, exist_ok=True)
