@@ -536,6 +536,7 @@ class BuriedBrainsEnv(gym.Env):
         self.current_floors = {}
         self.nodes_per_floor_counters = {}
         self.combat_states = {}        
+        self.sanctum_dropped_history = {} # Armazena o último item descartado pelo agente na arena para evitar exploit de sinalização
         
         # Métricas
         self.current_episode_logs = {}
@@ -563,7 +564,7 @@ class BuriedBrainsEnv(gym.Env):
         self.karma_history = {}
         self.matchmaking_queue = [] 
         self.active_matches = {}    
-        self.arena_instances = {}       
+        self.arena_instances = {}               
         self.pvp_sessions = {} # LIMPA sessões PvP ativas
         self.pve_return_floor = {} # Salva o andar em que estava antes de entrar no Santuário
 
@@ -619,6 +620,7 @@ class BuriedBrainsEnv(gym.Env):
             self.cowardice_kills_this_episode[agent_id] = 0
             self.betrayals_this_episode[agent_id] = 0
             self.karma_history[agent_id] = []
+            self.sanctum_dropped_history[agent_id] = set()
 
             self.max_floor_reached_this_episode[agent_id] = 0
             
@@ -1012,6 +1014,9 @@ class BuriedBrainsEnv(gym.Env):
             # Salva o andar de origem de cada um
             self.pve_return_floor[p1] = self.current_floors[p1]
             self.pve_return_floor[p2] = self.current_floors[p2]
+
+            # Limpa os itens descartados pelo agente no Santuário
+            self.sanctum_dropped_history[agent_id] = set()
             
             # 4. Gera a Arena (Instância Única para o par)
             # Usa o andar do p1 como base
@@ -1775,6 +1780,7 @@ class BuriedBrainsEnv(gym.Env):
                 best_item_to_equip = None
                 max_rarity_diff = 0.0 
                 best_item_type = None
+                best_diff = 0.0 # Inicializa para evitar erro
 
                 for item_name in room_items:
                     details = self.catalogs['equipment'].get(item_name)
@@ -1796,7 +1802,7 @@ class BuriedBrainsEnv(gym.Env):
                         # Lógica Social: Na Arena, pega qualquer artefato (para barganha)
                         is_social_artifact = (item_type == 'Artifact' and is_in_arena)
                         
-                        # Critério de Troca: É melhor? OU É um artefato na arena (mesmo que igual/pior)?
+                        # Critério de Troca
                         if diff > max_rarity_diff or (is_social_artifact and max_rarity_diff <= 0.0):
                             max_rarity_diff = diff
                             best_item_to_equip = item_name
@@ -1808,33 +1814,44 @@ class BuriedBrainsEnv(gym.Env):
                     self.agent_states[agent_id]['equipment'][best_item_type] = best_item_to_equip
                     room_items.remove(best_item_to_equip)
                     
-                    # Métricas
+                    # Métricas e Logs
                     self.equipment_swaps_this_episode[agent_id] += 1
                     qualidade = self.catalogs['equipment'][best_item_to_equip]['rarity']
                     
-                            # Se foi um upgrade (raridade maior), log especial
                     if best_diff > 0:
                         self._log(agent_id, f"[UPGRADE] {self.agent_names[agent_id]} trocou para: '{best_item_to_equip}' (Tipo: {best_item_type}, Raridade: {qualidade}).")
                     else:
                         self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} equipou: '{best_item_to_equip}' (Tipo: {best_item_type}, Raridade: {qualidade}).")
 
-                    # Flag Social
-                    if best_item_type == 'Artifact':
-                        self.social_flags[agent_id]['just_picked_up'] = True                
-
-                    # PvE: Incentivo por melhoria (75 base + bonus por salto de raridade)
-                    reward = 75 + (max_rarity_diff * 100) 
-
-                    # Taxa de Manuseio na Arena (Desencoraja ficar trocando item no chão do santuário)
+                    
+                    # Calcula a recompensa para todos os itens
+                    reward = 75 + (max_rarity_diff * 100)
                     if is_in_arena:
-                        reward -= 2.0  
+                        reward -= 2.0
+
+                    # Lógica específica para artefatos (tokens sociais)
+                    if best_item_type == 'Artifact':
+                        # Verifica se é um item que ele mesmo descartou
+                        is_recycled_loot = is_in_arena and (best_item_to_equip in self.sanctum_dropped_history[agent_id])
+
+                        if is_recycled_loot:
+                            # Se pegou o próprio item de volta, cancela o sinal de paz
+                            reward = -2.0 
+                            self.social_flags[agent_id]['just_picked_up'] = False # Não conta como "pegar oferta"
+                            self.arena_interaction_state[agent_id]['offered_peace'] = False # Cancela minha oferta
+                            
+                            self._log(agent_id, f"[SOCIAL] Recuperou sua arma. Sinal de paz cancelado.")
+                        else:
+                            # Item novo/do oponente
+                            self.social_flags[agent_id]['just_picked_up'] = True
+                
                 else:
                     # Falhou: Não tinha nada útil ou sala vazia
                     if room_items:
-                        reward = -10.0 # Punição Alta: Deixou itens no chão (Anti-Hoarding reverso / Incentivo a limpar)
+                        reward = -10.0 
                     else:
                         self.invalid_action_counts[agent_id] += 1                    
-                        reward = -5.0 # Chão vazio
+                        reward = -5.0
 
         # Ação 5: Dropar Artefato      
         elif action == 5:
@@ -1848,6 +1865,9 @@ class BuriedBrainsEnv(gym.Env):
                     del self.agent_states[agent_id]['equipment']['Artifact']
                     room_items = current_graph.nodes[current_node_id]['content'].setdefault('items', [])
                     room_items.append(equipped)
+
+                    # Registra que este agente já "teve" este item nesta sessão de arena
+                    self.sanctum_dropped_history[agent_id].add(equipped)
                     
                     # Flag de drop para barganha
                     self.social_flags[agent_id]['just_dropped'] = True                    
@@ -2191,6 +2211,9 @@ class BuriedBrainsEnv(gym.Env):
         # Limpa lista de presença
         if agent_id in self.agents_in_arena:
             self.agents_in_arena.remove(agent_id)
+
+        # Reinicia a lista de itens descartados no Santuário
+        self.sanctum_dropped_history[agent_id] = set()
 
         # Cria uma nova P-Zone (Volta para casa)
         self.current_floors[agent_id] = 0
