@@ -1785,6 +1785,9 @@ class BuriedBrainsEnv(gym.Env):
                         
                         # Log para você rastrear (e evitar achar que é cura fantasma!)
                         self._log(agent_id, f"[EVENTO] ⛲ Encontrou '{event_name}'! Recuperou {actual_healed} HP ({old_hp} -> {agent_state['hp']}).")
+
+                        # Isso transforma a fonte em uma sala comum vazia após o primeiro gole
+                        room_content['events'].remove('Fountain of Life')
                                                                             
                     enemy_names = room_content.get('enemies', [])
                     if enemy_names:                        
