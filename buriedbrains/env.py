@@ -9,7 +9,7 @@ import networkx as nx
 from collections import deque
 
 # Importando módulos internos
-from . import agent_rules
+from . import progression
 from . import combat
 from . import content_generation
 from . import map_generation
@@ -45,9 +45,13 @@ class BuriedBrainsEnv(gym.Env):
             enemy_data = yaml.safe_load(f)
             
         self.catalogs = {
-            'skills': skill_data['skill_catalog'], 'effects': skill_data['effect_ruleset'],
-            'equipment': equipment_data['equipment_catalog'], 'enemies': enemy_data['pools']['enemies'],
-            'room_effects': enemy_data['pools']['room_effects'], 'events': enemy_data['pools']['events']
+            'skills': skill_data['skill_catalog'], 
+            'effects': skill_data['effect_ruleset'],
+            'equipment': equipment_data['equipment_catalog'], 
+            'enemies': enemy_data['pools']['enemies'],
+            'enemy_tiers': enemy_data.get('enemy_tiers', {}),
+            'room_effects': enemy_data['pools']['room_effects'], 
+            'events': enemy_data['pools']['events']
         }        
 
         self.artifact_catalog = {
@@ -302,7 +306,7 @@ class BuriedBrainsEnv(gym.Env):
         skills_vector = []
         for i in range(4):
             # Pega o nome da skill no slot 'i' (do deck do agente)
-            skill_name = agent['active_skills'][i]
+            skill_name = agent['skills'][i]
             
             # Pega os dados estáticos (Dano, Tipo, etc) e encoda
             skill_data = self.catalogs['skills'].get(skill_name, {})
@@ -599,7 +603,11 @@ class BuriedBrainsEnv(gym.Env):
             self.agent_names[agent_id] = agent_name
             
             # Cria estado inicial
-            self.agent_states[agent_id] = agent_rules.create_initial_agent(agent_name)        
+            self.agent_states[agent_id] = progression.create_initial_agent(agent_name)  
+
+            # Reseta efeitos de status
+            self.agent_states[agent_id]['effects'] = {}
+            self.agent_states[agent_id]['persistent_effects'] = {}      
 
             # Inicializa métricas individuais
             self.current_episode_logs[agent_id] = []
@@ -663,7 +671,7 @@ class BuriedBrainsEnv(gym.Env):
         return observations, infos
 
     def _handle_combat_turn(self, agent_id: str, action: int, agent_info_dict: dict) -> tuple[float, bool]:
-        """Orquestra um único turno de combate PvE e retorna (recompensa, combate_terminou)."""
+        """Orquestra um único turno de combate PvE e retorna (recompensa, combate_terminou)."""        
         
         # Pega o estado de combate PvE para ESTE agente
         combat_state = self.combat_states.get(agent_id) 
@@ -683,13 +691,13 @@ class BuriedBrainsEnv(gym.Env):
 
         # Ações 0-3 são skills de combate. Ações 4-9 são inválidas em combate.
         if 0 <= action <= 3: 
-            action_name = self.agent_states[agent_id]['active_skills'][action]
+            action_name = self.agent_states[agent_id]['skills'][action]
         else:
             # Ação é inválida DENTRO DO COMBATE (tentou mover, equipar, etc.)
             self.invalid_action_counts[agent_id] += 1
             reward = -5 # Penalidade por ação inválida em combate            
         
-        # Executa a ação (seja a escolhida ou o "Wait" da penalidade)
+        # Executa a ação (seja a escolhida ou o "Wait" da penalidade)           
         combat.execute_action(agent, [enemy], action_name, self.catalogs)
 
         # Recompensa por dano causado
@@ -720,7 +728,7 @@ class BuriedBrainsEnv(gym.Env):
             )
             
             # Passa o estado principal para a regra de level up
-            leveled_up = agent_rules.check_for_level_up(agent_main_state) 
+            leveled_up = progression.check_for_level_up(agent_main_state) 
 
             if leveled_up:
                 self._log(agent_id, f"[PVE] {self.agent_names[agent_id]} subiu para o nível {agent_main_state['level']} durante o combate.")
@@ -743,7 +751,27 @@ class BuriedBrainsEnv(gym.Env):
             # Agora combate pode ser encerrado
             # Registra a duração do combate para esta luta
             duration = self.current_step - self.combat_states[agent_id]['start_step']
-            self.pve_combat_durations[agent_id].append(duration)
+            self.pve_combat_durations[agent_id].append(duration)     
+
+            # DEBUG           
+            # print(f"[DEBUG-PVE] Duração do combate PvE: {duration} turnos.")
+
+            # Filtra o que fica e o que sai
+            surviving_effects = {}
+            
+            for tag, data in agent['effects'].items():
+                duration = data.get('duration', 0)
+                
+                # REGRAS DE LIMPEZA:
+                # 1. Se duration <= 0: Acabou o tempo, não salva.
+                # 2. Se duration == -1: Era efeito da sala (Heat/Fog), não leva pra próxima.
+                # 3. Se duration > 0: É um DoT/Buff ativo (Poison, Shield), SALVA.
+                
+                if duration > 0: 
+                    surviving_effects[tag] = data
+
+            # Salva os efeitos sobreviventes no estado mestre do agente
+            self.agent_states[agent_id]['persistent_effects'] = surviving_effects
 
             self.combat_states[agent_id] = None # Limpa o estado de combate deste agente
             combat_over = True
@@ -756,10 +784,15 @@ class BuriedBrainsEnv(gym.Env):
             available_skills = [s for s, cd in enemy['cooldowns'].items() if cd == 0]
             enemy_action = random.choice(available_skills) if available_skills else "Wait"
             
+            if available_skills:
+                enemy_action = random.choice(available_skills)
+                # print(f"[DEBUG-PVE] 👾 {enemy['name']} escolheu skill '{enemy_action}' entre disponíveis (CDs: {available_skills}).")            
+
             combat.execute_action(enemy, [agent], enemy_action, self.catalogs)
 
             # Penalidade por dano sofrido
             damage_taken = hp_before_agent - agent['hp']
+            # print(f"[DEBUG-PVE] 💥 {self.agent_names[agent_id]} sofreu {damage_taken} de dano do inimigo '{enemy['name']}'.")
             reward -= damage_taken * 0.5
 
             # Verifica se o agente morreu
@@ -817,6 +850,26 @@ class BuriedBrainsEnv(gym.Env):
             combat_over = True
             winner = id_a1 # Retorna o ID real
             loser = id_a2
+
+            # Estado mestre do vencedor e perdedor
+            winner_state = self.agent_states[id_a1]
+            loser_state = self.agent_states[id_a2]
+            
+            # Fórmula de XP: Base 100 + (Nível do Perdedor * 50)
+            xp_gain = 100 + (loser_state['level'] * 50)
+            
+            winner_state['exp'] += xp_gain
+            self._log(id_a1, f"[PVP] Ganhou {xp_gain} XP por derrotar {self.agent_names[id_a2]} (Lvl {loser_state['level']}).")
+            
+            # Checa Level Up
+            if progression.check_for_level_up(winner_state):
+                self._log(id_a1, f"[UPGRADE] Subiu para nível {winner_state['level']} após vitória PvP!")
+                rew_a1 += 50 # Bônus extra no RL
+                
+                # Sincroniza status base novos para o combatente da arena
+                a1_combatant['max_hp'] = winner_state['max_hp']
+                a1_combatant['hp'] = winner_state['max_hp'] # Cura ao upar? Opcional
+                a1_combatant['base_stats'] = winner_state['base_stats'].copy()
                            
             # Resolve Karma
             karma_adjustment = self._resolve_pvp_end_karma(winner, loser)
@@ -971,7 +1024,7 @@ class BuriedBrainsEnv(gym.Env):
 
         formatted = f"{colorize(f'[{agent_id.upper()}]', 'agent')} {colorize(message, color)}"
 
-        # Print no terminal
+        # print no terminal
         if self.verbose > 0:
             print(formatted)
 
@@ -1080,7 +1133,7 @@ class BuriedBrainsEnv(gym.Env):
             agent_reward += 1000
             self._log(agent_id, f"[PVE] FIM: {self.agent_names[agent_id]} VENCEU! (Chegou ao fim do Jogo)")
 
-        # 2. Processa Ação (Combate ou Exploração)
+        # Processa Ação Combate ou Exploração
         if self.combat_states.get(agent_id):
             # Agente está em combate PvE
             reward_combat, combat_over = self._handle_combat_turn(agent_id, action, infos[agent_id])
@@ -1155,10 +1208,10 @@ class BuriedBrainsEnv(gym.Env):
         
         milestones_rules = [
             # 1. Marco de Sobrevivência à Zona K (Dispara em K+1, ex: 26, 51)            
-            {"check": lambda f: (f - 1) % sanctum_k == 0 and f > 1, "bonus": 400, "msg": "Sobreviveu à Zona K!"},
+            # {"check": lambda f: (f - 1) % sanctum_k == 0 and f > 1, "bonus": 100, "msg": "Sobreviveu à Zona K!"},
 
             # 2. Marco Decimal (Dispara a cada 10 andares: 10, 20, 30...)
-            {"check": lambda f: f % 10 == 0 and f > 0, "bonus": 250, "msg": "Marco Decimal!"}
+            {"check": lambda f: f % 10 == 0 and f > 0, "bonus": 100, "msg": "Marco Decimal!"}
         ]
 
         for milestone in milestones_rules:
@@ -1204,7 +1257,7 @@ class BuriedBrainsEnv(gym.Env):
                     'damage_dealt': self.damage_dealt_this_episode.get(agent_id, 0.0),
                     'equipment_swaps': self.equipment_swaps_this_episode.get(agent_id, 0),
                     'skill_upgrades': self.skill_upgrades_this_episode.get(agent_id, 0),
-                    'active_skills': self.agent_states[agent_id]['active_skills'].copy(), 
+                    'skills': self.agent_states[agent_id]['skills'].copy(), 
                     
                     # Segurança caso death_cause não tenha sido setado ainda
                     'death_cause': self.death_cause.get(agent_id, "Desconhecido"),
@@ -1284,12 +1337,12 @@ class BuriedBrainsEnv(gym.Env):
                 idx_p2 = actions[p2].item() if hasattr(actions[p2], 'item') else actions[p2]
 
                 if 0 <= idx_p1 <= 3:
-                    act_p1 = state_p1['active_skills'][idx_p1]
+                    act_p1 = state_p1['skills'][idx_p1]
                 else:
                     act_p1 = "Wait"
 
                 if 0 <= idx_p2 <= 3:
-                    act_p2 = state_p2['active_skills'][idx_p2]
+                    act_p2 = state_p2['skills'][idx_p2]
                 else:
                     act_p2 = "Wait"
 
@@ -1304,6 +1357,9 @@ class BuriedBrainsEnv(gym.Env):
                     duration = self.current_step - session['start_step']
                     self.pvp_combat_durations[p1].append(duration)
                     self.pvp_combat_durations[p2].append(duration)
+
+                    # DEBUG
+                    # print(f"[DEBUG-PVP] Duração do combate PVP: {duration} turnos")
                     
                     self._log(winner, f"[PVP] VITÓRIA de {self.agent_names[winner]}!")
                     
@@ -1385,7 +1441,7 @@ class BuriedBrainsEnv(gym.Env):
                                 if agent_id in self.active_matches: del self.active_matches[agent_id]
                                 
                                 # Reseta Posição para evitar crash
-                                self._respawn_agent(agent_id)
+                                self._respawn_agent(agent_id, self.death_cause[agent_id])
                                 
                                 # PULA O RESTO DO TURNO (O agente morreu, não pode agir)
                                 continue
@@ -1534,7 +1590,7 @@ class BuriedBrainsEnv(gym.Env):
                             'damage_dealt': self.damage_dealt_this_episode.get(agent_id, 0.0),
                             'equipment_swaps': self.equipment_swaps_this_episode.get(agent_id, 0),
                             'skill_upgrades': self.skill_upgrades_this_episode.get(agent_id, 0), 
-                            'active_skills': self.agent_states[agent_id]['active_skills'].copy(), 
+                            'skills': self.agent_states[agent_id]['skills'].copy(), 
                             
                             # Se o jogo acabou por tempo, a causa da morte pode não existir no dict
                             'death_cause': self.death_cause.get(agent_id, "Time Limit Reached"),
@@ -1603,7 +1659,10 @@ class BuriedBrainsEnv(gym.Env):
             self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} na sala '{current_node_id}'. Tentando Mover Vizinho {neighbor_index}.")
 
             if neighbor_index < len(neighbors):                
-                chosen_node = neighbors[neighbor_index]                           
+                chosen_node = neighbors[neighbor_index]      
+
+                # O agente andou, o tempo passou.
+                self._tick_world_cooldowns(agent_id)                                 
 
                 # Se o agente está voltando para o nó de onde acabou de vir (A -> B -> A)
                 prev_node = self.previous_nodes.get(agent_id)
@@ -1708,6 +1767,25 @@ class BuriedBrainsEnv(gym.Env):
                         self._generate_and_populate_successors(agent_id, chosen_node)
 
                     room_content = current_graph.nodes[chosen_node].get('content', {})
+
+                    # Verifica Eventos Especiais
+                    event_name = room_content.get('events')
+                
+                    if event_name == 'Fountain of Life':
+                        agent_state = self.agents[agent_id]
+                        
+                        # Configuração da Cura (50% do HP Máximo)
+                        heal_percent = 0.50 
+                        heal_amount = int(agent_state['max_hp'] * heal_percent)
+                        
+                        # Aplica a cura (sem ultrapassar o Max HP)
+                        old_hp = agent_state['hp']
+                        agent_state['hp'] = min(agent_state['max_hp'], agent_state['hp'] + heal_amount)
+                        actual_healed = agent_state['hp'] - old_hp
+                        
+                        # Log para você rastrear (e evitar achar que é cura fantasma!)
+                        self._log(agent_id, f"[EVENTO] ⛲ Encontrou '{event_name}'! Recuperou {actual_healed} HP ({old_hp} -> {agent_state['hp']}).")
+                                                                            
                     enemy_names = room_content.get('enemies', [])
                     if enemy_names:                        
                         self._log(agent_id, f"[AÇÃO] COMBATE INICIADO com {enemy_names[0]}")
@@ -1722,6 +1800,9 @@ class BuriedBrainsEnv(gym.Env):
         # --- Ação 4: Equipar Item (Grimórios, Equipamentos e Artefatos) ---        
         elif action == 4:
             self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} tentou Ação 4 (Equipar/Aprender).")
+            
+            # Decrementa o CD das skills do agentes
+            self._tick_world_cooldowns(agent_id)
             
             # Segurança de nó
             if not current_graph.has_node(current_node_id) or 'content' not in current_graph.nodes[current_node_id]:
@@ -1739,11 +1820,11 @@ class BuriedBrainsEnv(gym.Env):
                     new_skill_name = details.get('skill_name')
                     
                     # Verifica se já conhece a skill
-                    if new_skill_name not in self.agent_states[agent_id]['active_skills']:
+                    if new_skill_name not in self.agent_states[agent_id]['skills']:
                         
                         # Heurística de Substituição:
                         # Tenta substituir skills básicas primeiro, preserva slots avançados se possível
-                        current_skills = self.agent_states[agent_id]['active_skills']
+                        current_skills = self.agent_states[agent_id]['skills']
                         slot_to_replace = -1
                         
                         # Prioridade 1: Substituir 'Quick Strike' ou 'Heavy Blow' (Básicas)
@@ -1760,7 +1841,7 @@ class BuriedBrainsEnv(gym.Env):
                         old_skill = current_skills[slot_to_replace]
                         
                         # EFETUA O APRENDIZADO
-                        self.agent_states[agent_id]['active_skills'][slot_to_replace] = new_skill_name
+                        self.agent_states[agent_id]['skills'][slot_to_replace] = new_skill_name
                         self.agent_states[agent_id]['cooldowns'][new_skill_name] = 0 # Zera CD
 
                         # Incrementa o contador de upgrade de skills
@@ -1905,27 +1986,41 @@ class BuriedBrainsEnv(gym.Env):
         room_effects = room_data.get('content', {}).get('room_effects', [])
         active_effect = room_effects[0] if room_effects else None
 
+        # Pega os status acumulados do agente
+        stats_source = agent_main_state['base_stats']
+
         # Inicializa o agente
         agent_combatant = combat.initialize_combatant(
             name=self.agent_names[agent_id], 
             hp=agent_main_state['hp'], 
             equipment=list(agent_main_state.get('equipment', {}).values()), 
-            skills=agent_main_state['active_skills'], 
+            skills=agent_main_state['skills'], 
             team=1, 
+            level=agent_main_state['level'],
             catalogs=self.catalogs,
-            room_effect_name=active_effect 
+            room_effect_name=active_effect,                    
+            base_damage=stats_source.get('damage', 0),
+            base_defense=stats_source.get('defense', 0),
+            base_evasion=stats_source.get('evasion', 0),
+            base_accuracy=stats_source.get('accuracy', 1.0),
+            base_crit=stats_source.get('crit_chance', 0.05)
         )
         
-        # Copia e reseta cooldowns
-        current_skills = agent_main_state['active_skills']
-        default_cooldowns = {s: 0 for s in current_skills}
-        agent_combatant['cooldowns'] = agent_main_state.get('cooldowns', default_cooldowns).copy()
+        # Copia e mantem cooldowns atuais (que vieram da exploração)
+        current_skills = agent_main_state['skills']
+        
+        # Garante que o dict existe
+        if 'cooldowns' not in agent_main_state:
+             agent_main_state['cooldowns'] = {s: 0 for s in current_skills}
+
+        # Copia o CD atual        
+        agent_combatant['cooldowns'] = agent_main_state['cooldowns'].copy()
         
         # Inicializa o inimigo
-        enemy_combatant = agent_rules.instantiate_enemy(
+        enemy_combatant = progression.instantiate_enemy(
              enemy_name=enemy_name,
              agent_current_floor=self.current_floors[agent_id],
-             catalogs=self.catalogs,
+             catalogs=self.catalogs,             
              room_effect_name=active_effect 
         )
 
@@ -1946,6 +2041,7 @@ class BuriedBrainsEnv(gym.Env):
     def _initiate_pvp_combat(self, attacker_id: str, defender_id: str):
         """
         Inicializa o combate PvP e cria uma sessão compartilhada para os dois agentes.
+        Atualizado para incluir status base (evolução do agente).
         """
         # Pega os estados mestres
         attacker_main_state = self.agent_states[attacker_id]
@@ -1958,9 +2054,10 @@ class BuriedBrainsEnv(gym.Env):
         room_effects = room_data.get('content', {}).get('room_effects', [])
         active_effect = room_effects[0] if room_effects else None
         
-        # Atacante: Cria defaults baseados nas skills atuais
-        att_skills = attacker_main_state['active_skills']
+        # Configuração do Atacante
+        att_skills = attacker_main_state['skills']
         att_default_cd = {s: 0 for s in att_skills}
+        att_stats = attacker_main_state['base_stats'] # Pega os status acumulados
 
         attacker_combatant = combat.initialize_combatant(
             name=self.agent_names[attacker_id], 
@@ -1968,15 +2065,22 @@ class BuriedBrainsEnv(gym.Env):
             equipment=list(attacker_main_state.get('equipment', {}).values()), 
             skills=att_skills,
             team=1, 
+            level=attacker_main_state['level'],
             catalogs=self.catalogs,
-            room_effect_name=active_effect
+            room_effect_name=active_effect,            
+            base_damage=att_stats.get('damage', 0),
+            base_defense=att_stats.get('defense', 0),
+            base_evasion=att_stats.get('evasion', 0),
+            base_accuracy=att_stats.get('accuracy', 1.0),
+            base_crit=att_stats.get('crit_chance', 0.05)
         )
         # Carrega cooldowns salvos ou usa o default zerado
         attacker_combatant['cooldowns'] = attacker_main_state.get('cooldowns', att_default_cd).copy()
         
-        # Defensor: Cria defaults baseados nas skills atuais dele
-        def_skills = defender_main_state['active_skills']
+        # Configuração do Defensor
+        def_skills = defender_main_state['skills']
         def_default_cd = {s: 0 for s in def_skills}
+        def_stats = defender_main_state['base_stats'] # Pega os status acumulados
 
         defender_combatant = combat.initialize_combatant(
             name=self.agent_names[defender_id], 
@@ -1984,8 +2088,14 @@ class BuriedBrainsEnv(gym.Env):
             equipment=list(defender_main_state.get('equipment', {}).values()), 
             skills=def_skills,
             team=2, 
+            level=defender_main_state['level'],
             catalogs=self.catalogs,
-            room_effect_name=active_effect
+            room_effect_name=active_effect,            
+            base_damage=def_stats.get('damage', 0),
+            base_defense=def_stats.get('defense', 0),
+            base_evasion=def_stats.get('evasion', 0),
+            base_accuracy=def_stats.get('accuracy', 1.0),
+            base_crit=def_stats.get('crit_chance', 0.05)
         )
         # Carrega cooldowns salvos ou usa o default zerado
         defender_combatant['cooldowns'] = defender_main_state.get('cooldowns', def_default_cd).copy()
@@ -2007,8 +2117,9 @@ class BuriedBrainsEnv(gym.Env):
         self.pvp_combats_this_episode[attacker_id] += 1
         self.pvp_combats_this_episode[defender_id] += 1        
         
-        self._log(attacker_id, f"[PVP] {self.agent_names[attacker_id]} iniciou ataque contra {self.agent_names[defender_id]}!")
-        self._log(defender_id, f"[PVP] {self.agent_names[defender_id]} está sendo atacado por {self.agent_names[attacker_id]}!")
+        msg = f"[PVP] COMBATE INICIADO: {self.agent_names[attacker_id]} atacou {self.agent_names[defender_id]}!"
+        self._log(attacker_id, msg)
+        self._log(defender_id, msg)
 
     def _resolve_pvp_end_karma(self, winner_id: str, loser_id: str) -> float:
         """
@@ -2153,7 +2264,11 @@ class BuriedBrainsEnv(gym.Env):
         preserved_karma_z = self.reputation_system.get_karma_state(agent_id)
         
         # Reseta o estado Mestre
-        self.agent_states[agent_id] = agent_rules.create_initial_agent(agent_name)
+        self.agent_states[agent_id] = progression.create_initial_agent(agent_name)
+
+        # Reseta efeitos de status
+        self.agent_states[agent_id]['effects'] = {}
+        self.agent_states[agent_id]['persistent_effects'] = {}
         
         # RE-APLICA Karma
         self.agent_states[agent_id]['karma']['real'] = preserved_karma_z.real
@@ -2231,3 +2346,17 @@ class BuriedBrainsEnv(gym.Env):
         self.graphs[agent_id].nodes["start"]['content'] = start_content
         self._generate_and_populate_successors(agent_id, "start")
         
+    def _tick_world_cooldowns(self, agent_id: str):
+        """
+        Simula a passagem do tempo fora de combate.
+        Reduz em 1 o Cooldown de todas as skills ativas.
+        """
+        agent_state = self.agent_states[agent_id]
+        
+        # Se não tiver cooldowns inicializados, ignora
+        if 'cooldowns' not in agent_state:
+            return
+
+        for skill, current_cd in agent_state['cooldowns'].items():
+            if current_cd > 0:
+                agent_state['cooldowns'][skill] = max(0, current_cd - 1)

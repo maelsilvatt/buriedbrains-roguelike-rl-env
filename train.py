@@ -20,34 +20,81 @@ from buriedbrains.wrappers import SharedPolicyVecEnv
 class AttentionFeatureExtractor(BaseFeaturesExtractor):
     def __init__(self, observation_space, features_dim=256):
         super().__init__(observation_space, features_dim)
-        input_dim = observation_space.shape[0] # 172
         
-        # Projeção Linear 
-        self.linear_in = nn.Linear(input_dim, 256)
-        self.act = nn.ReLU()
+        # Configurações da Atenção
+        self.embed_dim = 64  # Tamanho de cada "gaveta" de informação
+        self.num_tokens = 10 # 10 blocos lógicos do ambiente
+        self.num_heads = 4   # 4 Cabeças de atenção (64 / 4 = 16 por cabeça)
         
-        # Configuração do Self-Attention
-        self.num_heads = 4
-        self.embed_dim = 16
-        self.seq_len = 16
-        self.attention = nn.MultiheadAttention(
-            embed_dim=self.embed_dim, 
-            num_heads=self.num_heads, 
-            batch_first=True
+        # Projeções semânticas
+        # Cada camada linear pega uma fatia bruta do vetor 172 e transforma em 64
+        self.block_projs = nn.ModuleList([
+            nn.Linear(40, self.embed_dim),   # Token 0: Skills (4 slots * 10 features)
+            nn.Linear(3, self.embed_dim),    # Token 1: Self Stats (HP, Lvl, XP)
+            nn.Linear(7, self.embed_dim),    # Token 2: Contexto PvE (Inimigos, Eventos)
+            nn.Linear(10, self.embed_dim),   # Token 3: Social / PvP (Arena, Outro Agente)
+            nn.Linear(13, self.embed_dim),   # Token 4: Vizinho 0 (Norte)
+            nn.Linear(13, self.embed_dim),   # Token 5: Vizinho 1 (Sul)
+            nn.Linear(13, self.embed_dim),   # Token 6: Vizinho 2 (Leste)
+            nn.Linear(13, self.embed_dim),   # Token 7: Vizinho 3 (Oeste)
+            nn.Linear(6, self.embed_dim),    # Token 8: Gear/Portas (Raridades, Flags)
+            nn.Linear(54, self.embed_dim),   # Token 9: Detalhes de Itens (Embeddings profundos)
+        ])
+
+        # --- 2. Mecanismo de Atenção ---
+        self.attn = nn.MultiheadAttention(
+            embed_dim=self.embed_dim,
+            num_heads=self.num_heads,
+            dropout=0.1, # Evita overfitting precoce
+            batch_first=True # Importante: (Batch, Seq, Feature)
         )
         
-        # Normalização e Saída
-        self.layer_norm = nn.LayerNorm(256)
-        self.linear_out = nn.Linear(256, features_dim)
+        # Normalização para estabilizar o gradiente
+        self.norm = nn.LayerNorm(self.embed_dim * self.num_tokens)
+        
+        # Projeção final para conectar com a LSTM do SB3 (640 -> 256)
+        self.linear_out = nn.Linear(self.embed_dim * self.num_tokens, features_dim)
+        self.act = nn.ReLU() 
 
-    def forward(self, observations):
-        x = self.act(self.linear_in(observations))
-        batch_size = x.shape[0]
-        x_seq = x.view(batch_size, self.seq_len, self.embed_dim)
-        attn_output, _ = self.attention(x_seq, x_seq, x_seq)
+    def forward(self, obs):
+        batch_size = obs.shape[0]
+
+        # Fatiar o vetor de observação (Slicing baseado no env.py)
+        # OBS: Se mudar o env.py, precisa ajustar esses índices
+        raw_blocks = [
+            obs[:, 0:40],     # Skills
+            obs[:, 40:43],    # Self
+            obs[:, 43:50],    # PvE
+            obs[:, 50:60],    # Social
+            obs[:, 60:73],    # Vizinho 0
+            obs[:, 73:86],    # Vizinho 1
+            obs[:, 86:99],    # Vizinho 2
+            obs[:, 99:112],   # Vizinho 3
+            obs[:, 112:118],  # Gear
+            obs[:, 118:172],  # Items
+        ]
+
+        # Projetar cada bloco para ter o mesmo tamanho (64)
+        # Resultado: Lista de 10 tensores de shape (Batch, 64)
+        projected_tokens = [proj(block) for proj, block in zip(self.block_projs, raw_blocks)]
+
+        # Empilhar para criar a sequência temporal
+        # Shape final: (Batch, 10, 64) -> "Uma frase com 10 palavras de tamanho 64"
+        x_seq = torch.stack(projected_tokens, dim=1)
+
+        # Auto-Atenção (Onde a mágica acontece)
+        # O modelo aprende: "Dado que 'Self' está com HP baixo, olhe para 'Items'"
+        attn_output, _ = self.attn(x_seq, x_seq, x_seq)
+        attn_output = attn_output + x_seq
+
+
+        # Achatamento e Saída
+        # (Batch, 10, 64) -> (Batch, 640)
         x_flat = attn_output.reshape(batch_size, -1)
-        x_final = self.layer_norm(x + x_flat)
-        return self.linear_out(x_final)
+        
+        # Normaliza e projeta para 256 (para a LSTM)
+        x_norm = self.norm(x_flat)
+        return self.act(self.linear_out(x_norm))
 
 def get_dynamic_hyperparams(num_agents, n_steps=512):
     total_buffer_size = num_agents * n_steps
@@ -168,7 +215,7 @@ def main():
         "n_steps": 512,         
         "batch_size": auto_batch,   
         "n_epochs": 10,
-        "gamma": 0.995,         
+        "gamma": 0.99, # 995 para ~200 passos. 99 para 100 passos.     
         "gae_lambda": 0.95,
         "ent_coef": auto_ent,       
         "vf_coef": 0.5,
@@ -183,7 +230,7 @@ def main():
 
     if args.algo == 'lstm':
         policy_kwargs["lstm_hidden_size"] = 256
-        policy_kwargs["enable_critic_lstm"] = False
+        policy_kwargs["enable_critic_lstm"] = True # Essencial para que o Crítico veja a história
         policy_name = "MlpLstmPolicy"
         ModelClass = RecurrentPPO
     else:
