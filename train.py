@@ -16,84 +16,107 @@ from buriedbrains.env import BuriedBrainsEnv
 from buriedbrains.logging_callbacks import LoggingCallback
 from buriedbrains.wrappers import SharedPolicyVecEnv
 
-# Arquitetura do AutoEncoder 
 class AttentionFeatureExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space, features_dim=256):
+    def __init__(self, observation_space, features_dim=512):
         super().__init__(observation_space, features_dim)
         
         # Configurações da Atenção
-        self.embed_dim = 64  # Tamanho de cada "gaveta" de informação
-        self.num_tokens = 10 # 10 blocos lógicos do ambiente
-        self.num_heads = 4   # 4 Cabeças de atenção (64 / 4 = 16 por cabeça)
+        self.embed_dim = 64  # Tamanho da projeção (Embedding)
+        self.num_heads = 4   # 64 / 4 = 16 features por cabeça
         
-        # Projeções semânticas
-        # Cada camada linear pega uma fatia bruta do vetor 172 e transforma em 64
+        # Número de Tokens        
+        self.num_tokens = 11 
+        
+        # Projeções Semânticas (Input Layer)
         self.block_projs = nn.ModuleList([
-            nn.Linear(40, self.embed_dim),   # Token 0: Skills (4 slots * 10 features)
-            nn.Linear(3, self.embed_dim),    # Token 1: Self Stats (HP, Lvl, XP)
-            nn.Linear(7, self.embed_dim),    # Token 2: Contexto PvE (Inimigos, Eventos)
-            nn.Linear(10, self.embed_dim),   # Token 3: Social / PvP (Arena, Outro Agente)
-            nn.Linear(13, self.embed_dim),   # Token 4: Vizinho 0 (Norte)
-            nn.Linear(13, self.embed_dim),   # Token 5: Vizinho 1 (Sul)
-            nn.Linear(13, self.embed_dim),   # Token 6: Vizinho 2 (Leste)
-            nn.Linear(13, self.embed_dim),   # Token 7: Vizinho 3 (Oeste)
-            nn.Linear(6, self.embed_dim),    # Token 8: Gear/Portas (Raridades, Flags)
-            nn.Linear(54, self.embed_dim),   # Token 9: Detalhes de Itens (Embeddings profundos)
+            # Skills (0-40)
+            nn.Linear(40, self.embed_dim), 
+            
+            # Self Stats (40-43)
+            nn.Linear(3, self.embed_dim),  
+            
+            # Contexto PvE (43-50)
+            nn.Linear(7, self.embed_dim),  
+            
+            # Social / PvP (50-60)
+            nn.Linear(10, self.embed_dim), 
+                        
+            # Nó Atual (60-73)
+            nn.Linear(13, self.embed_dim),
+            
+            # Vizinho Norte (73-86)
+            nn.Linear(13, self.embed_dim),
+            
+            # Vizinho Sul (86-99)
+            nn.Linear(13, self.embed_dim),
+            
+            # Vizinho Leste (99-112)
+            nn.Linear(13, self.embed_dim),
+            
+            # Vizinho Oeste (112-125)
+            nn.Linear(13, self.embed_dim),                        
+
+            # Final/Gear Flags (125-131)
+            nn.Linear(6, self.embed_dim),  
+            
+            # Detalhes de Itens (131-182)
+            # 54 (3*18) para 51 (3*17)
+            nn.Linear(51, self.embed_dim), 
         ])
 
-        # --- 2. Mecanismo de Atenção ---
+        # Mecanismo de Atenção (Transformer Block)
         self.attn = nn.MultiheadAttention(
             embed_dim=self.embed_dim,
             num_heads=self.num_heads,
-            dropout=0.1, # Evita overfitting precoce
-            batch_first=True # Importante: (Batch, Seq, Feature)
+            dropout=0.1,
+            batch_first=True
         )
-        
-        # Normalização para estabilizar o gradiente
+                 
+        # normalizamos sobre 11 tokens * 64
         self.norm = nn.LayerNorm(self.embed_dim * self.num_tokens)
         
-        # Projeção final para conectar com a LSTM do SB3 (640 -> 256)
+        # Saída (Flatten -> LSTM)
+        # Input: 11 * 64 = 704 features
         self.linear_out = nn.Linear(self.embed_dim * self.num_tokens, features_dim)
         self.act = nn.ReLU() 
 
     def forward(self, obs):
         batch_size = obs.shape[0]
 
-        # Fatiar o vetor de observação (Slicing baseado no env.py)
-        # OBS: Se mudar o env.py, precisa ajustar esses índices
+        # Divide em blocos semânticos                   
         raw_blocks = [
-            obs[:, 0:40],     # Skills
-            obs[:, 40:43],    # Self
-            obs[:, 43:50],    # PvE
-            obs[:, 50:60],    # Social
-            obs[:, 60:73],    # Vizinho 0
-            obs[:, 73:86],    # Vizinho 1
-            obs[:, 86:99],    # Vizinho 2
-            obs[:, 99:112],   # Vizinho 3
-            obs[:, 112:118],  # Gear
-            obs[:, 118:172],  # Items
+            obs[:, 0:40],    # Token 1: Skills
+            obs[:, 40:43],   # Token 2: Self
+            obs[:, 43:50],   # Token 3: PvE
+            obs[:, 50:60],   # Token 4: Social
+            
+            # Bloco Espacial
+            obs[:, 60:73],   # Token 5: Current Node (Novo)
+            obs[:, 73:86],   # Token 6: N1
+            obs[:, 86:99],   # Token 7: N2
+            obs[:, 99:112],  # Token 8: N3
+            obs[:, 112:125], # Token 9: N4
+            
+            obs[:, 125:131], # Token 10: Gear/Flags
+            obs[:, 131:182], # Token 11: Items (3*17=51 slots)
         ]
 
-        # Projetar cada bloco para ter o mesmo tamanho (64)
-        # Resultado: Lista de 10 tensores de shape (Batch, 64)
+        # Projeção (Raw -> Embedding de 64)
         projected_tokens = [proj(block) for proj, block in zip(self.block_projs, raw_blocks)]
 
-        # Empilhar para criar a sequência temporal
-        # Shape final: (Batch, 10, 64) -> "Uma frase com 10 palavras de tamanho 64"
+        # Stack: (Batch, 11, 64)
         x_seq = torch.stack(projected_tokens, dim=1)
 
-        # Auto-Atenção (Onde a mágica acontece)
-        # O modelo aprende: "Dado que 'Self' está com HP baixo, olhe para 'Items'"
+        # Self-Attention        
         attn_output, _ = self.attn(x_seq, x_seq, x_seq)
-        attn_output = attn_output + x_seq
-
-
-        # Achatamento e Saída
-        # (Batch, 10, 64) -> (Batch, 640)
-        x_flat = attn_output.reshape(batch_size, -1)
         
-        # Normaliza e projeta para 256 (para a LSTM)
+        # Residual Connection (Skip connection)
+        x_seq = attn_output + x_seq
+
+        # Flatten e Saída
+        x_flat = x_seq.reshape(batch_size, -1) # (Batch, 704)
         x_norm = self.norm(x_flat)
+        
         return self.act(self.linear_out(x_norm))
 
 def get_dynamic_hyperparams(num_agents, n_steps=512):
@@ -224,12 +247,12 @@ def main():
 
     policy_kwargs = {
         "features_extractor_class": AttentionFeatureExtractor,
-        "features_extractor_kwargs": {"features_dim": 256},
+        "features_extractor_kwargs": {"features_dim": 512},
         "net_arch": dict(pi=[256, 256], vf=[256, 256]), 
     }
 
     if args.algo == 'lstm':
-        policy_kwargs["lstm_hidden_size"] = 256
+        policy_kwargs["lstm_hidden_size"] = 512
         policy_kwargs["enable_critic_lstm"] = True # Essencial para que o Crítico veja a história
         policy_name = "MlpLstmPolicy"
         ModelClass = RecurrentPPO

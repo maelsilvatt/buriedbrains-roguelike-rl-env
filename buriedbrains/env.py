@@ -68,7 +68,7 @@ class BuriedBrainsEnv(gym.Env):
         self.skill_encoder = skill_encoder.SkillEncoder()
 
         # Instancia o encoder de itens
-        self.item_encoder = item_encoder.ItemEncoder()
+        self.item_encoder = item_encoder.ItemEncoder(self.catalogs['equipment'])
 
         # Instancia o encoder de efeitos de sala
         self.effect_encoder = effect_encoder.EffectEncoder()
@@ -122,10 +122,10 @@ class BuriedBrainsEnv(gym.Env):
         # 9: Mover Vizinho 3
         ACTION_SHAPE = 10 
                 
-        # DEFINIÇÃO DO ESPAÇO DE OBSERVAÇÃO (OBS_SHAPE = 136)        
+        # DEFINIÇÃO DO ESPAÇO DE OBSERVAÇÃO (OBS_SHAPE = 182)
         #
         # 1. BLOCO DE SKILLS (0-39) [4 Slots * 10 Features]
-        #    Cada slot tem: [9 features do Encoder] + [1 Cooldown Atual]
+        #    Cada slot tem: [9 features do Encoder] + [1 Cooldown Ratio]
         #
         # 2. BLOCO PRÓPRIO (40-42) [3 Estados]
         #    40: HP Ratio
@@ -149,31 +149,36 @@ class BuriedBrainsEnv(gym.Env):
         #    54: Other Karma (Real)
         #    55: Other Karma (Imag)
         #    56: Artifact Floor?
-        #    57: Has Artifact?
-        #    58: Other Dropped?
+        #    57: Artifact Floor Rarity
+        #    58: My Artifact Rarity
         #    59: In PvP Combat?
         #
-        # 5. BLOCO MOVIMENTO & AMBIENTE (60-111) [52 Estados]
-        #    Para cada vizinho (N, S, L, O) -> 13 Features:
-        #    [0-3]: Básico [Valid, Enemy, Reward, Danger]
-        #    [4-12]: Efeito de Sala (One-Hot Encoding de 9 tipos)
+        # 5. BLOCO MOVIMENTO & AMBIENTE (60-124) [65 Estados]
+        #    Agora inclui o Nó Atual + 4 Vizinhos (5 Blocos * 13 Features)
+        #    Layout: [Current, Neighbor_1, Neighbor_2, Neighbor_3, Neighbor_4]
+        #    Para cada um (13 Features):
+        #       [0]: Valid Node?
+        #       [1]: Enemy Present?
+        #       [2]: Reward (Item/Event/Exit)?
+        #       [3]: Danger Tier (0.33=Common, 0.66=Elite, 1.0=Boss)
+        #       [4-12]: Efeito de Sala (Encoder de 9 tipos)
         #
-        # 6. BLOCO FINAL (112-117) [6 Estados]
-        #    (Deslocado de 76 para 112)
-        #    112: Self Weapon Rarity
-        #    113: Self Armor Rarity
-        #    114: Other Gear Score
-        #    115: Other Just Dropped?
-        #    116: Other Skipped Attack?
-        #    117: Door Open?
+        # 6. BLOCO FINAL (125-130) [6 Estados]
+        #    (Deslocado para 125)
+        #    125: Self Weapon Rarity
+        #    126: Self Armor Rarity
+        #    127: Other Gear Score
+        #    128: Other Just Dropped?
+        #    129: Other Skipped Attack?
+        #    130: Door Open/Exit?
         #
-        # 7. BLOCO DETALHADO DE ITENS (118-171) [54 Estados]
-        #    (Deslocado de 82 para 118)
-        #    3 Slots * 18 Features
-        #    118-135: Weapon Embedding
-        #    136-153: Armor Embedding
-        #    154-171: Artifact Embedding      
-        OBS_SHAPE = (172,)
+        # 7. BLOCO DETALHADO DE ITENS (131-181) [51 Estados]
+        #    (Deslocado para 131)
+        #    3 Slots * 17 Features (Atualizado: sem Fear/Shock, com Sunder)
+        #    131-147: Weapon Embedding
+        #    148-164: Armor Embedding
+        #    165-181: Artifact Embedding   
+        OBS_SHAPE = (182,)
 
         self.action_space = spaces.Dict({
             agent_id: spaces.Discrete(ACTION_SHAPE) for agent_id in self.agent_ids
@@ -416,8 +421,50 @@ class BuriedBrainsEnv(gym.Env):
 
         # Bloco Movimento (60-75)
         idx_mov = 60
+        
+        # O agente agora observa o próprio arredor
+        
+        curr_idx = idx_mov
+        # Limpa o slot
+        obs[curr_idx : curr_idx + 13] = 0.0 
+        
+        # Sala Válida ?
+        obs[curr_idx + 0] = 1.0
+        
+        # Tem inimigo? 
+
+        has_opp_here = (other_agent_id and self.current_nodes.get(other_agent_id) == current_node_id)
+        if room_content.get('enemies') or has_opp_here:
+             obs[curr_idx + 1] = 1.0
+        
+        # Reward
+        if room_content.get('items') or any(e in room_content.get('events', []) for e in ['Treasure', 'Morbid Treasure', 'Fountain of Life']):
+             obs[curr_idx + 2] = 1.0
+        if is_in_arena and current_graph_to_use.nodes[current_node_id].get('is_exit') and current_graph_to_use.graph.get('meet_occurred'):
+             obs[curr_idx + 2] = 1.0
+             
+        # Danger Tier
+        d_level = 0.0
+        if room_content.get('enemies'):
+            ename = room_content['enemies'][0]
+            tier = self.catalogs['enemies'].get(ename, {}).get('tier', 'Common')
+            if tier == 'Boss': d_level = 1.0
+            elif tier == 'Elite': d_level = 0.66
+            else: d_level = 0.33
+        elif has_opp_here:
+            d_level = 0.66
+        obs[curr_idx + 3] = d_level
+        
+        # Efeitos ambientais
+        c_effects = room_content.get('room_effects', [])
+        eff_name = c_effects[0] if c_effects else 'None'
+        obs[curr_idx + 4 : curr_idx + 13] = self.effect_encoder.encode(eff_name)
+
+        # Preenche os nós vizinhos        
+        idx_neighbors_start = idx_mov + 13 # 73
+
         for i in range(self.MAX_NEIGHBORS):            
-            curr_idx = idx_mov + (i * 13)
+            curr_idx = idx_neighbors_start + (i * 13)
             
             # Preenche com zeros/default primeiro pra evitar lixo            
             obs[curr_idx : curr_idx + 13] = 0.0
@@ -439,7 +486,7 @@ class BuriedBrainsEnv(gym.Env):
                         obs[curr_idx + 1] = 1.0
                         
                     # Reward
-                    if n_content.get('items') or any(e in n_content.get('events', []) for e in ['Treasure', 'Morbid Treasure']):
+                    if n_content.get('items') or any(e in n_content.get('events', []) for e in ['Treasure', 'Morbid Treasure', 'Fountain of Life']):
                          obs[curr_idx + 2] = 1.0
                     if is_in_arena and current_graph_to_use.nodes[neighbor_node_id].get('is_exit') and current_graph_to_use.graph.get('meet_occurred'):
                          obs[curr_idx + 2] = 1.0 # Saída Destrancada conta como Reward
@@ -448,12 +495,23 @@ class BuriedBrainsEnv(gym.Env):
                     d_level = 0.0
                     if n_content.get('enemies'):
                         ename = n_content['enemies'][0]
-                        tags = self.catalogs['enemies'].get(ename, {}).get('tags', [])
-                        if 'Boss' in tags: d_level = 1.0
-                        elif 'Elite' in tags: d_level = 0.66
-                        else: d_level = 0.33
+                        # Busca os dados do inimigo no catálogo
+                        enemy_data = self.catalogs['enemies'].get(ename, {})
+                        
+                        # Pega o Tier (padrão 'Common' se não encontrar)
+                        tier = enemy_data.get('tier', 'Common')
+                        
+                        if tier == 'Boss': 
+                            d_level = 1.0
+                        elif tier == 'Elite': 
+                            d_level = 0.66                        
+                        else: 
+                            # Cobre Common e Fodder
+                            d_level = 0.33
+                            
                     elif has_opp:
-                        d_level = 0.66
+                        d_level = 0.66 # Agente inimigo conta como Elite/Perigoso
+                    
                     obs[curr_idx + 3] = d_level
 
                     # Features Ambientais
@@ -466,8 +524,9 @@ class BuriedBrainsEnv(gym.Env):
                     # Injeta nos slots 4 a 12 deste vizinho
                     obs[curr_idx + 4 : curr_idx + 13] = eff_vec
         
-        # BLOCO FINAL (Deslocado para 112-117)                
-        idx_end = 112
+        # BLOCO FINAL (Gear and Items)
+        # Deslocamento: 60 + (5 blocos * 13) = 125
+        idx_end = 125
         
         # Self Gear
         w = agent['equipment'].get('Weapon')
@@ -500,19 +559,21 @@ class BuriedBrainsEnv(gym.Env):
         if is_in_arena and current_graph_to_use.graph.get('meet_occurred'):
             obs[idx_end + 5] = 1.0 
         
-        # Bloco de itens (118 - 172)
-        # 118 = Weapon, 136 = Armor, 154 = Artifact. Fim = 172.
+        # BLOCO DE ITENS DETALHADOS (131 - 182)        
+        # Weapon: 131:148 (17 slots)
+        # Armor:  148:165 (17 slots)
+        # Artifact: 165:182 (17 slots)
         
         w_data = self.catalogs['equipment'].get(w, {})
         a_data = self.catalogs['equipment'].get(a, {})
         art = agent['equipment'].get('Artifact')
         art_data = self.catalogs['equipment'].get(art, {})
-        
-        obs[118:136] = self.item_encoder.encode(w_data)
-        obs[136:154] = self.item_encoder.encode(a_data)
-        obs[154:172] = self.item_encoder.encode(art_data)        
                 
-        return obs
+        obs[131:148] = self.item_encoder.encode(w_data)
+        obs[148:165] = self.item_encoder.encode(a_data)
+        obs[165:182] = self.item_encoder.encode(art_data)   
+                
+        return obs         
     
     def reset(self, seed=None, options=None):
         # Chama o reset do pai (Gerencia o self.np_random interno do Gym)

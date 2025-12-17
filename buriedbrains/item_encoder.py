@@ -1,54 +1,68 @@
+# item_encoder.py
 import numpy as np
 
 class ItemEncoder:
     """
-    Traduz os atributos complexos de um item para um vetor numérico.
+    Traduz os atributos de um item para um vetor numérico com calibragem dinâmica.
     """
-    def __init__(self):
-        # Tags de Efeito Relevantes para combate
+    def __init__(self, equipment_catalog: dict):
+        # Tags de Efeito coesas (9 tags)
         self.effect_tags = [
             'Stun', 'Burn', 'Poison', 'Bleed', 
-            'Reflect', 'Revive', 'Fear', 'Shock',
-            'Vulnerable', 'Blind'
+            'Reflect', 'Revive', 'Vulnerable', 'Blind', 'Sunder'
         ]
-        # Tamanho: [Flat_Dmg, Mod_Dmg, Flat_HP, Red_Dmg, Chance_OnHit, Is_Weapon, Is_Armor, Is_Artifact] + Tags
+        
+        # Tamanho do vetor: 4 atributos + 1 chance + 3 tipos + tags de efeito
         self.vector_size = 8 + len(self.effect_tags)
+        
+        # Executa a calibragem dinâmica
+        self.max_stats = self._calibrate(equipment_catalog)
+
+    def _calibrate(self, catalog: dict):
+        """Varre o catálogo para encontrar os tetos de cada atributo."""
+        max_vals = {
+            'flat_damage_bonus': 1.0,   # Evita divisão por zero
+            'damage_modifier': 1.0,
+            'flat_hp_bonus': 1.0,
+            'damage_reduction': 1.0
+        }
+        
+        for item_data in catalog.values():
+            passives = item_data.get('passive_effects', {})
+            if isinstance(passives, dict):
+                for stat in max_vals.keys():
+                    val = float(passives.get(stat, 0))
+                    if val > max_vals[stat]:
+                        max_vals[stat] = val
+                        
+        return max_vals
 
     def encode(self, item_data: dict) -> np.ndarray:
         if not item_data:
             return np.zeros(self.vector_size, dtype=np.float32)
             
         vector = []
-        
-        # Stats Numéricos (Normalizados por máximos teóricos do jogo)
         passives = item_data.get('passive_effects', {})
         
-        # Dano (Max Flat ~50, Max Mod ~0.5)
-        vector.append(min(passives.get('flat_damage_bonus', 0) / 50.0, 1.0))
-        vector.append(min(passives.get('damage_modifier', 0.0) / 0.5, 1.0))
+        # Normaliza os atributos passivos
+        vector.append(min(passives.get('flat_damage_bonus', 0) / self.max_stats['flat_damage_bonus'], 1.0))
+        vector.append(min(passives.get('damage_modifier', 0.0) / self.max_stats['damage_modifier'], 1.0))
+        vector.append(min(passives.get('flat_hp_bonus', 0) / self.max_stats['flat_hp_bonus'], 1.0))
+        vector.append(min(passives.get('damage_reduction', 0.0) / self.max_stats['damage_reduction'], 1.0))
         
-        # Defesa (Max HP ~100, Max Red ~0.5)
-        vector.append(min(passives.get('flat_hp_bonus', 0) / 100.0, 1.0))
-        vector.append(min(passives.get('damage_reduction', 0.0) / 0.5, 1.0))
-        
-        # Efeitos On-Hit / On-Hurt
+        # Tags de Tipo de Item
         on_hit = item_data.get('on_hit_effect', {})
         on_hurt = item_data.get('on_being_hit_effect', {})
-        
-        # Chance de proc (pega a maior entre on_hit e on_hurt)
         chance = max(on_hit.get('chance', 0), on_hurt.get('chance', 0))
-        vector.append(chance)
+        vector.append(float(chance))
 
-        # Tipo do Item (One-Hot)
         itype = item_data.get('type')
         vector.append(1.0 if itype == 'Weapon' else 0.0)
         vector.append(1.0 if itype == 'Armor' else 0.0)
         vector.append(1.0 if itype == 'Artifact' else 0.0)
 
-        # Tags de Efeito (One-Hot)
-        # Junta tags de on_hit e on_hurt
+        # Tags de efeito
         active_tag = on_hit.get('effect_tag') or on_hurt.get('effect_tag')
-        
         for tag in self.effect_tags:
             vector.append(1.0 if tag == active_tag else 0.0)
 

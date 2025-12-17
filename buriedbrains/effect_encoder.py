@@ -6,7 +6,7 @@ class EffectEncoder:
     Traduz o efeito da sala atual para um vetor One-Hot ou de Tags.
     """
     def __init__(self):
-        # Lista de efeitos conhecidos (do seu YAML)
+        # Lista de efeitos conhecidos 
         self.known_effects = [
             'None', 
             'Slow Terrain', 'Heat', 'Dense Fog', 'Weakening Field', # Negativos
