@@ -214,8 +214,9 @@ def main():
         sanctum_floor=args.sanctum_floor,
         verbose=args.verbose,
         num_agents=args.num_agents,
-        seed=seed_val
-    )
+        seed=seed_val,
+        enable_logging_buffer = not args.no_hall_of_fame
+    )    
     env = SharedPolicyVecEnv(base_env)
 
     # Envolvendo com VecNormalize para acabar com o "Dente de Serra"

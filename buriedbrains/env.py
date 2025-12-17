@@ -32,6 +32,7 @@ class BuriedBrainsEnv(gym.Env):
                  verbose: int = 0,
                  sanctum_floor: int = 20,
                  num_agents: int = 2,
+                 enable_logging_buffer=True,
                  seed: int = 42):
         super().__init__()        
         
@@ -74,6 +75,7 @@ class BuriedBrainsEnv(gym.Env):
         self.effect_encoder = effect_encoder.EffectEncoder()
 
         # Parâmetros globais
+        self.enable_logging_buffer = enable_logging_buffer
         self.max_episode_steps = max_episode_steps
         self.current_step = 0
         self.verbose = verbose 
@@ -1033,11 +1035,11 @@ class BuriedBrainsEnv(gym.Env):
     
     def _log(self, agent_id: str, message: str):
         """
-        Log colorido no terminal, mais fácil de ler.
-        Categorias são detectadas automaticamente: AÇÃO, PVP, KARMA, WARN, ERRO, etc.
-        Além disso, nomes de itens e raridades são destacados com cores específicas.
+        Log colorido no terminal e bufferização condicional.
+        Otimizado para não comer RAM se não precisarmos do Hall da Fama.
         """
-        # ANSI Color Codes
+
+        # ANSI Color Codes para terminal
         COLORS = {
             "reset": "\033[0m",
             "agent": "\033[96m",      # ciano
@@ -1050,51 +1052,41 @@ class BuriedBrainsEnv(gym.Env):
             "error": "\033[91m",      # vermelho
             "arena": "\033[95m",      # magenta
             "map": "\033[94m",        # azul
-            "upgrade": "\033[38;5;214m",  # laranja/dourado 
+            "upgrade": "\033[38;5;214m", # laranja
         }
 
         def colorize(text, color):
             return f"{COLORS[color]}{text}{COLORS['reset']}"
 
-        # Escolhe cor baseada no conteúdo da mensagem
-        msg_upper = message.upper()
-
-        if "[ERRO]" in msg_upper or "ERROR" in msg_upper:
-            color = "error"
-        elif "UPGRADE" in msg_upper:
-            color = "upgrade"
-        elif "[WARN]" in msg_upper:
-            color = "warn"
-        elif "[SOCIAL]" in msg_upper:
-            if " (+)" in message or "POSITIVO" in msg_upper:
-                color = "karma_pos"
-            elif "(-)" in message or "NEGAT" in msg_upper:
-                color = "karma_neg"
-            else:
-                color = "karma_neu"
-        elif "PVP" in msg_upper or "MORTE" in msg_upper:
-            color = "pvp"
-        elif "AÇÃO" in msg_upper or "AÇÃO-ARENA" in msg_upper:
-            color = "action"
-        elif "SANCTUM" in msg_upper or "ZONA K" in msg_upper:
-            color = "arena"
-        elif "PVE" in msg_upper:
-            color = "map"
-        else:
-            color = "agent"
-
-        formatted = f"{colorize(f'[{agent_id.upper()}]', 'agent')} {colorize(message, color)}"
-
-        # print no terminal
+        # Print no Terminal (Apenas se verbose > 0)
         if self.verbose > 0:
+            msg_upper = message.upper()
+            if "[ERRO]" in msg_upper or "ERROR" in msg_upper: color = "error"
+            elif "UPGRADE" in msg_upper or "EVENTO" in msg_upper: color = "upgrade"
+            elif "[WARN]" in msg_upper: color = "warn"
+            elif "[SOCIAL]" in msg_upper:
+                if " (+)" in message or "POSITIVO" in msg_upper: color = "karma_pos"
+                elif "(-)" in message or "NEGAT" in msg_upper: color = "karma_neg"
+                else: color = "karma_neu"
+            elif "PVP" in msg_upper or "MORTE" in msg_upper: color = "pvp"
+            elif "AÇÃO" in msg_upper or "AÇÃO-ARENA" in msg_upper: color = "action"
+            elif "SANCTUM" in msg_upper or "ZONA K" in msg_upper: color = "arena"
+            elif "PVE" in msg_upper: color = "map"
+            else: color = "agent"
+
+            formatted = f"{colorize(f'[{agent_id.upper()}]', 'agent')} {colorize(message, color)}"
             print(formatted)
 
-        # Log interno (sem cores)
-        if agent_id not in self.current_episode_logs:
-            self.current_episode_logs[agent_id] = []
+        # Só salva no buffer se a flag estiver ativada
+        if getattr(self, 'enable_logging_buffer', True): 
+            if agent_id not in self.current_episode_logs:
+                self.current_episode_logs[agent_id] = []
+                        
+            # Se passar de 1000 linhas, joga fora as antigas pra não estourar RAM
+            if len(self.current_episode_logs[agent_id]) > 1000:
+                self.current_episode_logs[agent_id].pop(0)
 
-        self.current_episode_logs[agent_id].append(message + "\n")
-
+            self.current_episode_logs[agent_id].append(message + "\n")
 
     def _transition_to_arena(self, agent_id: str):
         """
