@@ -3,7 +3,36 @@ import networkx as nx
 import random
 from typing import Dict, List, Tuple
 
-# --- Geração da Zona de Progressão (Dinâmica, por Sucessores) ---
+# ==========================================
+# CONSTANTES DE GERAÇÃO DE MAPA (TWEAK HERE)
+# ==========================================
+
+# Progressão (DAG)
+DAG_BRANCHING_FACTOR = 2         # Quantas opções de sala o jogador vê a cada passo
+
+# Santuário (Nó sem inimigos, apenas descanso/loja)
+KZ_DEFAULT_NUM_NODES = 9         # Tamanho padrão da arena
+KZ_CONNECTIVITY_PROB = 0.40      # Densidade de conexões (0.0 = ilhas, 1.0 = tudo conecta)
+KZ_DEFAULT_NUM_EXITS = 1         # Quantos nós permitem fugir da arena
+KZ_GENERATION_RETRIES = 20       # Quantas vezes tentar gerar um grafo conexo antes de desistir
+
+# Fallback: Se a geração falhar, cria um ciclo e adiciona arestas aleatórias
+KZ_FALLBACK_EXTRA_EDGES_DIV = 2  # (NumNodes // X) arestas extras no fallback
+
+# Poda de Grafos (Heurística de Centralidade)
+# Pesos para definir quais nós são "importantes" (Centralidade)
+PRUNE_WEIGHT_DEGREE = 0.5        # Importância de ter muitas conexões
+PRUNE_WEIGHT_BETWEEN = 0.3       # Importância de ser ponte entre grupos
+PRUNE_WEIGHT_CLOSE = 0.2         # Importância de estar perto de todos
+
+# Probabilidade de manter arestas (Heurística)
+# Fórmula: prob_keep = BASE + (score_sum / DIVISOR)
+PRUNE_BASE_KEEP_PROB = 0.5       
+PRUNE_SCORE_DIVISOR = 4.0        
+
+# ==========================================
+# GERAÇÃO DE ESTRUTURAS
+# ==========================================
 def generate_progression_successors(
     graph: nx.DiGraph, 
     parent_node: str, 
@@ -11,19 +40,13 @@ def generate_progression_successors(
 ) -> Tuple[List[str], Dict[int, int]]:
     """
     Gera a topologia dos NÓS SUCESSORES para um nó de progressão (DAG).
-    
-    Esta função é chamada dinamicamente a cada passo de movimento, alinhando-se
-    com a natureza POMDP e a poda de ramos do ambiente.
-    
-    :param graph: O objeto nx.DiGraph do agente (para ser modificado).
-    :param parent_node: O nó a partir do qual gerar os sucessores (ex: "Sala 1_0").
-    :param nodes_per_floor_counters: O dicionário de contagem de nós do agente.
-    :return: Uma tupla (lista_de_novos_nos, dicionario_de_contagem_atualizado).
     """
     
     parent_floor = graph.nodes[parent_node].get('floor', 0)
     next_floor = parent_floor + 1
-    branching_factor = 2 # Fator de ramificação
+    
+    # Usa a constante definida
+    branching_factor = DAG_BRANCHING_FACTOR 
     
     new_node_names = []
 
@@ -48,14 +71,18 @@ def generate_progression_successors(
     return new_node_names, nodes_per_floor_counters
 
 # --- Geração da Zona do Karma (Estática, por Arena) ---
-def _prune_graph_by_centrality(G: nx.Graph, alpha=0.5, beta=0.3, gamma=0.2) -> nx.Graph:
+def _prune_graph_by_centrality(
+    G: nx.Graph, 
+    alpha=PRUNE_WEIGHT_DEGREE, 
+    beta=PRUNE_WEIGHT_BETWEEN, 
+    gamma=PRUNE_WEIGHT_CLOSE
+) -> nx.Graph:
     """
     Poda arestas de um grafo com base em uma pontuação heurística de centralidade.    
     """
     scores = {}
     
     # Normaliza centralidades para que a soma seja ~1.0
-    # (Evita que (scores[u] + scores[v]) seja > 1.0)
     try:
         deg_cen = nx.degree_centrality(G)
         bet_cen = nx.betweenness_centrality(G)
@@ -89,8 +116,9 @@ def _prune_graph_by_centrality(G: nx.Graph, alpha=0.5, beta=0.3, gamma=0.2) -> n
     for u, v in G.edges():
         # Arestas conectadas a nós de baixa pontuação têm maior chance de serem removidas
         score_sum = scores.get(u, 0) + scores.get(v, 0)
-        # Ajusta a probabilidade de remoção (ex: random() > (0.5 + score_sum/2))
-        prob_keep = 0.5 + (score_sum / 4) # Ajuste esta heurística
+        
+        # Ajusta a probabilidade de remoção usando constantes
+        prob_keep = PRUNE_BASE_KEEP_PROB + (score_sum / PRUNE_SCORE_DIVISOR)
         
         if random.random() > prob_keep:
             # Garante que não desconecta o grafo
@@ -102,23 +130,24 @@ def _prune_graph_by_centrality(G: nx.Graph, alpha=0.5, beta=0.3, gamma=0.2) -> n
 
 def generate_k_zone_topology(
     floor_level: int,
-    num_nodes: int = 9,
-    connectivity_prob: float = 0.40,    
-    num_exits: int = 1 # Novo parâmetro
+    num_nodes: int = KZ_DEFAULT_NUM_NODES,
+    connectivity_prob: float = KZ_CONNECTIVITY_PROB,    
+    num_exits: int = KZ_DEFAULT_NUM_EXITS
 ) -> nx.Graph:
     """
     Gera a topologia para uma Zona do Karma (Arena PvP),
     garantindo pelo menos um nó de saída estrategicamente posicionado.    
     """
     # Tenta gerar um grafo conectado (Erdős-Rényi)
-    for _ in range(20):
+    for _ in range(KZ_GENERATION_RETRIES):
         G = nx.erdos_renyi_graph(num_nodes, connectivity_prob)
         if nx.is_connected(G):
             break
     else:
         # Fallback: Ciclo com arestas extras
         G = nx.cycle_graph(num_nodes)
-        for _ in range(num_nodes // 2):
+        extra_edges = num_nodes // KZ_FALLBACK_EXTRA_EDGES_DIV
+        for _ in range(extra_edges):
             u, v = random.sample(list(G.nodes()), 2)
             if not G.has_edge(u, v):
                 G.add_edge(u, v)
@@ -144,6 +173,7 @@ def generate_k_zone_topology(
     sorted_nodes_by_dist = sorted(lengths, key=lambda n: lengths[n], reverse=True)
 
     # Pega os candidatos mais distantes
+    # Garante que temos candidatos suficientes para as saídas
     exit_candidates = sorted_nodes_by_dist[:max(2, num_exits + 1)]
     chosen_exits = random.sample(exit_candidates, num_exits)
 

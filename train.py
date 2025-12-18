@@ -16,95 +16,109 @@ from buriedbrains.env import BuriedBrainsEnv
 from buriedbrains.logging_callbacks import LoggingCallback
 from buriedbrains.wrappers import SharedPolicyVecEnv
 
+# ==========================================
+# CONFIGURAÇÃO DE HIPERPARÂMETROS (RL TUNING)
+# ==========================================
+
+# Arquitetura do Transformer
+NET_EMBED_DIM = 64          # Tamanho da projeção (Embedding)
+NET_NUM_HEADS = 4           # Cabeças de atenção (64 / 4 = 16 features/head)
+NET_FEATURES_DIM = 512      # Saída final do extrator para a LSTM/Policy
+NET_DROPOUT = 0.1
+
+# Definição do vetor de observação
+# Se modificar o env.py, atualizar aqui também!
+# Define o tamanho de cada "fatia" do vetor de observação.
+OBS_SIZES = {
+    'skills': 40,
+    'self_stats': 3,
+    'pve_context': 7,
+    'social_pvp': 10,
+    'current_node': 13,
+    'neighbor_n': 13,
+    'neighbor_s': 13,
+    'neighbor_e': 13,
+    'neighbor_w': 13,
+    'flags_gear': 6,
+    'items': 51
+}
+
+# Parâmetros de Treinamento PPO
+TRAIN_TOTAL_TIMESTEPS = 5_000_000
+TRAIN_N_STEPS = 512                 # Tamanho do buffer antes do update
+TRAIN_TARGET_MINIBATCHES = 8        # Em quantas partes dividir o batch
+TRAIN_GAMMA = 0.99                  # Fator de desconto (0.99 = focado no futuro)
+TRAIN_GAE_LAMBDA = 0.95
+TRAIN_VF_COEF = 0.5
+TRAIN_MAX_GRAD_NORM = 0.5
+TRAIN_N_EPOCHS = 10
+
+# Configuração Dinâmica (Depende do nº de Agentes)
+# Se muitos agentes, o LR deve ser menor para estabilizar.
+THRESHOLD_HIGH_AGENTS = 64
+LR_HIGH_AGENTS = 1e-4
+ENTROPY_HIGH_AGENTS = 0.01
+
+LR_LOW_AGENTS = 3e-4
+ENTROPY_LOW_AGENTS = 0.03
+
+# Transformer-based Feature Extractor
 class AttentionFeatureExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space, features_dim=512):
+    def __init__(self, observation_space, features_dim=NET_FEATURES_DIM):
         super().__init__(observation_space, features_dim)
         
-        # Configurações da Atenção
-        self.embed_dim = 64  # Tamanho da projeção (Embedding)
-        self.num_heads = 4   # 64 / 4 = 16 features por cabeça
+        self.embed_dim = NET_EMBED_DIM
+        self.num_heads = NET_NUM_HEADS
         
-        # Número de Tokens        
-        self.num_tokens = 11 
+        # Calcula os slices automaticamente baseado no dicionário OBS_SIZES        
+        self.slices = []
+        current_idx = 0
         
-        # Projeções Semânticas (Input Layer)
-        self.block_projs = nn.ModuleList([
-            # Skills (0-40)
-            nn.Linear(40, self.embed_dim), 
+        # A ordem aqui DEVE ser a mesma que o env.py monta o vetor!
+        # Ordem: Skills -> Stats -> Context -> Social -> Nodes -> Flags -> Items
+        ordered_keys = [
+            'skills', 'self_stats', 'pve_context', 'social_pvp',
+            'current_node', 'neighbor_n', 'neighbor_s', 'neighbor_e', 'neighbor_w',
+            'flags_gear', 'items'
+        ]
+        
+        self.block_projs = nn.ModuleList()
+        
+        for key in ordered_keys:
+            size = OBS_SIZES[key]
+            # Cria a camada linear para esse bloco
+            self.block_projs.append(nn.Linear(size, self.embed_dim))
+            # Guarda os índices de corte (Start, End)
+            self.slices.append((current_idx, current_idx + size))
+            current_idx += size
             
-            # Self Stats (40-43)
-            nn.Linear(3, self.embed_dim),  
-            
-            # Contexto PvE (43-50)
-            nn.Linear(7, self.embed_dim),  
-            
-            # Social / PvP (50-60)
-            nn.Linear(10, self.embed_dim), 
-                        
-            # Nó Atual (60-73)
-            nn.Linear(13, self.embed_dim),
-            
-            # Vizinho Norte (73-86)
-            nn.Linear(13, self.embed_dim),
-            
-            # Vizinho Sul (86-99)
-            nn.Linear(13, self.embed_dim),
-            
-            # Vizinho Leste (99-112)
-            nn.Linear(13, self.embed_dim),
-            
-            # Vizinho Oeste (112-125)
-            nn.Linear(13, self.embed_dim),                        
-
-            # Final/Gear Flags (125-131)
-            nn.Linear(6, self.embed_dim),  
-            
-            # Detalhes de Itens (131-182)
-            # 54 (3*18) para 51 (3*17)
-            nn.Linear(51, self.embed_dim), 
-        ])
+        self.num_tokens = len(ordered_keys) # Deve ser 11
 
         # Mecanismo de Atenção (Transformer Block)
         self.attn = nn.MultiheadAttention(
             embed_dim=self.embed_dim,
             num_heads=self.num_heads,
-            dropout=0.1,
+            dropout=NET_DROPOUT,
             batch_first=True
         )
                  
-        # normalizamos sobre 11 tokens * 64
+        # Normalização e Saída
         self.norm = nn.LayerNorm(self.embed_dim * self.num_tokens)
-        
-        # Saída (Flatten -> LSTM)
-        # Input: 11 * 64 = 704 features
         self.linear_out = nn.Linear(self.embed_dim * self.num_tokens, features_dim)
         self.act = nn.ReLU() 
 
     def forward(self, obs):
         batch_size = obs.shape[0]
 
-        # Divide em blocos semânticos                   
-        raw_blocks = [
-            obs[:, 0:40],    # Token 1: Skills
-            obs[:, 40:43],   # Token 2: Self
-            obs[:, 43:50],   # Token 3: PvE
-            obs[:, 50:60],   # Token 4: Social
-            
-            # Bloco Espacial
-            obs[:, 60:73],   # Token 5: Current Node (Novo)
-            obs[:, 73:86],   # Token 6: N1
-            obs[:, 86:99],   # Token 7: N2
-            obs[:, 99:112],  # Token 8: N3
-            obs[:, 112:125], # Token 9: N4
-            
-            obs[:, 125:131], # Token 10: Gear/Flags
-            obs[:, 131:182], # Token 11: Items (3*17=51 slots)
-        ]
+        # Fatiamento Dinâmico usando os índices pré-calculados
+        raw_blocks = []
+        for start, end in self.slices:
+            raw_blocks.append(obs[:, start:end])
 
         # Projeção (Raw -> Embedding de 64)
         projected_tokens = [proj(block) for proj, block in zip(self.block_projs, raw_blocks)]
 
-        # Stack: (Batch, 11, 64)
+        # Stack: (Batch, Num_Tokens, Embed_Dim)
         x_seq = torch.stack(projected_tokens, dim=1)
 
         # Self-Attention        
@@ -114,25 +128,27 @@ class AttentionFeatureExtractor(BaseFeaturesExtractor):
         x_seq = attn_output + x_seq
 
         # Flatten e Saída
-        x_flat = x_seq.reshape(batch_size, -1) # (Batch, 704)
+        x_flat = x_seq.reshape(batch_size, -1) 
         x_norm = self.norm(x_flat)
         
         return self.act(self.linear_out(x_norm))
 
-def get_dynamic_hyperparams(num_agents, n_steps=512):
+# Função para ajustar hiperparâmetros dinamicamente
+def get_dynamic_hyperparams(num_agents, n_steps=TRAIN_N_STEPS):
     total_buffer_size = num_agents * n_steps
-    target_minibatches = 8 
-    ideal_batch_size = total_buffer_size // target_minibatches
+    ideal_batch_size = total_buffer_size // TRAIN_TARGET_MINIBATCHES
+    
+    # Arredonda para a potência de 2 mais próxima
     batch_size = 2 ** round(math.log2(max(256, ideal_batch_size)))
     if batch_size > total_buffer_size:
         batch_size = int(2 ** math.floor(math.log2(total_buffer_size)))
 
-    if num_agents >= 64:
-        learning_rate = 1e-4  
-        ent_coef = 0.01       
+    if num_agents >= THRESHOLD_HIGH_AGENTS:
+        learning_rate = LR_HIGH_AGENTS  
+        ent_coef = ENTROPY_HIGH_AGENTS       
     else:
-        learning_rate = 3e-4  
-        ent_coef = 0.03       
+        learning_rate = LR_LOW_AGENTS  
+        ent_coef = ENTROPY_LOW_AGENTS       
 
     return batch_size, learning_rate, ent_coef
 
@@ -163,15 +179,14 @@ def transfer_weights(old_model_path, new_model, verbose=0):
     if verbose >= 1: print("--- TRANSFERÊNCIA CONCLUÍDA ---\n")
     del temp_model
 
+# Função Principal
 def main():
     parser = argparse.ArgumentParser(description="Script Unificado de Treinamento (PPO vs LSTM)")
     
-    # Seletor de algoritmo
     parser.add_argument('--algo', type=str, required=True, choices=['ppo', 'lstm'], 
                         help="Escolha o algoritmo: 'ppo' ou 'lstm'")
     
-    # Argumentos Gerais
-    parser.add_argument('--total_timesteps', type=int, default=5_000_000)
+    parser.add_argument('--total_timesteps', type=int, default=TRAIN_TOTAL_TIMESTEPS)
     parser.add_argument('--suffix', type=str, default="Experiment")
     parser.add_argument('--max_episode_steps', type=int, default=50_000)
     parser.add_argument('--sanctum_floor', type=int, default=20)
@@ -203,8 +218,6 @@ def main():
     
     tb_path = os.path.join(base_logdir, run_name)
     model_path = os.path.join(base_models_dir, run_name)
-    
-    # Caminho para salvar/carregar as estatísticas de normalização
     vec_norm_path = os.path.join(model_path, "vec_normalize.pkl")
 
     # Inicialização do ambiente
@@ -219,15 +232,12 @@ def main():
     )    
     env = SharedPolicyVecEnv(base_env)
 
-    # Envolvendo com VecNormalize para acabar com o "Dente de Serra"
-    # norm_obs=False: a AttentionNet já lida com os dados brutos/flags. Não queremos estragar os bools.
-    # norm_reward=True: ESSENCIAL. Transforma -300/+400 em uma escala digerível (ex: -2 a +2).
-    # clip_reward=10.0: Segurança contra exploding gradients.
+    # Normalização de Recompensa
     print("[ENV] Aplicando Normalização de Recompensa (VecNormalize)...")
     env = VecNormalize(env, norm_obs=False, norm_reward=True, clip_reward=10.0)
 
     # Hiperparâmetros Dinâmicos
-    auto_batch, auto_lr, auto_ent = get_dynamic_hyperparams(args.num_agents, n_steps=512)
+    auto_batch, auto_lr, auto_ent = get_dynamic_hyperparams(args.num_agents, n_steps=TRAIN_N_STEPS)
 
     print(f"\n[AUTO-TUNING] Configuração para {args.num_agents} Agentes:")
     print(f"  - Batch Size: {auto_batch}")
@@ -236,25 +246,25 @@ def main():
 
     common_params = {
         "learning_rate": auto_lr,
-        "n_steps": 512,         
+        "n_steps": TRAIN_N_STEPS,         
         "batch_size": auto_batch,   
-        "n_epochs": 10,
-        "gamma": 0.99, # 995 para ~200 passos. 99 para 100 passos.     
-        "gae_lambda": 0.95,
+        "n_epochs": TRAIN_N_EPOCHS,
+        "gamma": TRAIN_GAMMA,     
+        "gae_lambda": TRAIN_GAE_LAMBDA,
         "ent_coef": auto_ent,       
-        "vf_coef": 0.5,
-        "max_grad_norm": 0.5,
+        "vf_coef": TRAIN_VF_COEF,
+        "max_grad_norm": TRAIN_MAX_GRAD_NORM,
     }
 
     policy_kwargs = {
         "features_extractor_class": AttentionFeatureExtractor,
-        "features_extractor_kwargs": {"features_dim": 512},
+        "features_extractor_kwargs": {"features_dim": NET_FEATURES_DIM},
         "net_arch": dict(pi=[256, 256], vf=[256, 256]), 
     }
 
     if args.algo == 'lstm':
         policy_kwargs["lstm_hidden_size"] = 512
-        policy_kwargs["enable_critic_lstm"] = True # Essencial para que o Crítico veja a história
+        policy_kwargs["enable_critic_lstm"] = True 
         policy_name = "MlpLstmPolicy"
         ModelClass = RecurrentPPO
     else:
@@ -270,14 +280,12 @@ def main():
     if args.resume_path and os.path.exists(args.resume_path):
         print(f"\n[LOAD] Carregando checkpoint: {args.resume_path}")
         
-        # Carregar estatísticas do VecNormalize se existirem        
         resume_dir = os.path.dirname(args.resume_path)
         stats_path = os.path.join(resume_dir, "vec_normalize.pkl")
         
         if os.path.exists(stats_path):
             print(f"[LOAD] Carregando estatísticas de normalização: {stats_path}")
             env = VecNormalize.load(stats_path, env)
-            # Garante que continua treinando e normalizando
             env.training = True 
             env.norm_reward = True
         else:
@@ -304,7 +312,7 @@ def main():
         if args.pretrained_path:
             transfer_weights(args.pretrained_path, model, verbose=1)
     
-    # Callback customizado para salvar o VecNormalize periodicamente
+    # Callback customizado para salvar o VecNormalize
     from stable_baselines3.common.callbacks import BaseCallback
     class SaveVecNormalizeCallback(BaseCallback):
         def __init__(self, save_path, verbose=0):
@@ -323,7 +331,6 @@ def main():
         name_prefix=f"{args.algo}_model"
     )
     
-    # Salva as estatísticas do ambiente junto com o modelo
     vec_norm_callback = SaveVecNormalizeCallback(model_path)
     
     logging_callback = LoggingCallback(
@@ -332,7 +339,6 @@ def main():
         enable_hall_of_fame=not args.no_hall_of_fame
     )
 
-    # Loop de Treinamento
     print(f"\n>>> INICIANDO TREINO: {algo_name} <<<")
     print(f"Steps Totais: {args.total_timesteps}")
     print(f"Log Dir: {tb_path}")
@@ -357,13 +363,11 @@ def main():
     full_save_path = os.path.join(model_path, save_filename)
     
     model.save(full_save_path)
-    
-    # Salva o arquivo de normalização final
     env.save(vec_norm_path)
+    
     print(f"\n[DONE] Modelo salvo em: {full_save_path}")
     print(f"[DONE] Estatísticas de normalização salvas em: {vec_norm_path}")
     
-    # Salva ou não o hall da fama
     if not args.no_hall_of_fame:
         hof_path = os.path.join(tb_path, "hall_of_fame")
         os.makedirs(hof_path, exist_ok=True)
