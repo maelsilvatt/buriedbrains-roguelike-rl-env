@@ -13,8 +13,8 @@ enemy_tiers:
     target_hp_max: 3000
     target_dmg_mult: 90.0  # ⬆️ ERA 30.0 (3x MAIS DANO)
     xp_base: 100
-    xp_per_floor: 5.0 
-    base_stats: { defense: 0.10 }
+    xp_per_floor: 5.0
+    base_stats: {defense: 0.10}
 
   Professor:
     base_hp: 120
@@ -23,7 +23,7 @@ enemy_tiers:
     target_dmg_mult: 135.0 # ⬆️ ERA 45.0 (3x MAIS DANO)
     xp_base: 120
     xp_per_floor: 6.0
-    base_stats: { defense: 0.05, evasion: 0.10 }
+    base_stats: {defense: 0.05, evasion: 0.10}
 
   Tank:
     base_hp: 200
@@ -32,7 +32,7 @@ enemy_tiers:
     target_dmg_mult: 60.0  # ⬆️ ERA 20.0 (3x MAIS DANO)
     xp_base: 150
     xp_per_floor: 5.5
-    base_stats: { defense: 0.30 }
+    base_stats: {defense: 0.30}
 
   Elite:
     base_hp: 220
@@ -50,119 +50,116 @@ enemy_tiers:
     xp_base: 1000
     xp_per_floor: 20.0
 pools:
-  enemies:      
+  enemies:
     # ARQUÉTIPO: FODDER (Bucha de Canhão / Tutorial)    
     Zombie:
       # Servem para o agente testar dano e ganhar os primeiros níveis sem risco.
       min_floor: 0
-      cost: 10
+      cost: 4
       weight: 100
       tags: [Undead, Physical]
       tier: Fodder
       skills: ['Quick Strike', 'Wait']
       equipment: []
-      base_stats: { damage: 4 }      
+      base_stats: {damage: 4}
 
     Poisoned Rat:
       # Bate fraco, perigo é o veneno
       min_floor: 0
-      cost: 7
+      cost: 10
       weight: 85
       tags: [Beast, Poison]
       tier: Fodder
       skills: ['Quick Strike', 'Poison Shot', 'Wait']
       equipment: []
-      base_stats: { damage: 2 }      
+      base_stats: {damage: 2}
 
     Skeleton Archer:
       # Dano a distância básico
       min_floor: 0
-      cost: 12
+      cost: 4
       weight: 60
       tags: [Undead, Physical, Ranged]
       tier: Fodder
       skills: ['Quick Strike', 'Wait']
       equipment: ['Rusty Dagger']
-      base_stats: { damage: 4 }      
+      base_stats: {damage: 4}
 
     Giant Bat:
       # Evasivo com knockback
       min_floor: 0
-      cost: 10
+      cost: 4
       weight: 75
       tags: [Beast, Aggressive]
       tier: Fodder
       skills: ['Quick Strike', 'Wind Slash', 'Wait']
       equipment: []
-      base_stats: { damage: 3 }      
-    
+      base_stats: {damage: 3}
     # ARQUÉTIPO: COMMON (Dano Explosivo)    
     Bandit:
       # Testam o DPS puro e a capacidade de trocar dano
       min_floor: 8
-      cost: 13
+      cost: 11
       weight: 65
       tags: [Human, Physical]
       tier: Common
       skills: ['Quick Strike', 'Heavy Blow', 'Wait']
       equipment: ['Shortsword', 'Leather Tunic']
-      base_stats: { damage: 6 }      
+      base_stats: {damage: 6}
 
     Goblin:
       # War Cry aumenta o perigo se a luta durar
       min_floor: 8
-      cost: 9
+      cost: 10
       weight: 90
       tags: [Beast, Aggressive]
       tier: Common
       skills: ['Quick Strike', 'War Cry', 'Wait']
       equipment: ['Wooden Club']
-      base_stats: { damage: 5 }      
+      base_stats: {damage: 5}
 
     Wild Boar:
       # Carga pesada e direta
       min_floor: 14
-      cost: 9
+      cost: 12
       weight: 80
       tags: [Beast, Physical, Aggressive]
       tier: Common
       skills: ['Heavy Blow', 'Wait']
       equipment: []
-      base_stats: { damage: 7 }      
-    
+      base_stats: {damage: 7}
     # ARQUÉTIPO: PROFESSOR (Status & Debuffs)    
     Cave Spider:
       # Punem lutas longas. Ensinam priorização.
       min_floor: 18
-      cost: 11
+      cost: 33
       weight: 85
       tags: [Beast, Poison]
       tier: Professor
       skills: ['Quick Strike', 'Poison Shot', 'Wait']
       equipment: []
-      base_stats: { damage: 5 }
-      
+      base_stats: {damage: 5}
     Poisonous Mushroom:
       # Quase inofensivo fisicamente, perigo no veneno
       min_floor: 18
-      cost: 8
+      cost: 30
       weight: 80
       tags: [Beast, Poison, Debuff_Healing]
       tier: Professor
       skills: ['Poison Shot', 'Wait']
       equipment: []
-      base_stats: { damage: 3 }      
+      base_stats: {damage: 3}
 
     Forest Wisp:
       # Ensina a lidar com "Blind" (Errar ataques)
       min_floor: 15
-      cost: 10
+      cost: 14
       weight: 70
       tags: [Magical]
       tier: Professor
       skills: ['Blinding Light', 'Wait']
       equipment: []
-      base_stats: { damage: 4 }      
+      base_stats: {damage: 4}
 
     Dark Cultist:
       # Glass Cannon mágico
@@ -173,88 +170,86 @@ pools:
       tier: Professor
       skills: ['Frostbite', 'Blade of Chaos', 'Wait']
       equipment: ['Worn Cloak', 'Old Charm']
-      base_stats: { damage: 6 }      
+      base_stats: {damage: 6}
 
     Shadow Assassin:
       # Shadow Strike (CD 4) é o opener. Depois ataques leves.
       min_floor: 25
-      cost: 15
+      cost: 34
       weight: 50
       tags: [Stealth, Debuff_Accuracy]
       tier: Professor
       skills: ['Shadow Strike', 'Quick Strike', 'Blinding Light', 'Wait']
       equipment: ['Twin Daggers']
-      base_stats: { damage: 8 }      
-    
+      base_stats: {damage: 8}
     # Arquétipo: Tank (Sustentação & Controle)
     Cursed Zombie:
       # Testam eficiência de cooldowns
       min_floor: 35
-      cost: 12
+      cost: 20
       weight: 60
       tags: [Undead, Cursed]
       tier: Tank
       skills: ['Heavy Blow', 'War Cry', 'Wait']
       equipment: []
-      base_stats: { damage: 6 }      
+      base_stats: {damage: 6}
 
     Cursed Knight:
       # O "Mini-Elite" - 20% de redução nativa
       min_floor: 45
-      cost: 18
+      cost: 49
       weight: 30
       tags: [Undead, Cursed, Physical, Tank, Control]
       tier: Tank
       skills: ['Heavy Blow', 'Shield Bash', 'Wait']
       equipment: ['Iron Sword', 'Chain Shirt', 'Amulet of Vigor']
-      base_stats: 
+      base_stats:
         defense: 0.20
-        damage: 8      
+        damage: 8
 
     Cursed Spirit:
       # Dano drenado ignora armadura
       min_floor: 40
-      cost: 14
+      cost: 18
       weight: 55
       tags: [Undead, Cursed]
       tier: Tank
       skills: ['Soul Drain', 'War Cry', 'Wait']
       equipment: []
-      base_stats: { damage: 5 }      
+      base_stats: {damage: 5}
 
     Poisoned Scorpion:
       # DoT agressivo contra tanques
       min_floor: 45
-      cost: 9
+      cost: 41
       weight: 80
       tags: [Beast, Poison]
       tier: Tank
       skills: ['Poison Shot', 'Wait']
       equipment: []
-      base_stats: { damage: 6 }      
+      base_stats: {damage: 6}
 
     Shadow Lurker:
       # Stealth com debuff de accuracy
       min_floor: 30
-      cost: 14
+      cost: 41
       weight: 60
       tags: [Stealth, Debuff_Accuracy]
       tier: Tank
       skills: ['Shadow Strike', 'Blinding Light', 'Wait']
       equipment: ['Serrated Blade']
-      base_stats: { damage: 8 }      
-      
+      base_stats: {damage: 8}
     # Elites: testam se o agente possui boas estatísticas, builds e estratégias.
     Krul:
       # Lição: "Você trocou sua arma inicial? Se não, você não passa."
       min_floor: 25
-      cost: 20
+      cost: 64
       weight: 15
       tags: [Physical, Heavy]
       tier: Elite
       skills: ['Heavy Blow', 'War Cry', 'Wait']
       equipment: ['Battle Axe', 'Steel Plate']
-      base_stats: 
+      base_stats:
         defense: 0.15
         damage: 10
       exp_yield: 120
@@ -262,49 +257,49 @@ pools:
     Twilight Stalker:
       # O TESTE DE BURST (Mecânica de Stealth)
       min_floor: 35
-      cost: 27
+      cost: 60
       weight: 10
       tags: [Stealth, Control_Fear]
       tier: Elite
       skills: ['Shadow Strike', 'Blinding Light', 'Wait']
       equipment: ['Twin Daggers']
-      base_stats: { damage: 9 }
+      base_stats: {damage: 9}
       exp_yield: 140
 
     Berserker Spirit:
       # O TESTE DE PRESSÃO (DPS Race)
       min_floor: 45
-      cost: 28
+      cost: 42
       weight: 12
       tags: [Undead, Aggressive, Physical]
       tier: Elite
       skills: ['Heavy Blow', 'Berserker Rage', 'Wait']
       equipment: ['Battle Axe']
-      base_stats: { damage: 12 }
+      base_stats: {damage: 12}
       exp_yield: 160
 
     'A Thousand Cursed':
       # O TESTE MÁGICO (Debuffs)
       min_floor: 55
-      cost: 23
+      cost: 32
       weight: 10
       tags: [Magical]
       tier: Elite
       skills: ['Frostbite', 'Ice Spike', 'Wait']
       equipment: ["Traveler's Coat"]
-      base_stats: { damage: 8 }
+      base_stats: {damage: 8}
       exp_yield: 180
 
     Laezarus:
       # Teste de sustentação (Muro de Tijolos)
       min_floor: 65
-      cost: 22
+      cost: 100
       weight: 10
       tags: [Tank, Defensive]
       tier: Elite
       skills: ['Shield Bash', 'Stone Shield', 'Wait']
       equipment: ["Knight's Mail"]
-      base_stats: 
+      base_stats:
         defense: 0.40
         damage: 7
       exp_yield: 200
@@ -312,74 +307,74 @@ pools:
     Flesh Abomination:
       # O PRÉ-BOSS (Dano + HP)
       min_floor: 75
-      cost: 32
+      cost: 38
       weight: 8
       tags: [Undead, Cursed, Heavy]
       tier: Elite
       skills: ['Heavy Blow', 'War Cry', 'Wait']
       equipment: []
-      base_stats: { damage: 10 }
+      base_stats: {damage: 10}
       exp_yield: 250
 
     # Bosses: testam se o agente domina todas as mecânicas aprendidas.    
     Lava Golem:
       # O GIGANTE - Teste de mitigação de dano em área
       min_floor: 85
-      cost: 25
+      cost: 90
       weight: 15
       tags: [Thermal, Area_Damage]
       tier: Boss
       skills: ['Heavy Blow', 'Flame Burst', 'Earthquake', 'Wait']
       equipment: ['Warhammer']
-      base_stats: { damage: 10 }
+      base_stats: {damage: 10}
       exp_yield: 250
 
     Kalisto:
       # A BESTA - Teste contra Berserker buffado
       min_floor: 100
-      cost: 35
+      cost: 90
       weight: 5
       tags: [Beast, Aggressive, Heavy]
       tier: Boss
       skills: ['Heavy Blow', 'Berserker Rage', 'Wait']
       equipment: ["Ragnar's Wrath"]
-      base_stats: { damage: 10 }
+      base_stats: {damage: 10}
       exp_yield: 400
 
     'Bedrose Gardener':
       # A MURALHA - Teste de penetração ou dano mágico
       min_floor: 130
-      cost: 30
+      cost: 102
       weight: 10
       tags: [Undead, Physical, Tank]
       tier: Boss
       skills: ['Heavy Blow', 'Stone Shield', "Natures' Grasp", 'Wait']
       equipment: ['Stoneshield Armor']
-      base_stats: { damage: 12 }
+      base_stats: {damage: 12}
       exp_yield: 350
 
     Queen Arachna:
       # A PESTE - Teste de cura/cleanse
       min_floor: 130
-      cost: 48
+      cost: 168
       weight: 6
       tags: [Beast, Poison]
       tier: Boss
       skills: ['Poison Shot', 'Poison Cloud', 'Wait']
       equipment: ["Poisoner's Talisman", 'Shadowfang']
-      base_stats: { damage: 11 }
+      base_stats: {damage: 11}
       exp_yield: 380
 
     Ashen Monarch:
       # O monarca das cinzas - Resistência a Fogo e Dano Massivo
       min_floor: 160
-      cost: 52
+      cost: 207
       weight: 4
       tags: [Thermal, Heat, Heavy]
       tier: Boss
       skills: ['Meteor Strike', 'Flame Burst', 'War Cry', 'Wait']
       equipment: ['Flamebrand', 'Mantle of the Phoenix']
-      base_stats: 
+      base_stats:
         defense: 0.25
         status_resistance: 0.5
         damage: 12
@@ -388,37 +383,37 @@ pools:
     'Hopeless Agent':
       # O ESPELHO DISTORCIDO - Lutar contra si mesmo (Life Drain)
       min_floor: 190
-      cost: 40
+      cost: 102
       weight: 5
       tags: [Undead, Cursed]
       tier: Boss
       skills: ['Soul Drain', 'War Cry', 'Wait']
       equipment: ['Cursed Locket', 'Mantle of the Void']
-      base_stats: { damage: 12 }
+      base_stats: {damage: 12}
       exp_yield: 450
 
     Lich:
       # O ARQUIMAGO - Controle Absoluto (Freeze/Slow)
       min_floor: 220
-      cost: 50
+      cost: 102
       weight: 20
       tags: [Undead, Magical, Control]
       tier: Boss
       skills: ['Vampiric Touch', 'Frost Nova', 'Wait']
       equipment: ['Orb of Decay', 'Void Crystal']
-      base_stats: { damage: 12 }
+      base_stats: {damage: 12}
       exp_yield: 600
 
     'The Dark Knight':
       # O Cavaleiro das Profundezas - O Tanque Perfeito
       min_floor: 260
-      cost: 45
+      cost: 354
       weight: 15
       tags: [Undead, Physical, Tank]
       tier: Boss
       skills: ['Heavy Blow', 'Shield Bash', 'War Cry', 'Wait']
       equipment: ['Sword of the Forgotten King', 'Armor of Eternity']
-      base_stats: 
+      base_stats:
         defense: 0.60
         damage: 12
       exp_yield: 800
@@ -426,13 +421,13 @@ pools:
     'The Forgotten One':
       # O PESADELO FINAL - Teste: "Você aprendeu a jogar?"
       min_floor: 300
-      cost: 55
+      cost: 114
       weight: 3
       tags: [Undead, Magical, Cursed, Control]
       tier: Boss
       skills: ['Soul Drain', 'Stunning Hammer', 'Blinding Light', 'Wait']
       equipment: ['Mantle of the Void', 'Crown of Omens']
-      base_stats: { damage: 14 }
+      base_stats: {damage: 14}
       exp_yield: 1000
 
   events: # Mantido.    
@@ -450,13 +445,12 @@ pools:
       cost: -10
       weight: 25   # Peso intermediário, mais comum que Morbid Treasure
       tags: [Reward, Healing]
-    
-    None:          
+    None:
       cost: 0
       weight: 100  # Ajustado para balancear (Total = 60+15+25+100 = 200)
       tags: []
 
-  room_effects:     
+  room_effects:
     # Debuffs
     'Slow Terrain':
       cost: 5
@@ -479,7 +473,6 @@ pools:
       description: "A neblina densa aplica 'Blind' (-25% Acc) em todos."
       tags: [Visibility, Debuff]
       effect_to_apply: Blind # Transforma a luta em RNG puro. O agente deve evitar se não tiver cura.
-    
     'Weakening Field':
       cost: 6
       weight: 10
@@ -511,14 +504,14 @@ pools:
       tags: [Healing, Buff]
       persistent_effect:
         type: Heal_Self
-        heal_per_round: 0.02 
+        heal_per_round: 0.02
         # NOTA DE DESIGN: Isso é uma armadilha contra Bosses Tank. 
         # O agente precisa aprender a NÃO lutar contra Laezarus/Gardener aqui.
 
     # Contextuais
     'Conductive Field':
       cost: -2
-      weight: 10 
+      weight: 10
       description: "Energia arcana aumenta dano MÁGICO causado e recebido em 40%."
       tags: [Magical, Risk_Reward]
       # Se o agente for Mago (Skills Tier 3), limpa a sala. 
@@ -526,7 +519,7 @@ pools:
       stat_modifier:
         # Nota: O sistema de combate precisa saber aplicar isso a dano mágico.
         # Se for genérico, use damage_modifier global mesmo.
-        damage_modifier: 0.40 
+        damage_modifier: 0.40
 
     None:
       cost: 0

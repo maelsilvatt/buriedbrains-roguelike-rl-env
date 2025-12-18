@@ -82,8 +82,7 @@ class BuriedBrainsEnv(gym.Env):
         self.max_floors = max_floors
         self.max_level = max_level         
         self.budget_multiplier = budget_multiplier
-        self.guarantee_enemy = guarantee_enemy
-        self.pool_costs = content_generation._calculate_costs(enemy_data['pools'])
+        self.guarantee_enemy = guarantee_enemy        
         self.rarity_map = {'Common': 0.25, 'Rare': 0.5, 'Epic': 0.75, 'Legendary': 1.0}
         self.sanctum_floor = sanctum_floor
         self.num_agents = num_agents 
@@ -268,18 +267,14 @@ class BuriedBrainsEnv(gym.Env):
                     'room_effects': []  
                 }
             else:
-                # Se não for santuário...
+                # Se não for santuário...                            
                 
-                # Calcula o budget
-                budget = ( 100 + (next_floor * 10) ) * self.budget_multiplier
-                
-                # Chamar o módulo de conteúdo
                 content = content_generation.generate_room_content(
-                    self.catalogs,                 
-                    budget, 
-                    next_floor,
-                    guarantee_enemy=self.guarantee_enemy 
-                )            
+                    catalogs=self.catalogs,
+                    current_floor=next_floor,
+                    budget_multiplier=self.budget_multiplier,
+                    guarantee_enemy=self.guarantee_enemy
+                )
 
             self.graphs[agent_id].nodes[node_name]['content'] = content
             
@@ -715,8 +710,7 @@ class BuriedBrainsEnv(gym.Env):
             # Gera conteúdo da sala inicial (vazia)
             start_content = content_generation.generate_room_content(
                 self.catalogs, 
-                budget=0,
-
+                budget_multiplier=0.0,
                 current_floor=0,
                 guarantee_enemy=False
             )
@@ -1039,20 +1033,38 @@ class BuriedBrainsEnv(gym.Env):
         Otimizado para não comer RAM se não precisarmos do Hall da Fama.
         """
 
-        # ANSI Color Codes para terminal
         COLORS = {
             "reset": "\033[0m",
-            "agent": "\033[96m",      # ciano
-            "action": "\033[92m",     # verde
-            "pvp": "\033[91m",        # vermelho
-            "karma_pos": "\033[92m",  # verde
-            "karma_neg": "\033[91m",  # vermelho
-            "karma_neu": "\033[93m",  # amarelo
-            "warn": "\033[93m",       # amarelo
-            "error": "\033[91m",      # vermelho
-            "arena": "\033[95m",      # magenta
-            "map": "\033[94m",        # azul
-            "upgrade": "\033[38;5;214m", # laranja
+
+            # Personagem / Agente — Ciano Neon
+            "agent": "\033[38;5;51m",      
+
+            # Ações — Verde Neon
+            "action": "\033[38;5;46m",     
+
+            # PvP — Vermelho Sangue Neon
+            "pvp": "\033[38;5;196m",                   
+
+            # Karma Negativo — Vermelho Intenso
+            "karma_neg": "\033[38;5;196m", 
+
+            # Karma Neutro — Amarelo Ouro
+            "karma_neu": "\033[38;5;226m", 
+
+            # Avisos — Amarelo Neon
+            "warn": "\033[38;5;226m",      
+
+            # Erros — Vermelho Neon
+            "error": "\033[38;5;196m",     
+
+            # Arena — Magenta Elétrico
+            "arena": "\033[38;5;201m",     
+
+            # Mapa — Azul Elétrico
+            "map": "\033[38;5;27m",        
+
+            # Upgrade — Âmbar Forte / Dourado
+            "upgrade": "\033[38;5;214m",   
         }
 
         def colorize(text, color):
@@ -1062,15 +1074,14 @@ class BuriedBrainsEnv(gym.Env):
         if self.verbose > 0:
             msg_upper = message.upper()
             if "[ERRO]" in msg_upper or "ERROR" in msg_upper: color = "error"
-            elif "UPGRADE" in msg_upper or "EVENTO" in msg_upper: color = "upgrade"
+            elif  "EVENTO" in msg_upper: color = "upgrade"
             elif "[WARN]" in msg_upper: color = "warn"
-            elif "[SOCIAL]" in msg_upper:
-                if " (+)" in message or "POSITIVO" in msg_upper: color = "karma_pos"
-                elif "(-)" in message or "NEGAT" in msg_upper: color = "karma_neg"
+            elif "[SOCIAL]" in msg_upper or "UPGRADE" in msg_upper:                
+                if "(-)" in message or "NEGAT" in msg_upper: color = "karma_neg"
                 else: color = "karma_neu"
             elif "PVP" in msg_upper or "MORTE" in msg_upper: color = "pvp"
             elif "AÇÃO" in msg_upper or "AÇÃO-ARENA" in msg_upper: color = "action"
-            elif "SANCTUM" in msg_upper or "ZONA K" in msg_upper: color = "arena"
+            elif "SANCTUM" in msg_upper or "ZONA K" in msg_upper: color = "pvp"
             elif "PVE" in msg_upper: color = "map"
             else: color = "agent"
 
@@ -1136,9 +1147,11 @@ class BuriedBrainsEnv(gym.Env):
             
             # Popula a Arena (Sem inimigos)
             for node in new_arena.nodes():
-                budget = (100 + (base_floor * 10)) * self.budget_multiplier
                 content = content_generation.generate_room_content(
-                    self.catalogs, budget=budget, current_floor=base_floor, guarantee_enemy=False 
+                    catalogs=self.catalogs,
+                    current_floor=base_floor, 
+                    budget_multiplier=self.budget_multiplier, 
+                    guarantee_enemy=False 
                 )
                 content['enemies'] = [] 
                 content['items'] = []
@@ -1749,7 +1762,7 @@ class BuriedBrainsEnv(gym.Env):
                             return -5.0, terminated 
                         
                         # Lógica de Saída com Paz (Pedágio)
-                        base_exit_reward = 50.0
+                        base_exit_reward = 20.0
                         bonus_peace_reward = 0.0
                         
                         # Verifica se há oferta de paz ativa (minha ou do oponente)
@@ -1763,7 +1776,7 @@ class BuriedBrainsEnv(gym.Env):
                         
                         # Se houve oferta de paz e estamos saindo vivos
                         if my_peace or other_peace:
-                            bonus_peace_reward = 150.0 # Total 200 (igual Barganha)
+                            bonus_peace_reward = 80.0 # Total 100 (como na barganha por troca)
                             self._log(agent_id, f"[SOCIAL] {self.agent_names[agent_id]} saiu do Santuário em paz, pagando o tributo.")
 
                             # Incrementa estatísticas de barganha bem-sucedida (Geral)
@@ -2280,7 +2293,10 @@ class BuriedBrainsEnv(gym.Env):
         
         # Popula o novo nó com conteúdo (vazio, pois é um "hub" de entrada)
         start_content = content_generation.generate_room_content(
-            self.catalogs, budget=0, current_floor=next_p_floor, guarantee_enemy=False
+            catalogs=self.catalogs, 
+            current_floor=0,
+            budget_multiplier=0.0, # Multiplicador 0 garante budget 0 (sem itens/inimigos) se a fórmula for multiplicativa
+            guarantee_enemy=False
         )
         agent_graph.nodes[next_p_node_id]['content'] = start_content
         
@@ -2397,7 +2413,7 @@ class BuriedBrainsEnv(gym.Env):
         
         # Popula 
         start_content = content_generation.generate_room_content(
-            self.catalogs, budget=0, current_floor=0, guarantee_enemy=False
+            self.catalogs, budget_multiplier=0, current_floor=0, guarantee_enemy=False
         )
         self.graphs[agent_id].nodes["start"]['content'] = start_content
         self._generate_and_populate_successors(agent_id, "start")

@@ -7,6 +7,7 @@ equipment_catalog:
     passive_effects:
       flat_damage_bonus: 20
 
+    cost: 25
   Rusty Dagger:
     type: Weapon
     rarity: Common
@@ -14,64 +15,72 @@ equipment_catalog:
     passive_effects:
       flat_damage_bonus: 22
 
+    cost: 26
   Wooden Club:
     type: Weapon
     rarity: Common
     tags: [Physical]
     passive_effects:
-      damage_modifier: 0.10 
+      damage_modifier: 0.10
       flat_damage_bonus: 18
 
+    cost: 32
   Hunting Spear:
     type: Weapon
     rarity: Common
     tags: [Physical]
     passive_effects:
-      flat_damage_bonus: 25 
+      flat_damage_bonus: 25
 
+    cost: 28
   Iron Sword:
     type: Weapon
     rarity: Common
     tags: [Physical]
     passive_effects:
-      damage_modifier: 0.12 
+      damage_modifier: 0.12
       flat_damage_bonus: 18
 
   # --- RARE (Tier 2 - A Ponte para o Mid-Game) ---
+    cost: 34
   Battle Axe:
     type: Weapon
     rarity: Rare
     tags: [Physical]
     passive_effects:
-      damage_modifier: 0.20 
-      flat_damage_bonus: 45 
+      damage_modifier: 0.20
+      flat_damage_bonus: 45
     on_hit_effect:
-      chance: 0.3 
-      effect_tag: Sunder 
+      chance: 0.3
+      effect_tag: Sunder
 
+    cost: 87
   Warhammer:
     type: Weapon
     rarity: Rare
     tags: [Physical]
     passive_effects:
-      flat_damage_bonus: 65 
+      flat_damage_bonus: 65
 
+    cost: 71
   Twin Daggers:
     type: Weapon
     rarity: Rare
     tags: [Physical]
     passive_effects:
-      damage_modifier: 0.15 
+      damage_modifier: 0.15
       flat_damage_bonus: 40
 
+    cost: 70
   Elven Bow:
     type: Weapon
     rarity: Rare
     tags: [Physical]
     passive_effects:
-      damage_modifier: 0.25 
+      damage_modifier: 0.25
       flat_damage_bonus: 35
 
+    cost: 79
   Serrated Blade:
     type: Weapon
     rarity: Rare
@@ -79,10 +88,11 @@ equipment_catalog:
     passive_effects:
       flat_damage_bonus: 40
     on_hit_effect:
-      chance: 0.30 
-      damage_modifier: 0.30 
+      chance: 0.30
+      damage_modifier: 0.30
 
   # --- EPIC (Tier 3 - Ferramentas de Especialista) ---
+    cost: 57
   Mace of Stunning:
     type: Weapon
     rarity: Epic
@@ -94,25 +104,28 @@ equipment_catalog:
       chance: 0.25
       effect_tag: Stun
 
+    cost: 121
   Dragonfang Blade:
     type: Weapon
     rarity: Epic
     tags: [Physical]
     passive_effects:
-      damage_modifier: 0.40 
+      damage_modifier: 0.40
       flat_damage_bonus: 42  # ⬇️ Era 95. Dano alto, mas depende do modificador %.
 
+    cost: 150
   Arcane Pike:
     type: Weapon
     rarity: Epic
-    tags: [Magical, Physical] 
+    tags: [Magical, Physical]
     passive_effects:
       damage_modifier: 0.30
       flat_damage_bonus: 36  # ⬇️ Era 85.
     on_hit_effect:
-      chance: 0.50 
-      effect_tag: Vulnerable 
+      chance: 0.50
+      effect_tag: Vulnerable
 
+    cost: 142
   Flamebrand:
     type: Weapon
     rarity: Epic
@@ -120,28 +133,31 @@ equipment_catalog:
     passive_effects:
       flat_damage_bonus: 40  # ⬇️ Era 90. (A culpada do seu log!).
     on_hit_effect:
-      chance: 0.40 
+      chance: 0.40
       effect_tag: Burn
 
+    cost: 88
   Stormcaller Blade:
     type: Weapon
     rarity: Epic
-    tags: [Physical] 
+    tags: [Physical]
     passive_effects:
       flat_damage_bonus: 35  # ⬇️ Era 85.
     on_hit_effect:
-      chance: 0.35 
+      chance: 0.35
       effect_tag: Stun
 
   # --- LEGENDARY (Tier 4 - Reis do Powercreep) ---
+    cost: 87
   Blade of the Martyr:
     type: Weapon
     rarity: Legendary
-    tags: [Physical] 
+    tags: [Physical]
     passive_effects:
-      damage_modifier: 0.60 
+      damage_modifier: 0.60
       flat_damage_bonus: 65  # ⬇️ Era 150.
 
+    cost: 334
   Sword of the Forgotten King:
     type: Weapon
     rarity: Legendary
@@ -149,10 +165,11 @@ equipment_catalog:
     passive_effects:
       flat_damage_bonus: 50  # ⬇️ Era 100.
       damage_modifier: 1.0   # O modificador de 100% já dobra o dano base, compensando o flat menor.
-    on_hit_effect:      
+    on_hit_effect:
       effect_tag: Sunder
       chance: 1.0
 
+    cost: 472
   Shadowfang:
     type: Weapon
     rarity: Legendary
@@ -160,9 +177,10 @@ equipment_catalog:
     passive_effects:
       flat_damage_bonus: 55  # ⬇️ Era 140.
     on_hit_effect:
-      chance: 0.80 
+      chance: 0.80
       effect_tag: Poison
 
+    cost: 182
   Ragnar’s Wrath:
     type: Weapon
     rarity: Legendary
@@ -170,15 +188,17 @@ equipment_catalog:
     passive_effects:
       flat_damage_bonus: 80  # ⬇️ Era 250. Ainda é a arma mais forte bruta, mas não quebra o jogo.
 
+    cost: 192
   Celestial Blade:
     type: Weapon
     rarity: Legendary
-    tags: [Magical, Physical] 
+    tags: [Magical, Physical]
     passive_effects:
-      damage_modifier: 0.50 
+      damage_modifier: 0.50
       flat_damage_bonus: 60  # ⬇️ Era 180.
 
   # --- ARMOR (Definem resistência, mas podem carregar tags para filtros futuros) ---
+    cost: 298
   Leather Tunic:
     type: Armor
     rarity: Common
@@ -186,6 +206,7 @@ equipment_catalog:
     passive_effects:
       flat_hp_bonus: 10  # ⬇️ ERA 40 (25%)
 
+    cost: 11
   Padded Vest:
     type: Armor
     rarity: Common
@@ -193,13 +214,15 @@ equipment_catalog:
     passive_effects:
       flat_hp_bonus: 8   # ⬇️ ERA 30 (27%)
 
+    cost: 11
   Worn Cloak:
     type: Armor
     rarity: Common
-    tags: [Magical] 
+    tags: [Magical]
     passive_effects:
       damage_reduction: 0.05  # ⬇️ ERA 0.08 
 
+    cost: 15
   Chain Shirt:
     type: Armor
     rarity: Common
@@ -207,6 +230,7 @@ equipment_catalog:
     passive_effects:
       flat_hp_bonus: 12  # ⬇️ ERA 50 (24%)
 
+    cost: 11
   Traveler’s Coat:
     type: Armor
     rarity: Common
@@ -215,6 +239,7 @@ equipment_catalog:
       damage_reduction: 0.07  # ⬇️ ERA 0.10 
 
   # --- RARE ARMOR ---
+    cost: 17
   Steel Plate:
     type: Armor
     rarity: Rare
@@ -223,6 +248,7 @@ equipment_catalog:
       flat_hp_bonus: 25  # ⬇️ ERA 100 (25%)
       damage_reduction: 0.06  # ⬇️ ERA 0.12 (50%)
 
+    cost: 28
   Knight’s Mail:
     type: Armor
     rarity: Rare
@@ -230,6 +256,7 @@ equipment_catalog:
     passive_effects:
       flat_hp_bonus: 40  # ⬇️ ERA 150 (27%)
 
+    cost: 21
   Scaled Vest:
     type: Armor
     rarity: Rare
@@ -237,6 +264,7 @@ equipment_catalog:
     passive_effects:
       damage_reduction: 0.09  # ⬇️ ERA 0.18 (50%)
 
+    cost: 28
   Hunter’s Mantle:
     type: Armor
     rarity: Rare
@@ -245,14 +273,16 @@ equipment_catalog:
       flat_hp_bonus: 20  # ⬇️ ERA 80 (25%)
       damage_reduction: 0.05  # ⬇️ ERA 0.10 (50%)
 
+    cost: 26
   Blessed Robes:
     type: Armor
     rarity: Rare
     tags: [Magical]
     passive_effects:
-      flat_hp_bonus: 15 
+      flat_hp_bonus: 15
 
   # --- EPIC ARMOR ---
+    cost: 17
   Thornmail:
     type: Armor
     rarity: Epic
@@ -261,6 +291,7 @@ equipment_catalog:
       damage_reduction: 0.12  # ⬇️ ERA 0.25 (48%)
       flat_hp_bonus: 50  # ⬇️ ERA 200 (25%)
 
+    cost: 59
   Guardian Shell:
     type: Armor
     rarity: Epic
@@ -269,14 +300,16 @@ equipment_catalog:
       damage_reduction: 0.11  # ⬇️ ERA 0.22 (50%)
       flat_hp_bonus: 60  # ⬇️ ERA 250 (24%)
 
+    cost: 59
   Mirrorplate:
     type: Armor
     rarity: Epic
     tags: [Physical, Reflect]
     on_hit_effect:
-      chance: 0.50 
+      chance: 0.50
       effect_tag: Reflect
 
+    cost: 50
   Mantle of the Phoenix:
     type: Armor
     rarity: Epic
@@ -284,6 +317,7 @@ equipment_catalog:
     passive_effects:
       flat_hp_bonus: 125  # ⬇️ ERA 500 (25%)
 
+    cost: 50
   Stoneshield Armor:
     type: Armor
     rarity: Epic
@@ -292,6 +326,7 @@ equipment_catalog:
       damage_reduction: 0.15  # ⬇️ ERA 0.35 (43%)
 
   # --- LEGENDARY ARMOR ---
+    cost: 55
   Bulwark of the Saint:
     type: Armor
     rarity: Legendary
@@ -300,6 +335,7 @@ equipment_catalog:
       damage_reduction: 0.20  # ⬇️ ERA 0.40 (50%)
       flat_hp_bonus: 150  # ⬇️ ERA 600 (25%)
 
+    cost: 158
   Armor of Eternity:
     type: Armor
     rarity: Legendary
@@ -308,6 +344,7 @@ equipment_catalog:
       damage_reduction: 0.25  # ⬇️ ERA 0.60 (42%)
       speed: -0.20
 
+    cost: 88
   Celestial Plate:
     type: Armor
     rarity: Legendary
@@ -315,14 +352,16 @@ equipment_catalog:
     passive_effects:
       flat_hp_bonus: 375  # ⬇️ ERA 1500 (25%)
 
+    cost: 166
   Mantle of the Void:
     type: Armor
     rarity: Legendary
     tags: [Magical]
     on_being_hit_effect:
-      chance: 0.50 
-      effect_tag: Stun 
+      chance: 0.50
+      effect_tag: Stun
 
+    cost: 70
   Dragonhide Armor:
     type: Armor
     rarity: Legendary
@@ -332,126 +371,143 @@ equipment_catalog:
       flat_hp_bonus: 200  # ⬇️ ERA 800 (25%)
 
   # --- ARTIFACTS (Acessórios) ---
+    cost: 192
   Amulet of Vigor:
     type: Artifact
     rarity: Common
     tags: [Physical]
     passive_effects:
-      flat_hp_bonus: 30 
+      flat_hp_bonus: 30
 
+    cost: 23
   Ring of Focus:
     type: Artifact
     rarity: Common
     tags: [Magical]
     passive_effects:
-      damage_modifier: 0.08 
+      damage_modifier: 0.08
 
+    cost: 26
   Old Charm:
     type: Artifact
     rarity: Common
     tags: [Magical]
     passive_effects:
-      flat_hp_bonus: 25 
+      flat_hp_bonus: 25
 
+    cost: 22
   Traveler’s Trinket:
     type: Artifact
     rarity: Common
     tags: [Physical]
     passive_effects:
-      flat_damage_bonus: 5 
+      flat_damage_bonus: 5
 
+    cost: 22
   Wooden Idol:
     type: Artifact
     rarity: Common
     tags: [Magical]
     passive_effects:
-      damage_modifier: 0.05 
+      damage_modifier: 0.05
 
   # --- RARE ARTIFACTS ---
+    cost: 24
   Tome of Haste:
     type: Artifact
     rarity: Rare
     tags: [Magical] # Livros se beneficiam de Conductive Field
     passive_effects:
-      damage_modifier: 0.15 
+      damage_modifier: 0.15
 
+    cost: 48
   Pendant of Will:
     type: Artifact
     rarity: Rare
     tags: [Physical]
     passive_effects:
-      flat_hp_bonus: 80 
+      flat_hp_bonus: 80
 
+    cost: 42
   Obsidian Eye:
     type: Artifact
     rarity: Rare
     tags: [Magical]
     passive_effects:
-      damage_modifier: 0.18 
+      damage_modifier: 0.18
 
+    cost: 52
   Sigil of Flame:
     type: Artifact
     rarity: Rare
     tags: [Magical, Thermal]
     on_hit_effect:
-      chance: 0.30 
+      chance: 0.30
       effect_tag: Burn
 
+    cost: 35
   Cursed Locket:
     type: Artifact
     rarity: Rare
     tags: [Magical, Cursed]
     passive_effects:
-      flat_damage_bonus: 15 
+      flat_damage_bonus: 15
 
   # --- EPIC ARTIFACTS ---
+    cost: 41
   Poisoner's Talisman:
     type: Artifact
     rarity: Epic
     tags: [Physical, Poison]
     on_hit_effect:
-      chance: 0.50 
+      chance: 0.50
       effect_tag: Poison # "DoT" não é um efeito, é um tipo. Usei Poison.
 
+    cost: 57
   Orb of Decay:
     type: Artifact
     rarity: Epic
     tags: [Magical]
     passive_effects:
-      damage_modifier: 0.25 
+      damage_modifier: 0.25
 
+    cost: 88
   Eye of the Storm:
     type: Artifact
     rarity: Epic
     tags: [Magical] # Electric removido
     on_hit_effect:
-      chance: 0.40 
+      chance: 0.40
       effect_tag: Stun # "Shock" não existia. Stun é a mecânica correta.
 
+    cost: 62
   Relic of Blood:
     type: Artifact
     rarity: Epic
     tags: [Physical]
     passive_effects:
-      flat_damage_bonus: 30 
+      flat_damage_bonus: 30
 
+    cost: 77
   Moonstone Prism:
     type: Artifact
     rarity: Epic
     tags: [Magical]
     passive_effects:
-      damage_modifier: 0.20 
-      flat_hp_bonus: 100 
+      damage_modifier: 0.20
+      flat_hp_bonus: 100
 
   # --- LEGENDARY ARTIFACTS ---
+    cost: 101
   Chronomancer's Hourglass:
     type: Artifact
     rarity: Legendary
     tags: [Magical]
     passive_effects:
-      damage_modifier: 0.40 
-      flat_damage_bonus: 50 
+      damage_modifier: 0.40
+      flat_damage_bonus: 50
 
+    cost: 270
   Crown of Omens:
     type: Artifact
     rarity: Legendary
@@ -459,210 +515,214 @@ equipment_catalog:
     passive_effects:
       flat_damage_bonus: 45  # ⬇️ Era 150. Acessório não deve dar mais dano que arma.
 
+    cost: 149
   Phoenix Feather:
     type: Artifact
     rarity: Legendary
     tags: [Magical, Thermal]
     on_being_hit_effect:
-      chance: 1.0 
+      chance: 1.0
       effect_tag: Revive
 
+    cost: 595
   Void Crystal:
     type: Artifact
     rarity: Legendary
     tags: [Magical] # O item definitivo para a sala Conductive Field
     passive_effects:
-      damage_modifier: 0.50 
+      damage_modifier: 0.50
 
+    cost: 210
   Starforge Medallion:
     type: Artifact
     rarity: Legendary
     tags: [Physical, Magical]
     passive_effects:
-      damage_modifier: 0.35 
+      damage_modifier: 0.35
       flat_hp_bonus: 100     # ⬇️ Era 300. 300 é uma barra de vida inteira extra.
 
   # Grimórios de Habilidade
   # Comuns (Dano Básico / Utilitários Simples)
+    cost: 203
   Tome of Quick Strike:
     type: SkillTome
     skill_name: Quick Strike
     rarity: Common
-    cost: 50
+    cost: 10
 
   Tome of Wind Slash:
     type: SkillTome
     skill_name: Wind Slash
     rarity: Common
-    cost: 60
+    cost: 10
 
   Tome of Poison Shot:
     type: SkillTome
     skill_name: Poison Shot
     rarity: Common
-    cost: 60
+    cost: 10
 
   Tome of Frostbite:
     type: SkillTome
     skill_name: Frostbite
     rarity: Common
-    cost: 60
+    cost: 10
 
   # Raros (Dano Moderado / Controle Leve / Buffs)
   Tome of Heavy Blow:
     type: SkillTome
     skill_name: Heavy Blow
     rarity: Rare
-    cost: 120
+    cost: 15
 
   Tome of Shield Bash:
     type: SkillTome
     skill_name: Shield Bash
     rarity: Rare
-    cost: 150
+    cost: 15
 
   Tome of Arcane Barrage:
     type: SkillTome
     skill_name: Arcane Barrage
     rarity: Rare
-    cost: 140
+    cost: 15
 
   Tome of Fireball:
     type: SkillTome
     skill_name: Fireball
     rarity: Rare
-    cost: 150
+    cost: 15
 
   Tome of Blinding Light:
     type: SkillTome
     skill_name: Blinding Light
     rarity: Rare
-    cost: 130
+    cost: 15
 
   Tome of Shadow Step:
     type: SkillTome
     skill_name: Shadow Step
     rarity: Rare
-    cost: 160
+    cost: 15
 
   Tome of Stone Shield:
     type: SkillTome
     skill_name: Stone Shield
     rarity: Rare
-    cost: 150
+    cost: 15
 
   # Épicos (AoE / DoT Forte / Debuffs Pesados / Cura)
   Tome of Arcane Explosion:
     type: SkillTome
     skill_name: Arcane Explosion
     rarity: Epic
-    cost: 300
+    cost: 22
 
   Tome of Thunder Clap:
     type: SkillTome
     skill_name: Thunder Clap
     rarity: Epic
-    cost: 350
+    cost: 22
 
   Tome of Ice Spike:
     type: SkillTome
     skill_name: Ice Spike
     rarity: Epic
-    cost: 320
+    cost: 22
 
   Tome of Blade of Chaos:
     type: SkillTome
     skill_name: Blade of Chaos
     rarity: Epic
-    cost: 380
+    cost: 22
 
   Tome of War Cry:
     type: SkillTome
     skill_name: War Cry
     rarity: Epic
-    cost: 300
+    cost: 22
 
   Tome of Poison Cloud:
     type: SkillTome
     skill_name: Poison Cloud
     rarity: Epic
-    cost: 350
+    cost: 22
 
   Tome of Flame Burst:
     type: SkillTome
     skill_name: Flame Burst
     rarity: Epic
-    cost: 350
+    cost: 22
 
   Tome of Soul Drain:
     type: SkillTome
     skill_name: Soul Drain
     rarity: Epic
-    cost: 400
+    cost: 22
 
   Tome of Vampiric Touch:
     type: SkillTome
     skill_name: Vampiric Touch
     rarity: Epic
-    cost: 420
+    cost: 22
 
   Tome of Healing Wave:
     type: SkillTome
     skill_name: Healing Wave
     rarity: Epic
-    cost: 450
+    cost: 22
 
   Tome of Natures Grasp:
     type: SkillTome
     skill_name: "Natures' Grasp"
     rarity: Epic
-    cost: 400
+    cost: 22
 
   # Lendários
   Grimoire of Shadow Strike:
     type: SkillTome
     skill_name: Shadow Strike
     rarity: Legendary
-    cost: 800
+    cost: 35
 
   Grimoire of Celestial Strike:
     type: SkillTome
     skill_name: Celestial Strike
     rarity: Legendary
-    cost: 850
+    cost: 35
 
   Grimoire of Meteor:
     type: SkillTome
     skill_name: Meteor Strike
     rarity: Legendary
-    cost: 1000
+    cost: 35
 
   Grimoire of Earthquake:
     type: SkillTome
     skill_name: Earthquake
     rarity: Legendary
-    cost: 950
+    cost: 35
 
   Grimoire of Stunning Hammer:
     type: SkillTome
     skill_name: Stunning Hammer
     rarity: Legendary
-    cost: 750
+    cost: 35
 
   Grimoire of Frost Nova:
     type: SkillTome
     skill_name: Frost Nova
     rarity: Legendary
-    cost: 900
+    cost: 35
 
   Grimoire of Divine Light:
     type: SkillTome
     skill_name: Divine Light
     rarity: Legendary
-    cost: 1200
+    cost: 35
 
   Grimoire of Berserker Rage:
     type: SkillTome
     skill_name: Berserker Rage
     rarity: Legendary
-    cost: 800
+    cost: 35

@@ -1,184 +1,145 @@
 # buriedbrains/content_generation.py
 import random
-from typing import Dict, List
+from typing import Dict
 
-def _calculate_costs(pools: Dict) -> Dict:
+def _calculate_room_budget(floor: int, multiplier: float) -> float:
+    """    
+    Define o orçamento que o gerador tem para gastar baseado no andar.
+    
+    Fórmula: (Base + (Andar * Escala)) * Multiplicador
     """
-    Calcula o 'custo' médio de cada pool.
-    """
-    costs = {}
-    for pool_name, items in pools.items():
-        if not items:
-            costs[pool_name] = 1
-            continue
-
-        # Usa 'cost' do YAML
-        total_cost = sum(item.get('cost', 0) for item in items.values() if isinstance(item, dict))
-        # Evita divisão por zero se a lista de items for vazia após filtragem
-        num_items = len([item for item in items.values() if isinstance(item, dict)])
-        costs[pool_name] = total_cost / num_items if num_items > 0 else 1
-    return costs
+    # Constantes Econômicas
+    BASE_BUDGET = 100.0
+    FLOOR_SCALING = 10.0
+    
+    # Cálculo bruto
+    raw_budget = BASE_BUDGET + (floor * FLOOR_SCALING)
+    
+    # Aplica o multiplicador do ambiente (1.0 = Normal, 2.0 = Dobro de recursos/perigo)
+    return raw_budget * multiplier
 
 def generate_room_content(
     catalogs: Dict,
-    budget: float,
     current_floor: int,
+    budget_multiplier: float = 1.0,
     guarantee_enemy: bool = False
 ) -> Dict:
     """
-    Popula uma sala seguindo a arquitetura Gamma (PDF) e regras de Tesouro:
-    1. Seleciona no máximo 1 inimigo (ci).
-    2. Seleciona no máximo 1 resultado de evento (ce):
-        - Se Tesouro/Tesouro Mórbido: Gera 1 item de equipamento correspondente.
-        - Se outro evento (não 'None'): Adiciona o nome do evento.
-        - Se 'None': Nada acontece.
-    3. Seleciona no máximo 1 efeito de sala (cf).
+    Gera o conteúdo de uma sala baseado no andar atual, orçamentos e catálogos fornecidos. 
+    Retorna um dicionário com inimigos, eventos, itens e efeitos de sala selecionados.
     """
-    # Adicionada a chave 'items' para guardar equipamentos encontrados
-    selected_content = {'enemies': [], 'events': [], 'items': [], 'room_effects': []}
 
-    # Ordem definida pela arquitetura Gamma
+    current_floor = int(current_floor)    
+    budget = _calculate_room_budget(current_floor, budget_multiplier)
+    selected_content = {'enemies': [], 'events': [], 'items': [], 'room_effects': []}
+    
     processing_order = ['enemies', 'events', 'room_effects']
     current_budget = budget
-
-    # Acesso aos catálogos individuais
-    enemy_pool = catalogs.get('enemies', {})
-    event_pool = catalogs.get('events', {}) 
-    effect_pool = catalogs.get('room_effects', {})
-    equipment_catalog = catalogs.get('equipment', {}) 
+    enemy_chosen_data = None 
 
     pool_map = {
-        'enemies': enemy_pool,
-        'events': event_pool,
-        'room_effects': effect_pool
+        'enemies': catalogs.get('enemies', {}),
+        'events': catalogs.get('events', {}),
+        'room_effects': catalogs.get('room_effects', {})
     }
+    equipment_catalog = catalogs.get('equipment', {}) 
 
+    # Processa cada pool na ordem definida
     for pool_name in processing_order:
+        current_pool = pool_map.get(pool_name, {})        
+        all_candidates_values = list(current_pool.values())
+        
+        # Filtra apenas candidatos elegíveis
+        candidates = []
+        for c in all_candidates_values:
+            if not isinstance(c, dict): 
+                continue
+            
+            m_floor = int(c.get('min_floor', 0))            
 
-        current_pool = pool_map.get(pool_name, {})
-        # Garante que estamos pegando os 'values' (os dicionários de dados)
-        all_candidates_in_pool = list(current_pool.values())
-        candidates = [
-            c for c in all_candidates_in_pool
-            if isinstance(c, dict) and c.get('min_floor', 0) <= current_floor
-        ]
+            # Andar Atual >= Min Floor
+            if current_floor < m_floor:
+                continue # PULA ESSE CANDIDATO
+
+            # Se passou por tudo, adiciona
+            candidates.append(c)
 
         if not candidates:
-            continue # Pula se não houver candidatos válidos para o andar
-
-        weights = [c.get('weight', 0) for c in candidates]
-
+            continue
+        
         # Slot ci: Inimigos
         if pool_name == 'enemies':
-            enemy_chosen_data = None # Guarda o dicionário do inimigo escolhido
+            weights = [c.get('weight', 0) for c in candidates]
             if any(w > 0 for w in weights):
                 try:
-                    chosen_enemy_candidate = random.choices(candidates, weights=weights, k=1)[0]
-                    enemy_cost = chosen_enemy_candidate.get('cost', 0)
-                    # Adiciona se couber no budget inicial
-                    if budget >= enemy_cost:
-                        enemy_chosen_data = chosen_enemy_candidate
-                except (IndexError, ValueError): pass # Ignora erros de seleção
+                    chosen = random.choices(candidates, weights=weights, k=1)[0]
+                    cost = chosen.get('cost', 0)
+                    if budget >= cost:
+                        enemy_chosen_data = chosen
+                except (IndexError, ValueError): pass
 
-            # Fallback da Garantia
+            # Fallback
             if enemy_chosen_data is None and guarantee_enemy:
-                 eligible_enemies = [c for c in candidates if c.get('cost', float('inf')) > 0]
-                 if eligible_enemies:
-                      cheapest_enemy = min(eligible_enemies, key=lambda e: e.get('cost', float('inf')))
-                      enemy_chosen_data = cheapest_enemy # Adiciona mesmo que estoure o budget
+                 eligible = [c for c in candidates if c.get('cost', float('inf')) > 0 and c.get('tier') != 'Boss']
+                 if eligible:
+                      enemy_chosen_data = min(eligible, key=lambda e: e.get('cost', float('inf')))
 
             if enemy_chosen_data:
                  selected_content['enemies'].append(enemy_chosen_data['name'])
-                 # Sempre deduz o custo para afetar slots subsequentes
-                 current_budget -= enemy_chosen_data.get('cost', 0) # Atualiza B_res1
+                 current_budget -= enemy_chosen_data.get('cost', 0)
 
         # Slot ce: Eventos/Itens
         elif pool_name == 'events':
-            if any(w > 0 for w in weights):
+            dynamic_weights = []
+            enemy_tier = enemy_chosen_data.get('tier', 'Common') if enemy_chosen_data else None
+            is_high_tier = enemy_tier in ['Elite', 'Boss']
+            
+            for c in candidates:
+                name = c.get('name')
+                w = c.get('weight', 0)
+                if name == 'Morbid Treasure':
+                    dynamic_weights.append(w * 20 if is_high_tier else 0)
+                elif name == 'Treasure':
+                    dynamic_weights.append(w * 0.1 if is_high_tier else w)
+                else:
+                    dynamic_weights.append(w)
+
+            if any(w > 0 for w in dynamic_weights):
                 try:
-                    # Seleciona UM evento/resultado potencial baseado no peso
-                    chosen_event = random.choices(candidates, weights=weights, k=1)[0]
-                    event_cost = chosen_event.get('cost', 0)
-                    event_name = chosen_event.get('name') 
-
-                    # Processa o evento escolhido SOMENTE se couber no budget restante (B_res1)
-                    # OU se o custo for não-positivo (recompensa/neutro)
-                    if event_cost <= 0 or current_budget >= event_cost:
-                        if event_name == 'Treasure':                            
-                            # 15% de chance de ser um livro em vez de equipamento
-                            is_tome = random.random() < 0.15
+                    ev = random.choices(candidates, weights=dynamic_weights, k=1)[0]
+                    cost = ev.get('cost', 0)
+                    name = ev.get('name') 
+                    
+                    if cost <= 0 or current_budget >= cost:
+                        if name in ['Treasure', 'Morbid Treasure']:
+                            selected_content['events'].append(name)
+                            # Lógica de Loot Simplificada
+                            is_tome = random.random() < (0.3 if name == 'Morbid Treasure' else 0.15)
+                            target_rarity = ['Epic', 'Legendary'] if name == 'Morbid Treasure' else ['Common', 'Rare']
                             
                             if is_tome:
-                                # Busca Grimórios Comuns/Raros
-                                tome_candidates = [
-                                    name for name, data in equipment_catalog.items()
-                                    if data.get('type') == 'SkillTome' and data.get('rarity') in ['Common', 'Rare']
-                                ]
-                                if tome_candidates:
-                                     selected_content['items'].append(random.choice(tome_candidates))
+                                pool = [n for n, d in equipment_catalog.items() if d.get('type') == 'SkillTome' and d.get('rarity') in target_rarity]
+                                if pool: selected_content['items'].append(random.choice(pool))
                             else:
-                                # Lógica Antiga (Equipamento Normal)
-                                eligible_items = [
-                                    name for name, data in equipment_catalog.items()
-                                    if isinstance(data, dict) and data.get('rarity') in ['Common', 'Rare'] 
-                                    and data.get('type') != 'SkillTome' 
-                                ]
-                                
-                                if eligible_items:                                    
-                                    num_items_to_drop = 1
-                                    if random.random() < 0.20: num_items_to_drop += 1
-                                    if random.random() < 0.10: num_items_to_drop += 1
-                                    
-                                    for _ in range(num_items_to_drop):
-                                        selected_content['items'].append(random.choice(eligible_items))
+                                pool = [n for n, d in equipment_catalog.items() if d.get('type') != 'SkillTome' and d.get('rarity') in target_rarity]
+                                if pool: 
+                                    qty = 1 + (1 if random.random() < 0.2 else 0)
+                                    for _ in range(qty): selected_content['items'].append(random.choice(pool))
+                        elif name != 'None':
+                            selected_content['events'].append(name)
+                        
+                        if cost > 0: current_budget -= cost
+                except (IndexError, ValueError): pass
 
-                            current_budget -= event_cost
-
-                        elif event_name == 'Morbid Treasure':                            
-                            # 30% de chance de grimório épico ou lendário
-                            is_tome = random.random() < 0.30
-                            
-                            if is_tome:
-                                 tome_candidates = [
-                                    name for name, data in equipment_catalog.items()
-                                    if data.get('type') == 'SkillTome' and data.get('rarity') in ['Epic', 'Legendary']
-                                 ]
-                                 if tome_candidates:
-                                     selected_content['items'].append(random.choice(tome_candidates))
-                            else:
-                                # Equipamento Épico/Lendário Normal
-                                eligible_items = [
-                                    name for name, data in equipment_catalog.items()
-                                    if isinstance(data, dict) and data.get('rarity') in ['Epic', 'Legendary']
-                                    and data.get('type') != 'SkillTome'
-                                ]
-                                if eligible_items:
-                                    selected_content['items'].append(random.choice(eligible_items))
-                            
-                            current_budget -= event_cost                        
-
-                        elif event_name != 'None':
-                            # Para outros eventos (Trap, Fountain, etc.)
-                            selected_content['events'].append(event_name)
-                            # Deduz o custo apenas se for positivo
-                            if event_cost > 0:
-                                 current_budget -= event_cost # Atualiza B_res2
-
-                        # Se for 'None', não faz nada (custo 0)
-
-                except (IndexError, ValueError):
-                    pass # Ignora erros de seleção
-
-        # Slot cf: Efeitos de Sala (Máximo 1)
+        # Slot cf: Efeitos de Sala
         elif pool_name == 'room_effects':
+            weights = [c.get('weight', 0) for c in candidates]
             if any(w > 0 for w in weights):
                 try:
-                    chosen_effect_candidate = random.choices(candidates, weights=weights, k=1)[0]
-                    effect_cost = chosen_effect_candidate.get('cost', 0)
-                    # Só adiciona se couber no budget restante (B_res2)
-                    if current_budget >= effect_cost:
-                        selected_content['room_effects'].append(chosen_effect_candidate['name'])
-                        current_budget -= effect_cost # Budget final
+                    chosen = random.choices(candidates, weights=weights, k=1)[0]
+                    if current_budget >= chosen.get('cost', 0):
+                        selected_content['room_effects'].append(chosen['name'])
+                        current_budget -= chosen.get('cost', 0)
                 except (IndexError, ValueError): pass
 
     return selected_content
