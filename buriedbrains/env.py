@@ -19,6 +19,60 @@ from . import item_encoder
 from . import effect_encoder
 from .gerador_nomes import GeradorNomes
 
+# ==========================================
+# CONSTANTES DE RECOMPENSA (REWARD SHAPING)
+# ==========================================
+
+# Existência e Progresso
+REW_EXISTENCE_PVE = -0.5       # Custo por turno (Time Step) no PvE
+REW_EXISTENCE_PVP = -0.1       # Custo base por turno na Arena (sem pressão)
+REW_VICTORY = 1000.0           # Chegar ao final do jogo
+REW_DEATH = -300.0             # Morte (PvE ou PvP)
+REW_INVALID_ACTION = -5.0      # Colisão, ação impossível, slot vazio
+
+# Exploração e Movimento
+REW_NEW_ROOM_PVE = 0.5         # Entrar em sala nova (PvE)
+REW_NEW_ROOM_PVP = 0.5         # Entrar em sala nova (PvP)
+REW_PING_PONG = -1.5           # Voltar para a sala de onde veio imediatamente
+REW_MOVE_PVE_SUCCESS = 5.0     # Recompensa alta por mover com sucesso no PvE
+REW_COMBAT_START = 10.0        # Incentivo para iniciar combate PvE
+
+# Combate PvE
+REW_DMG_DEALT_SCALAR = 0.6     # Multiplicador do Dano Causado
+REW_DMG_TAKEN_SCALAR = 0.5     # Multiplicador do Dano Sofrido
+REW_KILL_ENEMY = 100.0         # Matar Mob PvE
+REW_LEVEL_UP = 50.0            # Subir de Nível
+
+# Itens e Equipamento
+REW_LEARN_SKILL = 100.0        # Aprender Grimório
+REW_EQUIP_BASE = 75.0          # Base por equipar item melhor
+REW_EQUIP_RARITY_MULT = 100.0  # Multiplicador por diferença de raridade
+REW_EMPTY_LOOT = -10.0         # Tentar pegar item onde não tem
+
+# Social / PvP
+REW_PVP_WIN = 200.0            # Vitória no PvP
+REW_PVP_LOSS = -300.0          # Derrota no PvP (Equivale a Morte)
+REW_BARGAIN_SUCCESS = 200.0    # Troca pacífica de itens
+REW_EXIT_PEACE_BASE = 20.0     # Sair da Arena (Pedágio) - Base
+REW_EXIT_PEACE_BONUS = 80.0    # Sair da Arena (Pedágio) - Bônus se houve paz
+REW_MEET_BONUS = 100.0         # Encontrar o oponente (destrancar porta)
+
+# Penalidades Sociais
+REW_BETRAYAL = -100.0          # Traição / Perfídia
+REW_SIGNAL_COST = -2.0         # Custo de Drop/Sinalização (evitar spam)
+
+# Purgo do Santuário (pune agentes que ficam muito tempo lá dentro)
+REW_SANCTUM_PRESSURE_BASE = -0.1 # Multiplicador inicial da pressão
+REW_SANCTUM_PRESSURE_CAP = -10.0 # Teto máximo da punição por turno
+
+# Dinâmica de Recompensas por Força do Inimigo
+REW_SMURF_PENALTY_BASE = 50.0  # Penalidade base por matar fracos
+REW_HEROIC_BONUS_BASE = 100.0  # Bônus base por matar fortes
+
+# Marcos de Andares
+MILESTONES_EACH = 10          # A cada quantos andares
+REW_MILESTONE_DECIMAL = 100.0  # Multiplicador por marco alcançado
+
 class BuriedBrainsEnv(gym.Env):
     """
     Ambiente principal do BuriedBrains, compatível com a interface Gymnasium.
@@ -752,7 +806,7 @@ class BuriedBrainsEnv(gym.Env):
         else:
             # Ação é inválida DENTRO DO COMBATE (tentou mover, equipar, etc.)
             self.invalid_action_counts[agent_id] += 1
-            reward = -5 # Penalidade por ação inválida em combate            
+            reward = REW_INVALID_ACTION # Penalidade por ação inválida em combate            
         
         # Executa a ação (seja a escolhida ou o "Wait" da penalidade)           
         combat.execute_action(agent, [enemy], action_name, self.catalogs)
@@ -767,7 +821,7 @@ class BuriedBrainsEnv(gym.Env):
 
         # Verifica se o inimigo morreu e aumenta o XP do agene
         if combat.check_for_death_and_revive(enemy, self.catalogs):            
-            reward += 100 # Recompensa grande por vencer
+            reward += REW_KILL_ENEMY # Recompensa grande por vencer
             self.enemies_defeated_this_episode[agent_id] += 1
             
             # Pega o estado *principal* do agente (fora do combate)
@@ -789,7 +843,7 @@ class BuriedBrainsEnv(gym.Env):
 
             if leveled_up:
                 self._log(agent_id, f"[PVE] {self.agent_names[agent_id]} subiu para o nível {agent_main_state['level']} durante o combate.")
-                reward += 50  # Recompensa extra por subir de nível
+                reward += REW_LEVEL_UP  # Recompensa extra por subir de nível
                 agent_info_dict['level_up'] = True # Usa o dict de info do agente
 
                 # SINCRONIZAÇÃO: Atualiza o agente 'agent' (cópia de combate) 
@@ -850,7 +904,7 @@ class BuriedBrainsEnv(gym.Env):
             # Penalidade por dano sofrido
             damage_taken = hp_before_agent - agent['hp']
             # print(f"[DEBUG-PVE] 💥 {self.agent_names[agent_id]} sofreu {damage_taken} de dano do inimigo '{enemy['name']}'.")
-            reward -= damage_taken * 0.5
+            reward -= damage_taken * REW_DMG_TAKEN_SCALAR
 
             # Verifica se o agente morreu
             if combat.check_for_death_and_revive(agent, self.catalogs):
@@ -897,13 +951,13 @@ class BuriedBrainsEnv(gym.Env):
         hp_before_a2 = a2_combatant['hp']
         combat.execute_action(a1_combatant, [a2_combatant], action_a1, self.catalogs)
         damage_dealt_by_a1 = hp_before_a2 - a2_combatant['hp']
-        # rew_a1 += damage_dealt_by_a1 * 0.6
-        # rew_a2 -= damage_dealt_by_a1 * 0.5 # Não estou priorizando DPS no PvP pra ver a memória deles do PvE em ação
+        rew_a1 += damage_dealt_by_a1 * REW_DMG_DEALT_SCALAR
+        rew_a2 -= damage_dealt_by_a1 * REW_DMG_TAKEN_SCALAR # Não estou priorizando DPS no PvP pra ver a memória deles do PvE em ação
         
         # Verifica se o agente 'a2' morreu
         if combat.check_for_death_and_revive(a2_combatant, self.catalogs):
-            rew_a1 += 200 # Recompensa por vencer
-            rew_a2 -= 300 # Penalidade por morrer
+            rew_a1 += REW_PVP_WIN # Recompensa por vencer
+            rew_a2 += REW_PVP_LOSS # Penalidade por morrer
             combat_over = True
             winner = id_a1 # Retorna o ID real
             loser = id_a2
@@ -921,7 +975,7 @@ class BuriedBrainsEnv(gym.Env):
             # Checa Level Up
             if progression.check_for_level_up(winner_state):
                 self._log(id_a1, f"[UPGRADE] Subiu para nível {winner_state['level']} após vitória PvP!")
-                rew_a1 += 50 # Bônus extra no RL
+                rew_a1 += REW_LEVEL_UP # Bônus extra no RL
                 
                 # Sincroniza status base novos para o combatente da arena
                 a1_combatant['max_hp'] = winner_state['max_hp']
@@ -943,13 +997,13 @@ class BuriedBrainsEnv(gym.Env):
             hp_before_a1 = a1_combatant['hp']
             combat.execute_action(a2_combatant, [a1_combatant], action_a2, self.catalogs)
             damage_dealt_by_a2 = hp_before_a1 - a1_combatant['hp']
-            rew_a2 += damage_dealt_by_a2 * 0.6
-            rew_a1 -= damage_dealt_by_a2 * 0.5
+            rew_a2 += damage_dealt_by_a2 * REW_DMG_DEALT_SCALAR
+            rew_a1 -= damage_dealt_by_a2 * REW_DMG_TAKEN_SCALAR
             
             # Verifica se o agente 'a1' morreu
             if combat.check_for_death_and_revive(a1_combatant, self.catalogs):
-                rew_a2 += 200 # Recompensa por vencer
-                rew_a1 -= 300 # Penalidade por morrer
+                rew_a2 += REW_PVP_WIN # Recompensa por vencer
+                rew_a2 += REW_PVP_LOSS # Penalidade por morrer
                 combat_over = True
                 winner = id_a2 
                 loser = id_a1  
@@ -1182,7 +1236,7 @@ class BuriedBrainsEnv(gym.Env):
         Retorna (recompensa_do_agente, agente_terminou)
         """
         
-        agent_reward = -0.5 # Penalidade de tempo
+        agent_reward = REW_EXISTENCE_PVE # Penalidade de tempo
         agent_terminated = False # 'terminated' agora significa VENCER o jogo.
         game_won = False
         
@@ -1196,7 +1250,7 @@ class BuriedBrainsEnv(gym.Env):
         if is_on_last_floor and has_no_successors and not self.combat_states.get(agent_id):
             agent_terminated = True # Venceu!
             game_won = True 
-            agent_reward += 1000
+            agent_reward += REW_VICTORY
             self._log(agent_id, f"[PVE] FIM: {self.agent_names[agent_id]} VENCEU! (Chegou ao fim do Jogo)")
 
         # Processa Ação Combate ou Exploração
@@ -1217,7 +1271,7 @@ class BuriedBrainsEnv(gym.Env):
         
         # 3. Verifica Morte do Agente
         if self.agent_states[agent_id]['hp'] <= 0:                        
-            agent_reward = -300 
+            agent_reward = REW_DEATH # Penalidade grande por morrer 
 
             # Captura o vetor de observação do estado de morte (antes de virar Nível 1)
             # A rede neural precisa ver "zeros" na vida e a sala onde morreu.
@@ -1277,7 +1331,7 @@ class BuriedBrainsEnv(gym.Env):
             # {"check": lambda f: (f - 1) % sanctum_k == 0 and f > 1, "bonus": 100, "msg": "Sobreviveu à Zona K!"},
 
             # 2. Marco Decimal (Dispara a cada 10 andares: 10, 20, 30...)
-            {"check": lambda f: f % 10 == 0 and f > 0, "bonus": 100, "msg": "Marco Decimal!"}
+            {"check": lambda f: f % MILESTONES_EACH == 0 and f > 0, "bonus": REW_MILESTONE_DECIMAL, "msg": "Marco Decimal!"}
         ]
 
         for milestone in milestones_rules:
@@ -1473,8 +1527,8 @@ class BuriedBrainsEnv(gym.Env):
                         
                         # Punição Exponencial no Reward (Desconforto Mental)
                         # Começa em -0.1 e vai piorando rápido
-                        pressure_penalty = -0.1 * (1 + (overtime * 0.1))
-                        rewards[agent_id] += max(pressure_penalty, -10.0) # Teto de -10.0
+                        pressure_penalty = -REW_SANCTUM_PRESSURE_BASE * (1 + (overtime * 0.1))
+                        rewards[agent_id] += max(pressure_penalty, REW_SANCTUM_PRESSURE_CAP) # Teto de -10.0
                         
                         # Dano Físico (Aperto Real)
                         # A cada 5 turnos extras, perde 5% da vida MÁXIMA
@@ -1523,8 +1577,8 @@ class BuriedBrainsEnv(gym.Env):
                             arena_graph.graph['meet_occurred'] = True
                             self._log(agent_id, f"[SANCTUM] Encontro entre {self.agent_names[agent_id]} e {self.agent_names[opponent_id]}! Saída liberada.")
                             self._log(opponent_id, f"[SANCTUM] Encontro entre {self.agent_names[opponent_id]} e {self.agent_names[agent_id]}! Saída liberada.")
-                            rewards[agent_id] += 100
-                            rewards[opponent_id] += 100                        
+                            rewards[agent_id] += REW_MEET_BONUS
+                            rewards[opponent_id] += REW_MEET_BONUS                
 
                 # Processa Ação (Traição, Movimento, etc)                
                 # Detecta Intenção de Ataque (0-3)
@@ -1539,7 +1593,7 @@ class BuriedBrainsEnv(gym.Env):
                          self._log(agent_id, f"[SOCIAL] TRAIÇÃO! {self.agent_names[agent_id]} TRAIU a oferta de paz de {self.agent_names[target_id]}! Karma (--).")
                          self.reputation_system.update_karma(agent_id, 'bad')
                          self.reputation_system.update_karma(agent_id, 'bad') # Dupla                         
-                         rewards[agent_id] -= 100
+                         rewards[agent_id] += REW_BETRAYAL
                          self.betrayals_this_episode[agent_id] += 1
                          self.arena_interaction_state[target_id]['offered_peace'] = False
 
@@ -1549,7 +1603,7 @@ class BuriedBrainsEnv(gym.Env):
                          self.reputation_system.update_karma(agent_id, 'bad')
                          self.reputation_system.update_karma(agent_id, 'bad')
                          self.reputation_system.update_karma(agent_id, 'bad') # Tripla
-                         rewards[agent_id] -= 100
+                         rewards[agent_id] += REW_BETRAYAL
                          self.betrayals_this_episode[agent_id] += 1
                          self.arena_interaction_state[agent_id]['offered_peace'] = False
 
@@ -1596,8 +1650,8 @@ class BuriedBrainsEnv(gym.Env):
                             self.reputation_system.update_karma(agent_id, 'good')
                             self.reputation_system.update_karma(opponent_id, 'good')
                             self.reputation_system.update_karma(opponent_id, 'good')
-                            rewards[agent_id] += 200
-                            rewards[opponent_id] += 200 
+                            rewards[agent_id] += REW_BARGAIN_SUCCESS
+                            rewards[opponent_id] += REW_BARGAIN_SUCCESS 
                             
                             # Incrementa estatísticas de barganha bem-sucedida (Geral)
                             self.bargains_succeeded_this_episode[agent_id] += 1
@@ -1617,7 +1671,7 @@ class BuriedBrainsEnv(gym.Env):
 
                 else: # Ação Inválida (> 9)
                      self.invalid_action_counts[agent_id] += 1
-                     rewards[agent_id] -= 5
+                     rewards[agent_id] += REW_INVALID_ACTION
 
             # CASO 4: ESTÁ NO PVE?
             else:
@@ -1734,17 +1788,17 @@ class BuriedBrainsEnv(gym.Env):
                 prev_node = self.previous_nodes.get(agent_id)
                 
                 # Penalidade base por mover na Arena (Taxa de Oxigênio)
-                step_cost = -0.5 if is_in_arena else 0.0
+                step_cost = REW_EXISTENCE_PVP if is_in_arena else 0.0
                 
                 if prev_node and chosen_node == prev_node:
                      # Punição severa por voltar (Ping-Pong)
-                     reward -= 1.5
+                     reward += REW_PING_PONG
                 else:
                      # Recompensa por explorar nó novo
                      if not is_in_arena:
-                         reward += 0.5 # PvE: Incentiva explorar
+                         reward += REW_NEW_ROOM_PVE # PvE: Incentiva explorar
                      else:
-                         reward += 0.5 # Arena: Incentiva explorar (necessário pra ativar encontros e saída)
+                         reward += REW_NEW_ROOM_PVP # Arena: Incentiva explorar (necessário pra ativar encontros e saída)
                 
                 # Aplica a taxa base
                 reward += step_cost 
@@ -1762,8 +1816,8 @@ class BuriedBrainsEnv(gym.Env):
                             return -5.0, terminated 
                         
                         # Lógica de Saída com Paz (Pedágio)
-                        base_exit_reward = 20.0
-                        bonus_peace_reward = 0.0
+                        base_exit_reward = REW_EXIT_PEACE_BASE
+                        bonus_peace_reward = REW_EXIT_PEACE_BONUS
                         
                         # Verifica se há oferta de paz ativa (minha ou do oponente)
                         my_peace = self.arena_interaction_state[agent_id]['offered_peace']
@@ -1776,7 +1830,7 @@ class BuriedBrainsEnv(gym.Env):
                         
                         # Se houve oferta de paz e estamos saindo vivos
                         if my_peace or other_peace:
-                            bonus_peace_reward = 80.0 # Total 100 (como na barganha por troca)
+                            bonus_peace_reward = REW_EXIT_PEACE_BONUS # Total 100 (como na barganha por troca)
                             self._log(agent_id, f"[SOCIAL] {self.agent_names[agent_id]} saiu do Santuário em paz, pagando o tributo.")
 
                             # Incrementa estatísticas de barganha bem-sucedida (Geral)
@@ -1825,7 +1879,7 @@ class BuriedBrainsEnv(gym.Env):
                 if new_floor > self.max_floor_reached_this_episode[agent_id]:
                     self.max_floor_reached_this_episode[agent_id] = new_floor
                 
-                reward = -0.1 if is_in_arena else 5
+                reward = REW_EXISTENCE_PVP if is_in_arena else REW_MOVE_PVE_SUCCESS
 
                 # Gera novos sucessores e Combate PvE (Apenas P-Zone)
                 if not is_in_arena:
@@ -1859,12 +1913,12 @@ class BuriedBrainsEnv(gym.Env):
                     if enemy_names:                        
                         self._log(agent_id, f"[AÇÃO] COMBATE INICIADO com {enemy_names[0]}")
                         self._start_combat(agent_id, enemy_names[0])
-                        reward += 10 
+                        reward += REW_COMBAT_START
             else:
                 # Movimento INVÁLIDO
                 self._log(agent_id, f"[AÇÃO] Movimento INVÁLIDO (Sala {neighbor_index} não existe).")
                 self.invalid_action_counts[agent_id] += 1
-                reward = -5 
+                reward = REW_INVALID_ACTION 
 
         # --- Ação 4: Equipar Item (Grimórios, Equipamentos e Artefatos) ---        
         elif action == 4:
@@ -1921,7 +1975,7 @@ class BuriedBrainsEnv(gym.Env):
                         
                         self._log(agent_id, f"[UPGRADE] Aprendeu '{new_skill_name}' (Raridade: {details.get('rarity')}) substituindo '{old_skill}'.")
                         
-                        reward += 100.0 # Grande incentivo para evoluir
+                        reward += REW_LEARN_SKILL # Grande incentivo para evoluir
                         item_consumed = True
                         break # Uma ação = Um livro lido
                         
@@ -1976,9 +2030,9 @@ class BuriedBrainsEnv(gym.Env):
 
                         
                         # Calcula a recompensa para todos os itens
-                        reward = 75 + (max_rarity_diff * 100)
+                        reward = REW_EQUIP_BASE + (max_rarity_diff * REW_EQUIP_RARITY_MULT)
                     if is_in_arena:
-                        reward -= 2.0
+                        reward += REW_SIGNAL_COST
 
                     # Lógica específica para artefatos (tokens sociais)
                     if best_item_type == 'Artifact':
@@ -1987,7 +2041,7 @@ class BuriedBrainsEnv(gym.Env):
 
                         if is_recycled_loot:
                             # Se pegou o próprio item de volta, cancela o sinal de paz
-                            reward = -2.0 
+                            reward = REW_INVALID_ACTION
                             self.social_flags[agent_id]['just_picked_up'] = False # Não conta como "pegar oferta"
                             self.arena_interaction_state[agent_id]['offered_peace'] = False # Cancela minha oferta
                             
@@ -1999,17 +2053,17 @@ class BuriedBrainsEnv(gym.Env):
                 else:
                     # Falhou: Não tinha nada útil ou sala vazia
                     if room_items:
-                        reward = -10.0 
+                        reward = REW_EMPTY_LOOT 
                     else:
                         self.invalid_action_counts[agent_id] += 1                    
-                        reward = -5.0
+                        reward = REW_INVALID_ACTION
 
         # Ação 5: Dropar Artefato      
         elif action == 5:
             if not is_in_arena:
                 self._log(agent_id, "[AÇÃO] Ação 5 inválida fora do Santuário.")
                 self.invalid_action_counts[agent_id] += 1
-                reward = -2.0
+                reward = REW_INVALID_ACTION
             else:
                 equipped = self.agent_states[agent_id]['equipment'].get('Artifact')
                 if equipped:
@@ -2026,18 +2080,18 @@ class BuriedBrainsEnv(gym.Env):
                     self._log(agent_id, f"[AÇÃO-ARENA] Dropou '{equipped}'.")
 
                     if is_in_arena:
-                        reward -= 2.0 # Custa pontos ficar soltando                    
+                        reward += REW_SIGNAL_COST # Custa pontos ficar soltando                    
                 else:
                     self.invalid_action_counts[agent_id] += 1
-                    reward = -5.0
+                    reward = REW_INVALID_ACTION
         
         # Outras Ações
         elif 0 <= action <= 3:                
             self.invalid_action_counts[agent_id] += 1
-            reward = -5.0
+            reward = REW_INVALID_ACTION
         else:
             self.invalid_action_counts[agent_id] += 1
-            reward = -5.0
+            reward = REW_INVALID_ACTION
 
         return reward, terminated    
     
@@ -2220,7 +2274,7 @@ class BuriedBrainsEnv(gym.Env):
             
             # Punição na Recompensa (Multa Moral)
             # Se a vitória dá +200, uma multa de -100 * scale anula o lucro rápido.
-            penalty = 50.0 * scale
+            penalty = REW_SMURF_PENALTY_BASE * scale
             reward_adjustment = -penalty
             
             self._log(winner_id, f"[SOCIAL] COVARDIA ESCALÁVEL (x{scale})! Nível {winner_level} vs {loser_level}. Karma (---) Reward ({reward_adjustment})")
@@ -2237,7 +2291,7 @@ class BuriedBrainsEnv(gym.Env):
                 self.reputation_system.update_karma(winner_id, 'good')
             
             # Bônus de Recompensa (Glória)
-            bonus = 100.0 * scale
+            bonus = REW_HEROIC_BONUS_BASE * scale
             reward_adjustment = bonus
             
             self._log(winner_id, f"[SOCIAL] VITÓRIA HEROICA (x{scale})! Nível {winner_level} vs {loser_level}. Karma (+++) Reward (+{reward_adjustment})")
