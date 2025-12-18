@@ -1968,14 +1968,15 @@ class BuriedBrainsEnv(gym.Env):
                     self.equipment_swaps_this_episode[agent_id] += 1
                     qualidade = self.catalogs['equipment'][best_item_to_equip]['rarity']
                     
-                    if best_diff > 0:
-                        self._log(agent_id, f"[UPGRADE] {self.agent_names[agent_id]} trocou para: '{best_item_to_equip}' (Tipo: {best_item_type}, Raridade: {qualidade}).")
-                    else:
-                        self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} equipou: '{best_item_to_equip}' (Tipo: {best_item_type}, Raridade: {qualidade}).")
+                    if best_item_to_equip not in self.sanctum_dropped_history[agent_id]:
+                        if best_diff > 0:
+                            self._log(agent_id, f"[UPGRADE] {self.agent_names[agent_id]} trocou para: '{best_item_to_equip}' (Tipo: {best_item_type}, Raridade: {qualidade}).")
+                        else:
+                            self._log(agent_id, f"[AÇÃO] {self.agent_names[agent_id]} equipou: '{best_item_to_equip}' (Tipo: {best_item_type}, Raridade: {qualidade}).")
 
-                    
-                    # Calcula a recompensa para todos os itens
-                    reward = 75 + (max_rarity_diff * 100)
+                        
+                        # Calcula a recompensa para todos os itens
+                        reward = 75 + (max_rarity_diff * 100)
                     if is_in_arena:
                         reward -= 2.0
 
@@ -1990,7 +1991,7 @@ class BuriedBrainsEnv(gym.Env):
                             self.social_flags[agent_id]['just_picked_up'] = False # Não conta como "pegar oferta"
                             self.arena_interaction_state[agent_id]['offered_peace'] = False # Cancela minha oferta
                             
-                            self._log(agent_id, f"[SOCIAL] Recuperou sua arma. Sinal de paz cancelado.")
+                            self._log(agent_id, f"[SOCIAL] Pegou seu equipamento de volta. Sinal de paz cancelado.")
                         else:
                             # Item novo/do oponente
                             self.social_flags[agent_id]['just_picked_up'] = True
