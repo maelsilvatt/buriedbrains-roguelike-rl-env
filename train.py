@@ -9,18 +9,26 @@ from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.utils import set_random_seed
-from stable_baselines3.common.vec_env import VecNormalize 
+from stable_baselines3.common.vec_env import VecNormalize, SubprocVecEnv
 
 # Imports locais
 from buriedbrains.env import BuriedBrainsEnv
 from buriedbrains.logging_callbacks import LoggingCallback
-from buriedbrains.wrappers import SharedPolicyVecEnv
+from buriedbrains.wrappers import IslandWrapper, FlattenParallelWrapper
 
 # ------------------------------------------------
 # CONFIGURAÇÃO DE HIPERPARÂMETROS (RL TUNING)
 # ------------------------------------------------
 # Limite físico da GPU para batch size (depende da VRAM)
-MAX_GPU_BATCH_SIZE = 4096  
+MAX_GPU_BATCH_SIZE = 32000 # diminui overhead de memória na GPU
+N_CORES = 10  # Quantidade de cores para paralelismo
+
+# Configurações de treino
+DEFAULT_MAX_EP_STEPS = 15_000 
+DEFAULT_SANCTUM_FLOOR = 20
+DEFAULT_NUM_AGENTS = 64     # Padrão seguro
+NORM_REWARD_CLIP = 10.0      
+CHECKPOINT_FREQ_BASE = 200_000 
 
 # Transformer
 NET_EMBED_DIM = 96          # Rico em detalhes (Itens complexos)
@@ -63,13 +71,6 @@ ENTROPY_HIGH_AGENTS = 0.01
 
 LR_LOW_AGENTS = 3e-4       # Mais agressivo para poucos agentes
 ENTROPY_LOW_AGENTS = 0.03
-
-# Configurações de treino
-DEFAULT_MAX_EP_STEPS = 15_000 
-DEFAULT_SANCTUM_FLOOR = 20
-DEFAULT_NUM_AGENTS = 64     # Padrão seguro
-NORM_REWARD_CLIP = 10.0      
-CHECKPOINT_FREQ_BASE = 200_000 
 
 # Logging
 LOG_INTERVAL_TB = 5         
@@ -189,6 +190,26 @@ def transfer_weights(old_model_path, new_model, verbose=0):
     if verbose >= 1: print("--- TRANSFERÊNCIA CONCLUÍDA ---\n")
     del temp_model
 
+def make_env(rank, seed_base, args, agents_per_core):
+    """
+    Cria uma 'Ilha' isolada. Apenas o rank 0 exibe logs detalhados (verbose).
+    """
+    def _init():
+        # Se o usuário passou --verbose 2, apenas a Ilha 0 terá verbose 2.
+        # As outras (rank > 0) ficam em 0 para não poluir o terminal.
+        current_verbose = args.verbose if rank == 0 else 0
+        
+        env = BuriedBrainsEnv(
+            max_episode_steps=args.max_episode_steps, 
+            sanctum_floor=args.sanctum_floor,
+            verbose=current_verbose, # <--- Agora dinâmico!
+            num_agents=agents_per_core,
+            seed=seed_base + rank,
+            enable_logging_buffer=True 
+        )
+        return IslandWrapper(env)
+    return _init
+
 # Função Principal
 def main():
     parser = argparse.ArgumentParser(description="Script Unificado de Treinamento (PPO vs LSTM)")
@@ -232,16 +253,22 @@ def main():
     vec_norm_path = os.path.join(model_path, "vec_normalize.pkl")
 
     # Inicialização do ambiente
-    print(f"\n[ENV] Inicializando BuriedBrains ({args.num_agents} Agentes)...")
-    base_env = BuriedBrainsEnv(
-        max_episode_steps=args.max_episode_steps, 
-        sanctum_floor=args.sanctum_floor,
-        verbose=args.verbose,
-        num_agents=args.num_agents,
-        seed=seed_val,
-        enable_logging_buffer = not args.no_hall_of_fame
-    )    
-    env = SharedPolicyVecEnv(base_env)
+    # Verifica divisão exata nos cores
+    if args.num_agents % N_CORES != 0:
+        raise ValueError(f"Erro: {args.num_agents} agentes não dividem igualmente em {N_CORES} núcleos.")
+    
+    agents_per_core = args.num_agents // N_CORES
+
+    print(f"\n[PARALLEL] Iniciando {N_CORES} processos com {agents_per_core} agentes cada.")
+
+    # Cria a lista de construtores
+    env_fns = [make_env(i, seed_val if seed_val else 0, args, agents_per_core) for i in range(N_CORES)]
+    
+    # Inicia os processos
+    parallel_env = SubprocVecEnv(env_fns)
+    
+    # Cola os resultados de volta
+    env = FlattenParallelWrapper(parallel_env)
 
     # Normalização de Recompensa
     print(f"[ENV] Aplicando Normalização de Recompensa (Clip={NORM_REWARD_CLIP})...")
@@ -335,7 +362,7 @@ def main():
                 self.training_env.save(os.path.join(self.save_path, "vec_normalize.pkl"))
             return True
 
-    # Calcula frequência de save baseada na CONSTANTE
+    # Calcula frequência de save
     save_freq = max(1, CHECKPOINT_FREQ_BASE // env.num_envs)
     
     checkpoint_callback = CheckpointCallback(
@@ -347,9 +374,9 @@ def main():
     vec_norm_callback = SaveVecNormalizeCallback(model_path)
     
     logging_callback = LoggingCallback(
-        log_interval=LOG_INTERVAL_TB,       # Uso da CONSTANTE
-        hof_save_interval=LOG_INTERVAL_HOF, # Uso da CONSTANTE
-        top_n=HOF_TOP_N,                    # Uso da CONSTANTE
+        log_interval=LOG_INTERVAL_TB,       
+        hof_save_interval=LOG_INTERVAL_HOF, 
+        top_n=HOF_TOP_N,                    
         enable_hall_of_fame=not args.no_hall_of_fame
     )
 

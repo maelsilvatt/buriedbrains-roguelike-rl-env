@@ -1,124 +1,143 @@
 import numpy as np
-from stable_baselines3.common.vec_env import VecEnv
+import gymnasium as gym
 from gymnasium import spaces
+from stable_baselines3.common.vec_env import VecEnvWrapper
 
-class SharedPolicyVecEnv(VecEnv):
+class IslandWrapper(gym.Wrapper):
     """
-    Transforma um ambiente Multi-Agent (MAE) em um VecEnv do SB3.
-    
-    O SB3 enxergará cada AGENTE como um "Ambiente" separado.
-    Isso permite que a mesma política controle todos os agentes e aprenda
-    com a experiência de TODOS eles simultaneamente (Parameter Sharing).
+    Transforma um ambiente Multi-Agent (MAE) em um 'Ambiente de Ilha'.
+    Retorna observações empilhadas (Agentes, Features).
     """
     def __init__(self, env):
+        super().__init__(env)
         self.env = env
         self.agent_ids = env.agent_ids
         self.num_agents = len(self.agent_ids)
         
-        # Define o espaço de observação e ação
-        # Pega o espaço do primeiro agente como modelo
-        observation_space = env.observation_space[self.agent_ids[0]]
-        action_space = env.action_space[self.agent_ids[0]]
+        # Pega o espaço do primeiro agente
+        single_obs_space = env.observation_space[self.agent_ids[0]]
+        single_action_space = env.action_space[self.agent_ids[0]]
         
-        # Inicializa a classe pai (VecEnv) dizendo que temos 'num_agents' ambientes
-        super().__init__(self.num_agents, observation_space, action_space)
+        # Define o espaço de observação da Ilha inteira (16, 198)
+        self.observation_space = spaces.Box(
+            low=single_obs_space.low[0], 
+            high=single_obs_space.high[0],
+            shape=(self.num_agents, *single_obs_space.shape),
+            dtype=single_obs_space.dtype
+        )
         
-        # Buffers internos
-        self.last_obs = None
-        self.actions = None
+        # Ação múltipla
+        if isinstance(single_action_space, spaces.Discrete):
+            # Se for Discreto, vira MultiDiscrete([4, 4, 4...])
+            self.action_space = spaces.MultiDiscrete([single_action_space.n] * self.num_agents)
+        else:
+            # Se for Box, vira Box(16, Acoes)
+            self.action_space = spaces.Box(
+                low=single_action_space.low[0],
+                high=single_action_space.high[0],
+                shape=(self.num_agents, *single_action_space.shape),
+                dtype=single_action_space.dtype
+            )
 
-    def seed(self, seed=None):
-        """
-        Define a semente para o ambiente global subjacente.
-        """
-                
-        return self.env.reset(seed=seed)
-
-    def reset(self):
-        """
-        Reseta o ambiente real e retorna as observações de TODOS os agentes empilhadas.
-        """
-        obs_dict, info_dict = self.env.reset()
+    def reset(self, seed=None, options=None):
+        obs_dict, info_dict = self.env.reset(seed=seed, options=options)
         
-        # Converte Dict de Obs -> Array Numpy [Agente1_Obs, Agente2_Obs, ...]
+        # Garante a ordem correta dos IDs ao empilhar
         obs_list = [obs_dict[aid] for aid in self.agent_ids]
-        self.last_obs = np.stack(obs_list)
+        stacked_obs = np.stack(obs_list)
         
-        return self.last_obs
+        return stacked_obs, {} 
 
-    def step_async(self, actions):
-        # SB3 manda as ações, guardamos para usar no step_wait
-        self.actions = actions
-
-    def step_wait(self):
-        """
-        Executa o passo real no ambiente.
-        """
-        # Converte Array de Ações (SB3) -> Dicionário (Env)
+    def step(self, action):
+        # action entra como array (16,). Convertemos para dict.
         action_dict = {
-            agent_id: self.actions[i] 
+            agent_id: action[i] 
             for i, agent_id in enumerate(self.agent_ids)
         }
         
-        # Passo no Ambiente Real
         obs_dict, rew_dict, term_dict, trunc_dict, info_dict = self.env.step(action_dict)
         
-        # Converte Dicionários -> Arrays para o SB3
-        obs_list = []
-        rew_list = []
-        done_list = []
-        infos_list = []
+        global_done = term_dict.get('__all__', False) or trunc_dict.get('__all__', False)
         
-        for i, agent_id in enumerate(self.agent_ids):
-            obs_list.append(obs_dict[agent_id])
-            rew_list.append(rew_dict[agent_id])
-            
-            # Combina terminated e truncated
-            is_done = term_dict[agent_id] or trunc_dict[agent_id]
-            done_list.append(is_done)
-            
-            # Info extra necessária para o SB3
-            info = info_dict[agent_id].copy()
-            if is_done:
-                # Só sobrescreve se o env.py NÃO tiver mandado a observação correta.
-                if 'terminal_observation' not in info:
-                    info['terminal_observation'] = obs_dict[agent_id] # Fallback (comportamento antigo)
-            infos_list.append(info)
-
-        self.last_obs = np.stack(obs_list)
-        rewards = np.array(rew_list, dtype=np.float32)
-        dones = np.array(done_list, dtype=bool)
+        # Empilha retornos
+        obs_list = [obs_dict[aid] for aid in self.agent_ids]
+        rew_list = [rew_dict[aid] for aid in self.agent_ids]
         
-        # Auto-reset global se necessário
-        if term_dict.get('__all__', False) or trunc_dict.get('__all__', False):
+        stacked_obs = np.stack(obs_list)
+        stacked_rew = np.array(rew_list, dtype=np.float32)
+        
+        infos = [info_dict[aid] for aid in self.agent_ids]
+        
+        if global_done:
             new_obs_dict, _ = self.env.reset()
-            for i, agent_id in enumerate(self.agent_ids):
-                self.last_obs[i] = new_obs_dict[agent_id]
-                infos_list[i]['terminal_observation'] = obs_dict[agent_id]
+            stacked_obs = np.stack([new_obs_dict[aid] for aid in self.agent_ids])
+            for i, aid in enumerate(self.agent_ids):
+                infos[i]['terminal_observation'] = obs_dict[aid]
 
-        return self.last_obs, rewards, dones, infos_list
+        return stacked_obs, stacked_rew, global_done, False, {'sub_infos': infos}
 
-    def close(self):
-        pass        
+class FlattenParallelWrapper(VecEnvWrapper):
+    """
+    Pega um SubprocVecEnv que retorna dados de 'Ilhas' (N_Envs, N_Agents, ...)
+    e achata tudo para (N_Total_Agents, ...).
+    """
+    def __init__(self, venv):
+        self.num_islands = venv.num_envs
+        
+        # Hack para descobrir o tamanho real
+        island_obs_shape = venv.observation_space.shape
+        self.agents_per_island = island_obs_shape[0] 
+        single_agent_shape = island_obs_shape[1:] 
+        
+        total_agents = self.num_islands * self.agents_per_island
+        
+        super().__init__(venv)
+        
+        self.num_envs = total_agents
+        
+        # Configura espaços achatados
+        self.observation_space = spaces.Box(
+            low=venv.observation_space.low[0], 
+            high=venv.observation_space.high[0],
+            shape=single_agent_shape,          
+            dtype=venv.observation_space.dtype
+        )
+        
+        base_act = venv.action_space
+        if isinstance(base_act, spaces.MultiDiscrete):
+             self.action_space = spaces.Discrete(base_act.nvec[0])
+        elif isinstance(base_act, spaces.Box):
+             self.action_space = spaces.Box(
+                 low=base_act.low[0],
+                 high=base_act.high[0],
+                 shape=base_act.shape[1:],
+                 dtype=base_act.dtype
+             )
 
-    def env_is_wrapped(self, wrapper_class, indices=None):
-        """Método obrigatório do VecEnv. Retorna False pois não estamos usando wrappers do SB3 internamente."""
-        return [False] * self.num_agents
-
-    def set_attr(self, attr_name, value, indices=None):
-        """Método obrigatório do VecEnv. Seta atributo no ambiente base."""
-        # Como todos os agentes compartilham o MESMO ambiente, setamos no self.env
-        setattr(self.env, attr_name, value)
-
-    def get_attr(self, attr_name, indices=None):
-        """Retorna o valor de um atributo para cada 'ambiente' (agente)."""
-        val = getattr(self.env, attr_name)
-        return [val] * self.num_agents
-
-    def env_method(self, method_name, *method_args, indices=None, **method_kwargs):
-        """Chama um método do ambiente base."""
-        method = getattr(self.env, method_name)
-        return [method(*method_args, **method_kwargs) for _ in range(self.num_agents)]
+    def reset(self):
+        obs = self.venv.reset() 
+        return obs.reshape(-1, *obs.shape[2:]) 
     
-    def seed(self, seed=None):
-        self.env.reset(seed=seed)
+    def step_async(self, actions):
+        # O SB3 manda 'actions' com shape (Total_Agents, ...) ex: (64,)
+        # O SubprocVecEnv espera (Num_Ilhas, Agents_Por_Ilha, ...) ex: (4, 16)
+        
+        # Remodela o array linear para o formato de ilhas
+        reshaped_actions = actions.reshape(self.num_islands, self.agents_per_island, *actions.shape[1:])
+        
+        # Manda os pacotes corretos para o Subproc
+        self.venv.step_async(reshaped_actions)    
+
+    def step_wait(self):
+        obs, rews, dones, infos = self.venv.step_wait()
+        
+        obs = obs.reshape(-1, *obs.shape[2:])
+        rews = rews.flatten()
+        dones_expanded = np.repeat(dones, self.agents_per_island)
+        
+        flat_infos = []
+        for i in range(self.num_islands):
+            island_infos = infos[i].get('sub_infos', [])
+            flat_infos.extend(island_infos)
+            
+        return obs, rews, dones_expanded, flat_infos
