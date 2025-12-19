@@ -726,3 +726,60 @@ equipment_catalog:
     skill_name: Berserker Rage
     rarity: Legendary
     cost: 35
+
+  # Tier Comum
+  Minor Health Potion:
+    type: Consumable
+    rarity: Common
+    cost: 15
+    effect: heal    
+    description: "Um frasco com um líquido vermelho aguado. Cheira a morango passado."
+
+  Bandage:
+    type: Consumable
+    rarity: Common
+    cost: 10
+    effect: heal    
+    description: "Tiras de pano limpo para estancar ferimentos superficiais."
+
+  
+  # Tier Raro
+  Greater Health Potion:
+    type: Consumable
+    rarity: Rare
+    cost: 40
+    effect: heal    
+    description: "Um líquido vermelho espesso e brilhante. Fecha feridas rapidamente."
+
+  Potion of Ox Strength:
+    type: Consumable
+    rarity: Rare
+    cost: 50
+    effect: buff_damage    
+    duration: 10
+    description: "Faz os músculos incharem e as veias saltarem. Gosto de ferrugem."
+
+  # Tier Épico
+  Elixir of Rejuvenation:
+    type: Consumable
+    rarity: Epic
+    cost: 120
+    effect: heal_full
+    description: "Luz líquida engarrafada. Restaura o corpo ao seu auge."
+
+  Stoneskin Tonic:
+    type: Consumable
+    rarity: Epic
+    cost: 100
+    effect: buff_defense    
+    duration: 15
+    description: "Transforma a pele em rocha viva. O agente fica cinza e pesado."
+
+  # Tier Lendário
+  Ambrosia of the Gods:
+    type: Consumable
+    rarity: Legendary
+    cost: 500
+    effect: god_mode
+    duration: 5
+    description: "Néctar dourado proibido aos mortais. Concede poder absoluto por breves momentos."

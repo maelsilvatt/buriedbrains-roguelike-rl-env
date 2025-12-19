@@ -4,8 +4,8 @@ enemy_tiers:
     hp_variance: 0.15
     target_hp_max: 1500
     target_dmg_mult: 75.0  # ⬆️ ERA 25.0 (3x MAIS DANO)
-    xp_base: 60
-    xp_per_floor: 1.3
+    xp_base: 70
+    xp_per_floor: 3.0
 
   Common:
     base_hp: 100

@@ -9,15 +9,16 @@ class LoggingCallback(BaseCallback):
     Callback avançado para registrar métricas detalhadas do BuriedBrains (MAE)
     e salvar as "melhores histórias" (Hall da Fama) periodicamente.
     """
-    def __init__(self, log_interval: int = 10, verbose: int = 1, top_n: int = 10, enable_hall_of_fame: bool = True):
+    def __init__(self, log_interval: int = 10, hof_save_interval: int = 100, verbose: int = 1, top_n: int = 10, enable_hall_of_fame: bool = True):
         super().__init__(verbose)
-        self.log_interval = log_interval
+        self.log_interval = log_interval      # Frequência do TensorBoard (Rápida)
+        self.hof_save_interval = hof_save_interval # Frequência do Save em Disco (Lenta)
         self.top_n = top_n
 
         # Buffers
         self._reset_interval_buffers()
 
-        # Hall da Fama (Listas separadas por critério)
+        # Hall da Fama s
         self.hall_of_fame_level = []
         self.hall_of_fame_floor = []
         self.hall_of_fame_enemies = []
@@ -46,6 +47,14 @@ class LoggingCallback(BaseCallback):
         self.episode_avg_pve_duration = []
         self.episode_avg_pvp_duration = []
 
+        # Novas métricas        
+        self.episode_wait_actions = []
+        self.episode_total_healing = []
+        self.episode_highest_crit = []
+        self.episode_consumables_used = []
+        self.episode_chests_opened = []
+
+        # Sociais
         self.episode_arena_encounters = []
         self.episode_pvp_combats = []
         self.episode_bargains = []
@@ -127,15 +136,20 @@ class LoggingCallback(BaseCallback):
             self.episode_lengths.append(final_status.get("steps", 0))
             self.episode_total_exp.append(final_status.get("exp", 0))
 
-            self.episode_damage_dealt.append(final_status.get("damage_dealt", 0))
+            self.episode_damage_dealt.append(final_status.get("damage_dealt", 0.0))
             self.episode_equipment_swaps.append(final_status.get("equipment_swaps", 0))
-            
-            # Coleta Skill Upgrades
             self.episode_skill_upgrades.append(final_status.get("skill_upgrades", 0))
             
             self.episode_enemies_defeated.append(final_status.get("enemies_defeated", 0))
             self.episode_invalid_actions.append(final_status.get("invalid_actions", 0))
             self.episode_total_actions.append(final_status.get("steps", 1))
+
+            # [NOVAS MÉTRICAS] Coleta do final_status
+            self.episode_wait_actions.append(final_status.get("wait_actions", 0))
+            self.episode_total_healing.append(final_status.get("total_healing", 0.0))
+            self.episode_highest_crit.append(final_status.get("highest_crit", 0.0))
+            self.episode_consumables_used.append(final_status.get("consumables_used", 0))
+            self.episode_chests_opened.append(final_status.get("chests_opened", 0))
 
             # Durations
             pve_durs = final_status.get("pve_durations", [])
@@ -158,7 +172,7 @@ class LoggingCallback(BaseCallback):
             cp_floor = final_status.get("floor", 0)
             self.max_floor_ever = max(self.max_floor_ever, cp_floor)
 
-            # Monta a história para o Hall da Fama
+            # Monta a história para o Hall da Fama (Incluindo as novas métricas)
             story = {
                 'agent_name': final_status.get("agent_name", "Agente"),
                 'level': final_status.get("level", 0),
@@ -167,8 +181,16 @@ class LoggingCallback(BaseCallback):
                 'damage_dealt': final_status.get("damage_dealt", 0),
                 'death_cause': final_status.get("death_cause", "Desconhecida"),
                 'equipment': final_status.get("equipment", {}),
-                'active_skills': final_status.get("active_skills", []), # Lista de Skills
-                'skill_upgrades': final_status.get("skill_upgrades", 0), # Qtd de upgrades
+                'active_skills': final_status.get("skills", []), # Corrigido para 'skills' conforme env.py
+                'skill_upgrades': final_status.get("skill_upgrades", 0),
+                
+                # Novos campos
+                'wait_actions': final_status.get("wait_actions", 0),
+                'total_healing': final_status.get("total_healing", 0.0),
+                'highest_crit': final_status.get("highest_crit", 0.0),
+                'consumables_used': final_status.get("consumables_used", 0),
+                'chests_opened': final_status.get("chests_opened", 0),
+
                 'log_content': final_status.get("full_log", []),
                 'karma_history': final_status.get("karma_history", [])
             }
@@ -177,7 +199,7 @@ class LoggingCallback(BaseCallback):
             self._update_hall_of_fame(story, self.hall_of_fame_floor, 'floor')
             self._update_hall_of_fame(story, self.hall_of_fame_enemies, 'enemies_defeated')
 
-            # Logging
+            # Logging periódico no TensorBoard
             if self.episode_count % self.log_interval == 0:                
                 self.logger.record("rollout/ep_rew_mean", np.mean(self.episode_rewards))
                 self.logger.record("custom/win_rate", np.mean(self.episode_wins))
@@ -188,6 +210,13 @@ class LoggingCallback(BaseCallback):
                 self.logger.record("custom/avg_equipment_swaps", np.mean(self.episode_equipment_swaps))                
                 self.logger.record("custom/avg_skill_upgrades", np.mean(self.episode_skill_upgrades))
                 
+                # [NOVOS REGISTROS TENSORBOARD]
+                self.logger.record("custom/avg_wait_actions", np.mean(self.episode_wait_actions))
+                self.logger.record("custom/avg_consumables_used", np.mean(self.episode_consumables_used))
+                self.logger.record("custom/avg_chests_opened", np.mean(self.episode_chests_opened))
+                self.logger.record("combat/avg_healing_received", np.mean(self.episode_total_healing))
+                self.logger.record("combat/avg_highest_crit", np.mean(self.episode_highest_crit))
+
                 total_invalid = sum(self.episode_invalid_actions)
                 total_actions = sum(self.episode_total_actions)
                 invalid_rate = total_invalid / total_actions if total_actions > 0 else 0
@@ -207,7 +236,7 @@ class LoggingCallback(BaseCallback):
 
                 self.logger.dump(step=self.num_timesteps)
 
-                if self.enable_hall_of_fame:
+                if self.enable_hall_of_fame and self.episode_count % self.hof_save_interval == 0:   
                     try:
                         log_dir = self.logger.get_dir()
                         if log_dir:
@@ -249,11 +278,21 @@ class LoggingCallback(BaseCallback):
                         f.write(f"FLOOR: {story['floor']}\n")
                         f.write(f"LEVEL: {story['level']}\n")
                         f.write(f"INIMIGOS DERROTADOS: {story['enemies_defeated']}\n")
-                        f.write(f"SKILLS APRENDIDAS: {story.get('skill_upgrades', 0)}\n")
                         f.write(f"CAUSA DA MORTE: {story['death_cause']}\n")
                         
+                        f.write("\n--- ESTATÍSTICAS DE COMBATE ---\n")
+                        f.write(f"MAIOR DANO (CRÍTICO): {story.get('highest_crit', 0.0):.1f}\n")
+                        f.write(f"DANO TOTAL CAUSADO: {story.get('damage_dealt', 0.0):.1f}\n")
+                        f.write(f"CURA RECEBIDA: {story.get('total_healing', 0.0):.1f}\n")
+                        f.write(f"TURNOS ESPERANDO: {story.get('wait_actions', 0)}\n")
+                        
+                        f.write("\n--- EXPLORAÇÃO & RECURSOS ---\n")
+                        f.write(f"BAÚS ABERTOS: {story.get('chests_opened', 0)}\n")
+                        f.write(f"POÇÕES/CONSUMÍVEIS USADOS: {story.get('consumables_used', 0)}\n")
+                        f.write(f"SKILLS APRENDIDAS: {story.get('skill_upgrades', 0)}\n")
+                        
                         # Seção de Skills
-                        f.write("\n--- SKILLS (BUILD) ---\n")
+                        f.write("\n--- BUILD FINAL (SKILLS) ---\n")
                         skills = story.get('active_skills', [])
                         if skills:
                             for idx, s in enumerate(skills):

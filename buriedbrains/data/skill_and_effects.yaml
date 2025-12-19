@@ -51,9 +51,9 @@ skill_catalog:
     tags: [Damage, Stun]
 
   Arcane Explosion:
-    damage: 22  # ⬇️ Reduzido de 50. AoE não pode ter dano de single target.
+    damage: 22  # ⬇️ Reduzido de 50. 
     cd: 3
-    tags: [Damage, AOE]
+    tags: [Damage]
 
   Thunder Clap:
     damage: 18  # ⬇️ Reduzido de 40.
@@ -83,7 +83,7 @@ skill_catalog:
   Arcane Barrage:
     damage: 14  # ⬇️ Reduzido de 30.
     cd: 2 
-    tags: [Damage, AOE]
+    tags: [Damage]
 
   # --- TIER 3: Ultimates (CD Alto) ---
   # Devem causar impacto, mas não Hit Kill.
@@ -101,12 +101,12 @@ skill_catalog:
   Meteor Strike:
     damage: 60  # ⬇️ Reduzido de 90. Causa ~80-90 total. 1/3 do HP inimigo.
     cd: 6
-    tags: [Damage, AOE]
+    tags: [Damage]
 
   Earthquake:
     damage: 50  # ⬇️ Reduzido de 100. 100 era insta-kill em agentes low level.
     cd: 8
-    tags: [Damage, AOE, Stun]
+    tags: [Damage, Stun]
 
   Stunning Hammer:
     damage: 30  # ⬇️ Reduzido de 40.
@@ -121,7 +121,7 @@ skill_catalog:
   Frost Nova:
     damage: 15  # ⬇️ Reduzido de 30. Controle puro.
     cd: 5
-    tags: [Control, AOE, Slow]
+    tags: [Control, Slow]
 
   # --- SUPORTE E CURA (CRÍTICO) ---
   # O HP do Agente agora é ~300.
@@ -150,7 +150,7 @@ skill_catalog:
   Poison Cloud:
     damage: 10  # ⬇️ Reduzido de 30.
     cd: 3
-    tags: [DoT, AOE]
+    tags: [DoT]
 
   Stone Shield:
     damage: 0

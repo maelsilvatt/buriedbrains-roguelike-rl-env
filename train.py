@@ -16,51 +16,65 @@ from buriedbrains.env import BuriedBrainsEnv
 from buriedbrains.logging_callbacks import LoggingCallback
 from buriedbrains.wrappers import SharedPolicyVecEnv
 
-# ==========================================
+# ------------------------------------------------
 # CONFIGURAÇÃO DE HIPERPARÂMETROS (RL TUNING)
-# ==========================================
+# ------------------------------------------------
+# Limite físico da GPU para batch size (depende da VRAM)
+MAX_GPU_BATCH_SIZE = 4096  
 
-# Arquitetura do Transformer
-NET_EMBED_DIM = 64          # Tamanho da projeção (Embedding)
-NET_NUM_HEADS = 4           # Cabeças de atenção (64 / 4 = 16 features/head)
-NET_FEATURES_DIM = 512      # Saída final do extrator para a LSTM/Policy
+# Transformer
+NET_EMBED_DIM = 96          # Rico em detalhes (Itens complexos)
+NET_NUM_HEADS = 4           # 24 dim por cabeça
 NET_DROPOUT = 0.1
 
-# Definição do vetor de observação
-# Se modificar o env.py, atualizar aqui também!
-# Define o tamanho de cada "fatia" do vetor de observação.
+# Policy / LSTM (Otimizada para memória)
+NET_FEATURES_DIM = 256      # Reduz gargalo da LSTM
+NET_ARCH_WIDTHS = [256, 256] 
+LSTM_HIDDEN_SIZE = 256      
+
+# Definição do vetor de observação (Shape: 198)
 OBS_SIZES = {
     'skills': 40,
     'self_stats': 3,
     'pve_context': 7,
-    'social_pvp': 10,
+    'social_pvp': 7,
     'current_node': 13,
     'neighbor_n': 13,
     'neighbor_s': 13,
     'neighbor_e': 13,
     'neighbor_w': 13,
-    'flags_gear': 6,
-    'items': 51
+    'flags_gear': 8,
+    'items': 68
 }
 
-# Parâmetros de Treinamento PPO
+# Configurações de Treino PPO
 TRAIN_TOTAL_TIMESTEPS = 5_000_000
-TRAIN_N_STEPS = 512                 # Tamanho do buffer antes do update
-TRAIN_TARGET_MINIBATCHES = 8        # Em quantas partes dividir o batch
-TRAIN_GAMMA = 0.99                  # Fator de desconto (0.99 = focado no futuro)
+TRAIN_N_STEPS = 512                 # Tamanho do buffer por agente (Horizonte)
+TRAIN_GAMMA = 0.99                  
 TRAIN_GAE_LAMBDA = 0.95
 TRAIN_VF_COEF = 0.5
 TRAIN_MAX_GRAD_NORM = 0.5
 TRAIN_N_EPOCHS = 10
 
-# Configuração Dinâmica (Depende do nº de Agentes)
-# Se muitos agentes, o LR deve ser menor para estabilizar.
+# Tuning Dinâmico de Learning Rate
 THRESHOLD_HIGH_AGENTS = 64
-LR_HIGH_AGENTS = 1e-4
+LR_HIGH_AGENTS = 1e-4      # Mais conservador para muitos agentes
 ENTROPY_HIGH_AGENTS = 0.01
 
-LR_LOW_AGENTS = 3e-4
+LR_LOW_AGENTS = 3e-4       # Mais agressivo para poucos agentes
 ENTROPY_LOW_AGENTS = 0.03
+
+# Configurações de treino
+DEFAULT_MAX_EP_STEPS = 15_000 
+DEFAULT_SANCTUM_FLOOR = 20
+DEFAULT_NUM_AGENTS = 64     # Padrão seguro
+NORM_REWARD_CLIP = 10.0      
+CHECKPOINT_FREQ_BASE = 200_000 
+
+# Logging
+LOG_INTERVAL_TB = 5         
+LOG_INTERVAL_HOF = 100      
+HOF_TOP_N = 10
 
 # Transformer-based Feature Extractor
 class AttentionFeatureExtractor(BaseFeaturesExtractor):
@@ -74,8 +88,6 @@ class AttentionFeatureExtractor(BaseFeaturesExtractor):
         self.slices = []
         current_idx = 0
         
-        # A ordem aqui DEVE ser a mesma que o env.py monta o vetor!
-        # Ordem: Skills -> Stats -> Context -> Social -> Nodes -> Flags -> Items
         ordered_keys = [
             'skills', 'self_stats', 'pve_context', 'social_pvp',
             'current_node', 'neighbor_n', 'neighbor_s', 'neighbor_e', 'neighbor_w',
@@ -86,15 +98,12 @@ class AttentionFeatureExtractor(BaseFeaturesExtractor):
         
         for key in ordered_keys:
             size = OBS_SIZES[key]
-            # Cria a camada linear para esse bloco
             self.block_projs.append(nn.Linear(size, self.embed_dim))
-            # Guarda os índices de corte (Start, End)
             self.slices.append((current_idx, current_idx + size))
             current_idx += size
             
-        self.num_tokens = len(ordered_keys) # Deve ser 11
+        self.num_tokens = len(ordered_keys)
 
-        # Mecanismo de Atenção (Transformer Block)
         self.attn = nn.MultiheadAttention(
             embed_dim=self.embed_dim,
             num_heads=self.num_heads,
@@ -102,7 +111,6 @@ class AttentionFeatureExtractor(BaseFeaturesExtractor):
             batch_first=True
         )
                  
-        # Normalização e Saída
         self.norm = nn.LayerNorm(self.embed_dim * self.num_tokens)
         self.linear_out = nn.Linear(self.embed_dim * self.num_tokens, features_dim)
         self.act = nn.ReLU() 
@@ -110,24 +118,15 @@ class AttentionFeatureExtractor(BaseFeaturesExtractor):
     def forward(self, obs):
         batch_size = obs.shape[0]
 
-        # Fatiamento Dinâmico usando os índices pré-calculados
         raw_blocks = []
         for start, end in self.slices:
             raw_blocks.append(obs[:, start:end])
 
-        # Projeção (Raw -> Embedding de 64)
         projected_tokens = [proj(block) for proj, block in zip(self.block_projs, raw_blocks)]
-
-        # Stack: (Batch, Num_Tokens, Embed_Dim)
         x_seq = torch.stack(projected_tokens, dim=1)
-
-        # Self-Attention        
         attn_output, _ = self.attn(x_seq, x_seq, x_seq)
-        
-        # Residual Connection (Skip connection)
         x_seq = attn_output + x_seq
 
-        # Flatten e Saída
         x_flat = x_seq.reshape(batch_size, -1) 
         x_norm = self.norm(x_flat)
         
@@ -136,12 +135,18 @@ class AttentionFeatureExtractor(BaseFeaturesExtractor):
 # Função para ajustar hiperparâmetros dinamicamente
 def get_dynamic_hyperparams(num_agents, n_steps=TRAIN_N_STEPS):
     total_buffer_size = num_agents * n_steps
-    ideal_batch_size = total_buffer_size // TRAIN_TARGET_MINIBATCHES
+        
+    # Queremos que: total_buffer / n_minibatches <= MAX_GPU_BATCH_SIZE
+    # Então: n_minibatches >= total_buffer / MAX_GPU_BATCH_SIZE
     
-    # Arredonda para a potência de 2 mais próxima
-    batch_size = 2 ** round(math.log2(max(256, ideal_batch_size)))
-    if batch_size > total_buffer_size:
-        batch_size = int(2 ** math.floor(math.log2(total_buffer_size)))
+    # Calcula quantos pedaços são necessários
+    n_minibatches = math.ceil(total_buffer_size / MAX_GPU_BATCH_SIZE)
+    
+    # Arredonda para a próxima potência de 2 para eficiência    
+    n_minibatches = max(1, 2 ** math.ceil(math.log2(n_minibatches)))
+    
+    # O batch_size real que o SB3 vai usar por update
+    actual_batch_size = total_buffer_size // n_minibatches    
 
     if num_agents >= THRESHOLD_HIGH_AGENTS:
         learning_rate = LR_HIGH_AGENTS  
@@ -150,7 +155,12 @@ def get_dynamic_hyperparams(num_agents, n_steps=TRAIN_N_STEPS):
         learning_rate = LR_LOW_AGENTS  
         ent_coef = ENTROPY_LOW_AGENTS       
 
-    return batch_size, learning_rate, ent_coef
+    print(f"\n[AUTO-TUNING] Memória VRAM Otimizada:")
+    print(f"  - Buffer Total (RAM): {total_buffer_size} steps")
+    print(f"  - Divisor (Minibatches): {n_minibatches}")
+    print(f"  - Carga na GPU (Batch Size): {actual_batch_size} (Meta: <= {MAX_GPU_BATCH_SIZE})")
+
+    return actual_batch_size, learning_rate, ent_coef
 
 def transfer_weights(old_model_path, new_model, verbose=0):
     if verbose >= 1:
@@ -186,11 +196,12 @@ def main():
     parser.add_argument('--algo', type=str, required=True, choices=['ppo', 'lstm'], 
                         help="Escolha o algoritmo: 'ppo' ou 'lstm'")
     
+    # Defaults agora usam as CONSTANTES definidas no topo
     parser.add_argument('--total_timesteps', type=int, default=TRAIN_TOTAL_TIMESTEPS)
     parser.add_argument('--suffix', type=str, default="Experiment")
-    parser.add_argument('--max_episode_steps', type=int, default=50_000)
-    parser.add_argument('--sanctum_floor', type=int, default=20)
-    parser.add_argument('--num_agents', type=int, default=16)
+    parser.add_argument('--max_episode_steps', type=int, default=DEFAULT_MAX_EP_STEPS)
+    parser.add_argument('--sanctum_floor', type=int, default=DEFAULT_SANCTUM_FLOOR)
+    parser.add_argument('--num_agents', type=int, default=DEFAULT_NUM_AGENTS)
     parser.add_argument('--seed', nargs='?', const='random', default='random')
     parser.add_argument('--pretrained_path', type=str, default=None)
     parser.add_argument('--resume_path', type=str, default=None)
@@ -233,8 +244,8 @@ def main():
     env = SharedPolicyVecEnv(base_env)
 
     # Normalização de Recompensa
-    print("[ENV] Aplicando Normalização de Recompensa (VecNormalize)...")
-    env = VecNormalize(env, norm_obs=False, norm_reward=True, clip_reward=10.0)
+    print(f"[ENV] Aplicando Normalização de Recompensa (Clip={NORM_REWARD_CLIP})...")
+    env = VecNormalize(env, norm_obs=False, norm_reward=True, clip_reward=NORM_REWARD_CLIP)
 
     # Hiperparâmetros Dinâmicos
     auto_batch, auto_lr, auto_ent = get_dynamic_hyperparams(args.num_agents, n_steps=TRAIN_N_STEPS)
@@ -256,14 +267,15 @@ def main():
         "max_grad_norm": TRAIN_MAX_GRAD_NORM,
     }
 
+    # Configuração da Rede Neural usando CONSTANTES
     policy_kwargs = {
         "features_extractor_class": AttentionFeatureExtractor,
         "features_extractor_kwargs": {"features_dim": NET_FEATURES_DIM},
-        "net_arch": dict(pi=[256, 256], vf=[256, 256]), 
+        "net_arch": dict(pi=NET_ARCH_WIDTHS, vf=NET_ARCH_WIDTHS), 
     }
 
     if args.algo == 'lstm':
-        policy_kwargs["lstm_hidden_size"] = 512
+        policy_kwargs["lstm_hidden_size"] = LSTM_HIDDEN_SIZE
         policy_kwargs["enable_critic_lstm"] = True 
         policy_name = "MlpLstmPolicy"
         ModelClass = RecurrentPPO
@@ -323,7 +335,8 @@ def main():
                 self.training_env.save(os.path.join(self.save_path, "vec_normalize.pkl"))
             return True
 
-    save_freq = max(1, 200_000 // env.num_envs)
+    # Calcula frequência de save baseada na CONSTANTE
+    save_freq = max(1, CHECKPOINT_FREQ_BASE // env.num_envs)
     
     checkpoint_callback = CheckpointCallback(
         save_freq=save_freq, 
@@ -334,14 +347,16 @@ def main():
     vec_norm_callback = SaveVecNormalizeCallback(model_path)
     
     logging_callback = LoggingCallback(
-        verbose=0, 
-        log_interval=1, 
+        log_interval=LOG_INTERVAL_TB,       # Uso da CONSTANTE
+        hof_save_interval=LOG_INTERVAL_HOF, # Uso da CONSTANTE
+        top_n=HOF_TOP_N,                    # Uso da CONSTANTE
         enable_hall_of_fame=not args.no_hall_of_fame
     )
 
     print(f"\n>>> INICIANDO TREINO: {algo_name} <<<")
     print(f"Steps Totais: {args.total_timesteps}")
     print(f"Log Dir: {tb_path}")
+    print(f"Checkpoints a cada: {save_freq} steps (por agente)")
     
     try:
         model.learn(
