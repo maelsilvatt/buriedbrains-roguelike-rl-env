@@ -608,7 +608,7 @@ class BuriedBrainsEnv(gym.Env):
         # Métricas
         self.current_episode_logs = {}
         self.enemies_defeated_this_episode = {}
-        self.invalid_action_counts = {}
+        self.invalid_action_counts = {}        
         self.last_milestone_floors = {}                
         
         # Buffers de estatísticas (Duração, Dano, Trocas)
@@ -634,6 +634,12 @@ class BuriedBrainsEnv(gym.Env):
         self.arena_instances = {}               
         self.pvp_sessions = {} # LIMPA sessões PvP ativas
         self.pve_return_floor = {} # Salva o andar em que estava antes de entrar no Santuário
+
+        self.chests_opened_this_episode = {}
+        self.consumables_used_this_episode = {}
+        self.highest_damage_single_hit = {}
+        self.healing_received_this_episode = {}
+        self.wait_actions_this_episode = {}
 
 
         # Estado Global
@@ -1336,37 +1342,45 @@ class BuriedBrainsEnv(gym.Env):
             # CASO 1: ESTÁ EM COMBATE PVP?
             if agent_id in self.pvp_sessions:
                 session = self.pvp_sessions[agent_id]
-                p1 = session['a1_id']
-                p2 = session['a2_id']
+                p1 = session['a1_id'] # p1 contém o ID real (ex: "agent_0")
+                p2 = session['a2_id'] # p2 contém o ID real (ex: "agent_1")
                 
                 processed_agents.add(p1)
                 processed_agents.add(p2)
                 
-                # Pega as ações
+                # Pega os estados
                 state_p1 = self.agent_states[p1]
                 state_p2 = self.agent_states[p2]
 
-                # Pega a skill do deck do agente (ou 'Wait' se a ação for inválida para combate)                
+                # Pega o índice da ação (int)
                 idx_p1 = actions[p1].item() if hasattr(actions[p1], 'item') else actions[p1]
                 idx_p2 = actions[p2].item() if hasattr(actions[p2], 'item') else actions[p2]
 
+                # LÓGICA DO JOGADOR 1 (p1)
                 if 0 <= idx_p1 <= 3:
-                    act_p1 = state_p1['skills'][idx_p1]
+                    # CORRIGIDO: Usa idx_p1 para pegar a skill certa da lista
+                    act_p1 = state_p1['skills'][idx_p1] 
                 elif idx_p1 == 13:
                     act_p1 = "Use Consumable"
-                    self.consumables_used_this_episode[idx_p1] += 1
+                    # CORRIGIDO: Usa a variável p1, não a string 'a1_id'
+                    self.consumables_used_this_episode[p1] += 1 
                 else:
-                    act_p1 = "Wait" # Ação inválida em combate PvP
-                    self.wait_actions_this_episode[idx_p1] += 1
+                    act_p1 = "Wait"
+                    # CORRIGIDO: Usa a variável p1
+                    self.wait_actions_this_episode[p1] += 1 
 
+                # LÓGICA DO JOGADOR 2 (p2)
                 if 0 <= idx_p2 <= 3:
+                    # CORRIGIDO: Usa idx_p2
                     act_p2 = state_p2['skills'][idx_p2]
                 elif idx_p2 == 13:
                     act_p2 = "Use Consumable"
-                    self.consumables_used_this_episode[idx_p2] += 1
+                    # CORRIGIDO: Usa a variável p2
+                    self.consumables_used_this_episode[p2] += 1
                 else:
-                    act_p2 = "Wait" # Ação inválida em combate PvP
-                    self.wait_actions_this_episode[idx_p2] += 1
+                    act_p2 = "Wait"
+                    # CORRIGIDO: Usa a variável p2
+                    self.wait_actions_this_episode[p2] += 1
 
                 # Resolve o turno PvP
                 rew1, rew2, over, winner, loser = self._handle_pvp_combat_turn(session, act_p1, act_p2)
@@ -2359,6 +2373,7 @@ class BuriedBrainsEnv(gym.Env):
 
         self.arena_encounters_this_episode[agent_id] = 0
         self.pvp_combats_this_episode[agent_id] = 0
+        self.wait_actions_this_episode[agent_id] = 0
         self.bargains_succeeded_this_episode[agent_id] = 0
         self.bargains_trade_this_episode[agent_id] = 0
         self.bargains_toll_this_episode[agent_id] = 0
