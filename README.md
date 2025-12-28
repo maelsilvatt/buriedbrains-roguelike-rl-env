@@ -122,5 +122,3 @@ Se este software foi útil para sua pesquisa, por favor cite-o conforme abaixo:
 ## ⚖️ Licença
 
 Este projeto é licenciado sob a Licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
-
-```
