@@ -6,16 +6,13 @@ O **BuriedBrains** é um benchmark experimental desenvolvido para isolar e mensu
 
 O ambiente caracteriza-se por:
 
-* 
-**Geração Procedural (PCG):** Heurísticas abstratas baseadas em orçamento (*Budget-Based Generation*).
+* **Geração Procedural (PCG):** Heurísticas abstratas baseadas em orçamento (*Budget-Based Generation*).
 
 
-* 
-**Observabilidade Parcial:** Exige manutenção de estado interno para lidar com informações ocultas.
+* **Observabilidade Parcial:** Exige manutenção de estado interno para lidar com informações ocultas.
 
 
-* 
-**Alta Pressão:** Condições de *permadeath* e escassez de recursos que atuam como gargalos matemáticos para políticas reativas.
+* **Alta Pressão:** Condições de *permadeath* e escassez de recursos que atuam como gargalos matemáticos para políticas reativas.
 
 
 
@@ -27,12 +24,10 @@ O simulador adota uma estrutura modular **Hub-and-Spoke**, garantindo escalabili
 
 O ambiente alterna entre dois paradigmas topológicos para induzir diferentes modos de raciocínio:
 
-* 
-**Zonas de Progressão (PvE):** Modeladas como **Grafos Acíclicos Dirigidos (DAGs)**, onde cada bifurcação representa uma decisão irreversível e custo de oportunidade.
+* **Zonas de Progressão (PvE):** Modeladas como **Grafos Acíclicos Dirigidos (DAGs)**, onde cada bifurcação representa uma decisão irreversível e custo de oportunidade.
 
 
-* 
-**Santuários (Arenas PvP):** Grafos não-dirigidos cíclicos baseados no modelo **Erdős-Rényi**, otimizados via poda baseada em centralidade para criar pontos de estrangulamento (*chokepoints*).
+* **Santuários (Arenas PvP):** Grafos não-dirigidos cíclicos baseados no modelo **Erdős-Rényi**, otimizados via poda baseada em centralidade para criar pontos de estrangulamento (*chokepoints*).
 
 
 
@@ -44,16 +39,13 @@ A confiança e a moralidade dos agentes são mapeadas no interior de um **Disco 
 
 O projeto utiliza um extrator de características por atenção (**Self-Attention**) de 198 dimensões para processar blocos semânticos de habilidades, inventário e sensores sociais.
 
-* 
-**Espaço de Observação ():** Estruturado em 11 tokens (Habilidades, Propriocepção, Contexto PvE, Sensores Sociais, Navegação, etc.).
+* **Espaço de Observação ():** Estruturado em 11 tokens (Habilidades, Propriocepção, Contexto PvE, Sensores Sociais, Navegação, etc.).
 
 
-* 
-**Espaço de Ação ():** Inclui ativação de habilidades, interação, movimento, uso de consumíveis e sinalização social por descarte de itens (*Drop*).
+* **Espaço de Ação ():** Inclui ativação de habilidades, interação, movimento, uso de consumíveis e sinalização social por descarte de itens (*Drop*).
 
 
-* 
-**Modelos Comparativos:** O benchmark contrasta uma arquitetura reativa (**PPO**) com uma recorrente (**LSTM/RecurrentPPO**) para isolar o impacto da memória na resolução de problemas de longo prazo.
+* **Modelos Comparativos:** O benchmark contrasta uma arquitetura reativa (**PPO**) com uma recorrente (**LSTM/RecurrentPPO**) para isolar o impacto da memória na resolução de problemas de longo prazo.
 
 
 
@@ -61,35 +53,28 @@ O projeto utiliza um extrator de características por atenção (**Self-Attentio
 
 Para evitar a estagnação e forçar a eficiência, o ambiente impõe:
 
-* 
-**Escalonamento Logístico:** HP e Dano dos inimigos crescem via curva sigmoide até o andar 500.
+* **Escalonamento Logístico:** HP e Dano dos inimigos crescem via curva sigmoide até o andar 500.
 
 
-* 
-**Chaos Mode:** Após o andar 500, o crescimento torna-se exponencial (), testando o limite máximo de generalização.
+* **Chaos Mode:** Após o andar 500, o crescimento torna-se exponencial (), testando o limite máximo de generalização.
 
 
-* 
-**Floor Tax:** Dano fixo por andar () que ignora parcialmente a defesa, garantindo desgaste contínuo.
+* **Floor Tax:** Dano fixo por andar () que ignora parcialmente a defesa, garantindo desgaste contínuo.
 
 
 
 ## 🛠️ Tecnologias e Infraestrutura
 
-* 
-**Core:** Python 3.14, Gymnasium, Stable Baselines3.
+* **Core:** Python 3.14, Gymnasium, Stable Baselines3.
 
 
-* 
-**Redes Neurais:** PyTorch (Self-Attention & LSTM).
+* **Redes Neurais:** PyTorch (Self-Attention & LSTM).
 
 
-* 
-**Grafos:** NetworkX.
+* **Grafos:** NetworkX.
 
 
-* 
-**Visualizer:** Interface Web (JavaScript/HTML5) para análise qualitativa e telemetria neural em tempo real.
+* **Visualizer:** Interface Web (JavaScript/HTML5) para análise qualitativa e telemetria neural em tempo real.
 
 
 
