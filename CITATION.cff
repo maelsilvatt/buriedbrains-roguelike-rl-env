@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "Se você usar este software, por favor cite-o conforme abaixo."
+authors:
+- family-names: "Silva"
+  given-names: "Ismael Soares da"
+  orcid: "https://orcid.org/0009-0000-6583-8400" 
+title: "BuriedBrains: Um Ambiente Multiagente Procedural e Parcialmente Observável para Benchmark de Memória"
+version: v2.3.2
+doi: 10.5281/zenodo.18079360
+date-released: 2025-12-28
+url: "https://github.com/maelsilvatt/buriedbrains-roguelike-rl-env"
