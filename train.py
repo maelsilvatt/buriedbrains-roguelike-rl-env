@@ -3,7 +3,6 @@ import os
 import argparse
 import torch
 import torch.nn as nn
-import math
 from stable_baselines3 import PPO
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
@@ -19,9 +18,8 @@ from buriedbrains.wrappers import IslandWrapper, FlattenParallelWrapper
 # ------------------------------------------------
 # CONFIGURAÇÃO DE HIPERPARÂMETROS (RL TUNING)
 # ------------------------------------------------
-# Limite físico da GPU para batch size (depende da VRAM)
-MAX_GPU_BATCH_SIZE = 32000 # diminui overhead de memória na GPU
-N_CORES = 10  # Quantidade de cores para paralelismo
+TARGET_BATCH_SIZE = 1024 # diminui overhead de memória na GPU
+N_CORES = 6  # Quantidade de cores para paralelismo
 
 # Configurações de treino
 DEFAULT_MAX_EP_STEPS = 15_000 
@@ -39,6 +37,8 @@ NET_DROPOUT = 0.1
 NET_FEATURES_DIM = 256      # Reduz gargalo da LSTM
 NET_ARCH_WIDTHS = [256, 256] 
 LSTM_HIDDEN_SIZE = 256      
+ENABLE_CRTIC_LSTM = True
+N_LSTM_LAYERS = 1        
 
 # Definição do vetor de observação (Shape: 198)
 OBS_SIZES = {
@@ -57,12 +57,14 @@ OBS_SIZES = {
 
 # Configurações de Treino PPO
 TRAIN_TOTAL_TIMESTEPS = 5_000_000
-TRAIN_N_STEPS = 512                 # Tamanho do buffer por agente (Horizonte)
-TRAIN_GAMMA = 0.99                  
+TRAIN_N_STEPS = 512
+TRAIN_GAMMA = 0.99                 
 TRAIN_GAE_LAMBDA = 0.95
 TRAIN_VF_COEF = 0.5
+CLIP_RANGE = 0.2
 TRAIN_MAX_GRAD_NORM = 0.5
 TRAIN_N_EPOCHS = 10
+TARGET_KL = 0.04
 
 # Tuning Dinâmico de Learning Rate
 THRESHOLD_HIGH_AGENTS = 64
@@ -73,8 +75,8 @@ LR_LOW_AGENTS = 3e-4       # Mais agressivo para poucos agentes
 ENTROPY_LOW_AGENTS = 0.03
 
 # Logging
-LOG_INTERVAL_TB = 5         
-LOG_INTERVAL_HOF = 100      
+LOG_INTERVAL_TB = 5
+LOG_INTERVAL_HOF = 100
 HOF_TOP_N = 10
 
 # Transformer-based Feature Extractor
@@ -136,19 +138,18 @@ class AttentionFeatureExtractor(BaseFeaturesExtractor):
 # Função para ajustar hiperparâmetros dinamicamente
 def get_dynamic_hyperparams(num_agents, n_steps=TRAIN_N_STEPS):
     total_buffer_size = num_agents * n_steps
-        
-    # Queremos que: total_buffer / n_minibatches <= MAX_GPU_BATCH_SIZE
-    # Então: n_minibatches >= total_buffer / MAX_GPU_BATCH_SIZE
     
-    # Calcula quantos pedaços são necessários
-    n_minibatches = math.ceil(total_buffer_size / MAX_GPU_BATCH_SIZE)
+    # Calcula quantos minibatches são necessários para chegar perto do alvo    
+    n_minibatches = max(1, round(total_buffer_size / TARGET_BATCH_SIZE))
     
-    # Arredonda para a próxima potência de 2 para eficiência    
-    n_minibatches = max(1, 2 ** math.ceil(math.log2(n_minibatches)))
-    
-    # O batch_size real que o SB3 vai usar por update
+    # Garante que n_minibatches seja um divisor válido do buffer
+    # Se não for exato, ajusta n_minibatches para garantir divisão inteira
+    while total_buffer_size % n_minibatches != 0:
+        n_minibatches += 1         
+
     actual_batch_size = total_buffer_size // n_minibatches    
 
+    # Tuning de LR e Entropia (Mantido sua lógica original)
     if num_agents >= THRESHOLD_HIGH_AGENTS:
         learning_rate = LR_HIGH_AGENTS  
         ent_coef = ENTROPY_HIGH_AGENTS       
@@ -159,7 +160,7 @@ def get_dynamic_hyperparams(num_agents, n_steps=TRAIN_N_STEPS):
     print(f"\n[AUTO-TUNING] Memória VRAM Otimizada:")
     print(f"  - Buffer Total (RAM): {total_buffer_size} steps")
     print(f"  - Divisor (Minibatches): {n_minibatches}")
-    print(f"  - Carga na GPU (Batch Size): {actual_batch_size} (Meta: <= {MAX_GPU_BATCH_SIZE})")
+    print(f"  - Carga na GPU (Batch Size): {actual_batch_size} (Meta: <= {TARGET_BATCH_SIZE})")
 
     return actual_batch_size, learning_rate, ent_coef
 
@@ -202,7 +203,7 @@ def make_env(rank, seed_base, args, agents_per_core):
         env = BuriedBrainsEnv(
             max_episode_steps=args.max_episode_steps, 
             sanctum_floor=args.sanctum_floor,
-            verbose=current_verbose, # <--- Agora dinâmico!
+            verbose=current_verbose, 
             num_agents=agents_per_core,
             seed=seed_base + rank,
             enable_logging_buffer=True 
@@ -272,7 +273,7 @@ def main():
 
     # Normalização de Recompensa
     print(f"[ENV] Aplicando Normalização de Recompensa (Clip={NORM_REWARD_CLIP})...")
-    env = VecNormalize(env, norm_obs=False, norm_reward=True, clip_reward=NORM_REWARD_CLIP)
+    env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_reward=NORM_REWARD_CLIP)
 
     # Hiperparâmetros Dinâmicos
     auto_batch, auto_lr, auto_ent = get_dynamic_hyperparams(args.num_agents, n_steps=TRAIN_N_STEPS)
@@ -303,7 +304,8 @@ def main():
 
     if args.algo == 'lstm':
         policy_kwargs["lstm_hidden_size"] = LSTM_HIDDEN_SIZE
-        policy_kwargs["enable_critic_lstm"] = True 
+        policy_kwargs["enable_critic_lstm"] = ENABLE_CRTIC_LSTM
+        policy_kwargs["n_lstm_layers"] = N_LSTM_LAYERS        
         policy_name = "MlpLstmPolicy"
         ModelClass = RecurrentPPO
     else:

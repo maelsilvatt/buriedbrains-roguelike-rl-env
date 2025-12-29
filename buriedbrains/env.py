@@ -1098,6 +1098,18 @@ class BuriedBrainsEnv(gym.Env):
             if agent_id not in self.current_episode_logs:
                 self.current_episode_logs[agent_id] = []
                         
+            # Limite de 1k linhas (Rotativo) (Assumindo que DEATH_LOG_CUTOFF é constante global ou self)
+            limit = getattr(self, 'DEATH_LOG_CUTOFF', 1000) 
+            if len(self.current_episode_logs[agent_id]) > limit:
+                self.current_episode_logs[agent_id].pop(0)
+
+            self.current_episode_logs[agent_id].append(message + "\n")
+
+        # Só salva no buffer se a flag estiver ativada (independente do echo)
+        if getattr(self, 'enable_logging_buffer', True): 
+            if agent_id not in self.current_episode_logs:
+                self.current_episode_logs[agent_id] = []
+                        
             # Limite de 1k linhas (Rotativo)
             if len(self.current_episode_logs[agent_id]) > DEATH_LOG_CUTOFF:
                 self.current_episode_logs[agent_id].pop(0)
@@ -1137,11 +1149,11 @@ class BuriedBrainsEnv(gym.Env):
             self.pve_return_floor[p1] = self.current_floors[p1]
             self.pve_return_floor[p2] = self.current_floors[p2]
 
-            # Limpa os itens descartados pelo agente no Santuário
-            self.sanctum_dropped_history[agent_id] = set()
+            # Limpa o histórico de itens descartados antes de entrarem
+            self.sanctum_dropped_history[p1] = set()
+            self.sanctum_dropped_history[p2] = set()
             
-            # 4. Gera a Arena (Instância Única para o par)
-            # Usa o andar do p1 como base
+            # Gera o Santuário            
             base_floor = self.current_floors[p1]
             
             new_arena = map_generation.generate_k_zone_topology(
@@ -1164,7 +1176,7 @@ class BuriedBrainsEnv(gym.Env):
                 content['enemies'] = [] 
                 content['items'] = []
                 
-                # Se for o nó do meio, força uma Fonte. Nos outros, apaga.
+                # Se for o nó do meio, força uma Fonte. Nos outros, apaga eventos.
                 if node == center_node:
                     content['events'] = ['Fountain of Life']
                 else:
@@ -1176,7 +1188,7 @@ class BuriedBrainsEnv(gym.Env):
             self.arena_instances[p1] = new_arena
             self.arena_instances[p2] = new_arena
             
-            # 6. Posiciona os agentes
+            # 6. Posiciona os agentes em extremos opostos
             nodes_list = sorted(list(new_arena.nodes()))
             self.current_nodes[p1] = nodes_list[0]
             self.current_nodes[p2] = nodes_list[-1]
@@ -1184,10 +1196,6 @@ class BuriedBrainsEnv(gym.Env):
             # Atualiza estatísticas
             self.arena_encounters_this_episode[p1] += 1
             self.arena_encounters_this_episode[p2] += 1
-            
-            # (O estado global self.env_state perde sentido com N agentes, 
-            # pois alguns estão em PvE e outros em PvP. 
-            # Agora 'agent_id in self.active_matches' dita o estado).
 
     def _process_pve_step(self, agent_id: str, action: int, global_truncated: bool, infos: dict) -> tuple[float, bool]:
         """
@@ -1527,8 +1535,7 @@ class BuriedBrainsEnv(gym.Env):
                          self.arena_interaction_state[agent_id]['offered_peace'] = False
 
                     # Inicia PvP                    
-                    self._initiate_pvp_combat(agent_id, target_id) 
-                    # rewards[agent_id] += 20 # Teste de ablação
+                    self._initiate_pvp_combat(agent_id, target_id)                     
                     
                     # Marca o oponente como processado (para não agir neste turno)
                     processed_agents.add(target_id)

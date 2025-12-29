@@ -299,8 +299,16 @@ def execute_action(
         return 0.0, True, f"😵 {att_name} está atordoado e perdeu o turno.", []
 
     if action_name == 'Wait':
-        # "Wait" agora é informativo mas discreto
-        return 0.0, True, f"⏸️ {att_name} aguardou. {att_status}", []
+        # Monta a string de debug das skills
+        skills_debug = ", ".join(
+            [f"{s}[CD:{attacker['cooldowns'].get(s, 0)}]" for s in attacker.get('skills', [])]
+        )
+
+        main_msg = f"⏸️ {att_name} aguardou. {att_status}"
+        log_details = f"Skills disponíveis: {skills_debug}"
+
+        # Retorna log_details dentro de uma lista
+        return 0.0, True, main_msg, [log_details]
 
     if action_name not in attacker.get('skills', {}): 
         return 0.0, False, f"❌ {att_name}: Skill '{action_name}' inválida.", []
